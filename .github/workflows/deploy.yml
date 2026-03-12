@@ -1,0 +1,109 @@
+name: Deploy
+
+# Simplified CI/CD for solo development:
+# test → build → ECR push → Lambda update, all on main push.
+#
+# In a team environment, this would typically be split into:
+#   1. ci.yml   — runs on PR (pytest + docker build only, no push)
+#   2. deploy.yml — runs on merge to main (ECR push + Lambda update)
+# That separation prevents unreviewed code from reaching production ECR
+# and allows branch-based staging environments.
+
+on:
+  push:
+    branches: [main]
+
+env:
+  AWS_REGION: eu-north-1
+  ECR_REGISTRY: 681110867765.dkr.ecr.eu-north-1.amazonaws.com
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── 1. Python test ────────────────────────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+
+      - name: Run tests
+        run: pytest backend/tests/ -v
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ENTSOE_API_KEY: ${{ secrets.ENTSOE_API_KEY }}
+
+      # ── 2. AWS auth ───────────────────────────────────────────────────
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Login to public ECR (for base images)
+        run: aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
+
+      # ── 3. Build & push (arm64 = Lambda architecture) ─────────────────
+      - name: Set image tag
+        id: tag
+        run: echo "sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: lambda
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/namazu-api:${{ steps.tag.outputs.sha }}
+            ${{ env.ECR_REGISTRY }}/namazu-api:latest
+
+      - name: Build and push Scheduler image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: scheduler
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/namazu-scheduler:${{ steps.tag.outputs.sha }}
+            ${{ env.ECR_REGISTRY }}/namazu-scheduler:latest
+
+      # ── 4. Update Lambda functions ────────────────────────────────────
+      - name: Update Lambda: API
+        run: |
+          aws lambda update-function-code \
+            --function-name namazu-api \
+            --image-uri ${{ env.ECR_REGISTRY }}/namazu-api:${{ steps.tag.outputs.sha }}
+
+      - name: Update Lambda: Scheduler
+        run: |
+          aws lambda update-function-code \
+            --function-name namazu-scheduler \
+            --image-uri ${{ env.ECR_REGISTRY }}/namazu-scheduler:${{ steps.tag.outputs.sha }}
+
+      # ── 5. Smoke test ─────────────────────────────────────────────────
+      - name: Wait for Lambda update
+        run: |
+          aws lambda wait function-updated --function-name namazu-api
+          aws lambda wait function-updated --function-name namazu-scheduler
+
+      - name: Smoke test
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            https://5ouka6u81a.execute-api.eu-north-1.amazonaws.com/health)
+          echo "Health check status: $STATUS"
+          [ "$STATUS" = "200" ] || exit 1

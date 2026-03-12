@@ -159,101 +159,69 @@
 
 ## Phase 4: Deploy & Polish（目安: Week 3後半）
 
-### 4.0 環境セットアップ（デプロイ前提条件）
+### 4.0 環境セットアップ（デプロイ前提条件）✓
 
-#### AWS — 個人プロファイル追加
-- [ ] 個人AWSアカウントにログイン → IAMコンソールへ
-- [ ] IAMユーザー作成: `namazu-deploy`
-  - アクセス許可: `AdministratorAccess`（後で絞ってもよい）
-  - アクセスキー作成（Use case: CLI）→ CSVをダウンロード
-- [ ] `~/.aws/credentials` に `[personal]` プロファイルを追記:
-  ```ini
-  [personal]
-  aws_access_key_id = AKIA...
-  aws_secret_access_key = ...
-  ```
-- [ ] `~/.aws/config` に リージョンを追記:
-  ```ini
-  [profile personal]
-  region = eu-north-1
-  ```
-- [ ] 動作確認: `aws sts get-caller-identity --profile personal`
+#### AWS — 個人プロファイル追加 ✓
+- [x] 個人AWSアカウントにログイン → IAMコンソールへ
+- [x] IAMユーザー作成: `namazu`（AdministratorAccess）
+- [x] `~/.aws/credentials` に `[personal]` プロファイルを追記
+- [x] `~/.aws/config` に `[profile personal] region = eu-north-1` を追記
+- [x] 動作確認: `aws sts get-caller-identity --profile personal`
+- **Note**: 会社設定に `source_profile = default` が残っていたため除去。`AWS_REGION` 環境変数が会社設定でセットされているため、Terraform実行時は `AWS_REGION="" terraform ...` が必要
 
-#### GitHub — 個人アカウントをSSHで接続（会社設定と分離）
-- [ ] 個人用SSHキーを生成:
-  ```bash
-  ssh-keygen -t ed25519 -C "personal@gmail.com" -f ~/.ssh/id_ed25519_personal
-  ```
-- [ ] `~/.ssh/config` に追記（会社設定は触らない）:
-  ```
-  Host github-personal
-    HostName github.com
-    User git
-    IdentityFile ~/.ssh/id_ed25519_personal
-  ```
-- [ ] GitHub個人アカウント → Settings → SSH keys → 公開鍵を追加
-  ```bash
-  cat ~/.ssh/id_ed25519_personal.pub  # これをGitHubに貼る
-  ```
-- [ ] 動作確認: `ssh -T git@github-personal`（`Hi username!` と返ればOK）
-- [ ] GitHubに `Namazu` リポジトリ作成（publicでもprivateでも可）
-- [ ] ローカルリポジトリを作成・接続:
-  ```bash
-  cd ~/mugimeshi/portfolio/Namazu
-  git init
-  git remote add origin git@github-personal:your-username/Namazu.git
-  git add .
-  git commit -m "Initial commit"
-  git push -u origin main
-  ```
-- [ ] `~/.gitconfig` に追記（mugimeshi/ 以下は個人アカウントのIDを使う）:
-  ```ini
-  [includeIf "gitdir:~/mugimeshi/"]
-    path = ~/.gitconfig-personal
-  ```
-  `~/.gitconfig-personal` を新規作成:
-  ```ini
-  [user]
-    name = Your Name
-    email = personal@gmail.com
-  ```
+#### GitHub — 個人アカウントをSSHで接続 ✓
+- [x] 個人用SSHキー生成: `~/.ssh/id_ed25519_personal`
+- [x] `~/.ssh/config` に `Host github-personal` を追記（会社設定に影響なし）
+- [x] GitHub個人アカウント (`mugime-shi`) に公開鍵を登録
+- [x] GitHubに `Namazu` リポジトリ作成（private）
+- [x] Initial commit → `git push -u origin main`
+- [x] `~/.gitconfig` に `includeIf "gitdir:~/mugimeshi/"` を追記
+- [x] `~/.gitconfig-personal` 作成（name: mugimeshi, email: mugimeishi@gmail.com）
+- [x] `gh auth login` で `mugime-shi` アカウントを gh CLI に追加（PAT: repo + read:org + admin:org）
+- [x] `megumishi`（会社）をデフォルトに設定、`mugime-shi` への切り替えは `.envrc` の `GH_TOKEN` で自動化
 
-#### direnv — ディレクトリ別環境変数（グローバル汚染なし）
-- [ ] インストール: `brew install direnv`
-- [ ] シェルに追記（`~/.zshrc` の末尾）:
-  ```bash
-  eval "$(direnv hook zsh)"
-  ```
-- [ ] `Namazu/.envrc` を作成:
-  ```bash
-  export AWS_PROFILE=personal
-  ```
-- [ ] 許可: `direnv allow`
-- [ ] 動作確認: `cd Namazu` → `echo $AWS_PROFILE` が `personal` になる
+#### direnv ✓
+- [x] `brew install direnv` + `~/.bash_profile` に `eval "$(direnv hook bash)"` を追記
+- [x] `Namazu/.envrc` に `AWS_PROFILE=personal` + `GH_TOKEN=...` を設定
+- [x] `direnv allow` 済み
 
-**完了条件**: `aws sts get-caller-identity` が個人アカウントのIDを返す・`ssh -T git@github-personal` が成功する・GitHubにpush済み
+**完了条件**: 達成 ✓
 
 ---
 
-### 4.1 Terraform
-- [ ] `infra/main.tf`: provider, backend (S3 state)
-- [ ] `infra/ecr.tf`: ECRリポジトリ
-- [ ] `infra/lambda.tf`: Lambda関数（Dockerイメージ、Web Adapter）
-- [ ] `infra/api_gateway.tf`: HTTP API
-- [ ] `infra/eventbridge.tf`: 日次スケジュール（13:30 CET）
-- [ ] `infra/iam.tf`: Lambda実行ロール
-- [ ] `infra/variables.tf`, `infra/outputs.tf`
-- [ ] `terraform plan` → `terraform apply` でデプロイ成功
+### 4.1 Terraform ✓（apply待ち）
+- [x] `infra/main.tf`: provider（profile = personal、local state）
+- [x] `infra/ecr.tf`: ECRリポジトリ × 2（namazu-api / namazu-scheduler）+ ライフサイクルポリシー
+- [x] `infra/lambda.tf`: Lambda × 2（api: 512MB/30s, scheduler: 256MB/300s）
+- [x] `infra/api_gateway.tf`: HTTP API + CORS + catch-allルート
+- [x] `infra/eventbridge.tf`: 日次スケジュール cron(30 12 * * ? *)（12:30 UTC = 13:30 CET）
+- [x] `infra/iam.tf`: Lambda実行ロール + CloudWatch Logs + ECR読み取りポリシー
+- [x] `infra/variables.tf`, `infra/outputs.tf`, `infra/terraform.tfvars.example`
+- [x] `Dockerfile` に `scheduler` ターゲット追加（`public.ecr.aws/lambda/python:3.12` ベース）
+- [x] `terraform init` + `terraform validate` 成功
+- [x] `terraform plan`: 18 to add, 0 to change, 0 to destroy ✓
+- [x] ECR only apply → Docker build（arm64）→ push → full apply 完了
+- [x] `curl https://5ouka6u81a.execute-api.eu-north-1.amazonaws.com/api/v1/prices/today` → 実データ返却 ✓
 
-**完了条件**: `curl https://{api-gateway-url}/api/v1/prices/today` が本番環境で動作する
+**完了条件**: 達成 ✓
+**API Gateway URL**: `https://5ouka6u81a.execute-api.eu-north-1.amazonaws.com`
+**Note**:
+- Lambda Web Adapter（`awsguru` ECRレジストリ）が存在しなかったため Mangum に変更
+- Dockerイメージは `linux/arm64` でビルド（Lambda architecture = arm64）
+- `terraform apply` 時は `AWS_REGION=eu-north-1` の明示指定が必要（会社の `AWS_REGION` 環境変数が干渉するため）
 
-### 4.2 Supabase 接続
-- [ ] Supabase プロジェクト作成（free tier）
-- [ ] スキーママイグレーション実行
-- [ ] Lambda の環境変数に Supabase 接続文字列を設定
-- [ ] ローカル（docker-compose PostgreSQL）と本番（Supabase）の切り替え確認
+### 4.2 Supabase 接続 ✓
+- [x] Supabase プロジェクト作成（free tier、West EU / Ireland、eu-west-1）
+- [x] スキーママイグレーション実行（`spot_prices` + `weather_data` テーブル作成）
+- [x] Lambda の環境変数に Supabase 接続文字列を設定（terraform.tfvars経由）
+- [x] `alembic upgrade head` 成功（Session Pooler経由：IPv4対応）
 
-**完了条件**: デプロイ済みLambdaがSupabaseのDBからデータを読み書きできる
+**完了条件**: 達成 ✓
+**Note**:
+- Direct connection（`db.xxx.supabase.co`）は IPv6 のみ対応のため、このネットワーク（IPv4）からは接続不可
+- Session Pooler（`aws-1-eu-west-1.pooler.supabase.com:5432`）を使用
+- Alembic env.py を `config.set_main_option` 方式から `create_engine` 直接呼び出しに変更（`configparser` の `%` 解釈エラー回避）
+- Supabase DBパスワード: 記号なし（URLエンコード不要）に変更済み
 
 ### 4.3 GitHub Actions
 - [ ] `.github/workflows/ci.yml`: PR時にpytest + docker build

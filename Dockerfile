@@ -10,10 +10,18 @@ COPY backend/app ./app
 FROM base AS dev
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
-# ─── lambda: AWS Lambda via Lambda Web Adapter ───────────────────────────────
-# Build with: docker build --target lambda -t unagi-api .
-# Requires: docker login public.ecr.aws (or AWS credentials)
-FROM base AS lambda
-COPY --from=public.ecr.aws/awsguru/aws-lambda-web-adapter:0.8.4 \
-     /lambda-adapter /opt/extensions/lambda-adapter
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# ─── lambda: AWS Lambda via Mangum (API function) ────────────────────────────
+# Build with: docker build --target lambda -t namazu-api .
+FROM public.ecr.aws/lambda/python:3.12 AS lambda
+COPY backend/requirements.txt ${LAMBDA_TASK_ROOT}/
+RUN pip install --no-cache-dir -r requirements.txt
+COPY backend/app ${LAMBDA_TASK_ROOT}/app
+CMD ["app.main.handler"]
+
+# ─── scheduler: AWS Lambda EventBridge handler (daily price fetch) ────────────
+# Build with: docker build --target scheduler -t namazu-scheduler .
+FROM public.ecr.aws/lambda/python:3.12 AS scheduler
+COPY backend/requirements.txt ${LAMBDA_TASK_ROOT}/
+RUN pip install --no-cache-dir -r requirements.txt
+COPY backend/app ${LAMBDA_TASK_ROOT}/app
+CMD ["app.tasks.fetch_prices.lambda_handler"]

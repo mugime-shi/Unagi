@@ -26,3 +26,11 @@ app.include_router(solar.router, prefix="/api/v1")
 @app.get("/health")
 def health():
     return {"status": "ok", "service": settings.app_name}
+
+
+# Lambda handler (Mangum wraps FastAPI for AWS Lambda)
+try:
+    from mangum import Mangum
+    handler = Mangum(app, lifespan="off")
+except ImportError:
+    pass
