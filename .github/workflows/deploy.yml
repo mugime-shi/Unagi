@@ -55,6 +55,13 @@ jobs:
       - name: Login to public ECR (for base images)
         run: aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
 
+      # arm64 cross-build requires QEMU + Buildx on ubuntu-latest (x86_64 runner)
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       # ── 3. Build & push (arm64 = Lambda architecture) ─────────────────
       - name: Set image tag
         id: tag
