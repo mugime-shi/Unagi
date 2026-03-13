@@ -90,13 +90,13 @@ jobs:
             ${{ env.ECR_REGISTRY }}/namazu-scheduler:latest
 
       # ── 4. Update Lambda functions ────────────────────────────────────
-      - name: Update Lambda: API
+      - name: "Update Lambda: API"
         run: |
           aws lambda update-function-code \
             --function-name namazu-api \
             --image-uri ${{ env.ECR_REGISTRY }}/namazu-api:${{ steps.tag.outputs.sha }}
 
-      - name: Update Lambda: Scheduler
+      - name: "Update Lambda: Scheduler"
         run: |
           aws lambda update-function-code \
             --function-name namazu-scheduler \
