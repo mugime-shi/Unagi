@@ -74,6 +74,7 @@ jobs:
           target: lambda
           platforms: linux/arm64
           push: true
+          provenance: false  # Lambda requires single-platform manifest, not OCI index
           tags: |
             ${{ env.ECR_REGISTRY }}/namazu-api:${{ steps.tag.outputs.sha }}
             ${{ env.ECR_REGISTRY }}/namazu-api:latest
@@ -85,6 +86,7 @@ jobs:
           target: scheduler
           platforms: linux/arm64
           push: true
+          provenance: false  # Lambda requires single-platform manifest, not OCI index
           tags: |
             ${{ env.ECR_REGISTRY }}/namazu-scheduler:${{ steps.tag.outputs.sha }}
             ${{ env.ECR_REGISTRY }}/namazu-scheduler:latest
