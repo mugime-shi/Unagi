@@ -223,13 +223,17 @@
 - Alembic env.py を `config.set_main_option` 方式から `create_engine` 直接呼び出しに変更（`configparser` の `%` 解釈エラー回避）
 - Supabase DBパスワード: 記号なし（URLエンコード不要）に変更済み
 
-### 4.3 GitHub Actions
-- [ ] `.github/workflows/ci.yml`: PR時にpytest + docker build
-- [ ] `.github/workflows/deploy.yml`: main push時にECR push + terraform apply
-- [ ] GitHub Secrets にAWS credentials, Supabase URLを設定
-- [ ] PRを作成 → CIが通る → マージ → 自動デプロイ の一連の流れを確認
+### 4.3 GitHub Actions ✓
+- [x] `.github/workflows/deploy.yml`: main push時に pytest → ECR push → Lambda update → smoke test
+- [x] GitHub Secrets 設定: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `DATABASE_URL`, `ENTSOE_API_KEY`
+- [x] push → Actions成功（2m27s）→ `/health` 200 確認
 
-**完了条件**: PRマージ → 自動でLambdaが更新される
+**完了条件**: 達成 ✓
+**Note**:
+- CI/CDを1ファイルに統合（ソロ開発のため）。コメントにチーム開発での分割方針を記載
+- YAML構文: ステップ名に `:` を含む場合はクォート必須
+- `docker/build-push-action` は `provenance: false` 必須（デフォルトのOCI image indexはLambda非対応）
+- arm64クロスビルドには `docker/setup-qemu-action` + `docker/setup-buildx-action` が必要
 
 ### 4.4 Vercel デプロイ
 - [ ] Vercel にフロントエンドをデプロイ
