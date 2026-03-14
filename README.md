@@ -150,3 +150,9 @@ Namazu/
 ├── docker-compose.yml           # Local dev: FastAPI + PostgreSQL
 └── .github/workflows/deploy.yml # CI/CD pipeline
 ```
+
+---
+
+## Contact
+
+mugimeishi@gmail.com
