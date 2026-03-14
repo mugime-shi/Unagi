@@ -7,6 +7,14 @@
       "destination": "https://5ouka6u81a.execute-api.eu-north-1.amazonaws.com/api/:path*"
     },
     {
+      "source": "/docs",
+      "destination": "https://5ouka6u81a.execute-api.eu-north-1.amazonaws.com/docs"
+    },
+    {
+      "source": "/openapi.json",
+      "destination": "https://5ouka6u81a.execute-api.eu-north-1.amazonaws.com/openapi.json"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
