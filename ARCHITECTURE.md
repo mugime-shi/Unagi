@@ -20,7 +20,7 @@
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
 │              API Gateway + Lambda (Docker image)             │
-│          Python + FastAPI + AWS Lambda Web Adapter            │
+│              Python + FastAPI + Mangum (ASGI adapter)         │
 │                                                              │
 │  ┌──────────┐  ┌──────────────┐  ┌────────────────────┐     │
 │  │ /prices  │  │ /simulate    │  │ /solar             │     │
@@ -55,7 +55,7 @@
 - **Why Python**: ターゲット企業（Tibber, Greenely）がPythonを多用。TRENDEのRuby/Railsとの明確な差別化。データ処理・ML拡張が自然
 - **Why FastAPI**: 自動ドキュメント（Swagger UI）が面接デモで映える。型安全（Pydantic）。async対応でAPI呼び出しが効率的
 - **Not Django**: フルスタックフレームワークは今回不要。APIに特化した軽量さがポートフォリオ向き
-- **Lambda実行**: AWS Lambda Web Adapter を使用。FastAPIをそのままDockerコンテナとしてLambdaで実行。Mangumのようなフレームワーク固有のアダプターが不要で、同じDockerイメージがローカル・Lambda・ECSのどこでも動く
+- **Lambda実行**: Mangum を使用。FastAPIをAWS Lambda上で実行するPython ASGIアダプター。`main.py` の末尾に `handler = Mangum(app)` を追加するだけで動作する
 
 ### Frontend: React + Tailwind CSS
 
@@ -80,10 +80,10 @@
 
 **公開・デモ環境（AWS サーバーレス + Terraform）**
 
-- API: Lambda（Dockerイメージ）+ API Gateway
-  - AWS Lambda Web Adapterにより、FastAPIのDockerイメージをそのままLambdaで実行
-  - Mangumのようなアダプター不要。コードに一切のLambda依存がない
-- スケジューラ: EventBridge → Lambda（毎日13:30 CETに価格取得、同じDockerイメージ）
+- API: Lambda（arm64 Dockerイメージ）+ API Gateway
+  - MangumによりFastAPIをLambdaで実行。`handler = Mangum(app)` のみ追加
+  - Dockerイメージは `public.ecr.aws/lambda/python:3.12` ベース、arm64アーキテクチャ
+- スケジューラ: EventBridge → Lambda（毎日13:30 CETに価格取得、専用Dockerイメージ）
 - イメージ管理: ECR（Elastic Container Registry）
 - DB: Supabase PostgreSQL（Lambdaからの接続）
 - Frontend: Vercel（React、free tier）
@@ -98,21 +98,17 @@
 - Terraformの構成を拡張するだけで移行できることを言及
 - 実務でECSを運用している経験があるため、面接では口頭で補足
 
-### Why AWS Lambda Web Adapter
+### Why Mangum
 
 ```
-通常のLambda:
-  Lambda Event → Mangum → FastAPI → Response → Mangum → Lambda Response
-  (フレームワーク固有のアダプターが必要、コードにLambda依存が入る)
+Lambda Event → Mangum → FastAPI → Response → Mangum → Lambda Response
 
-Lambda Web Adapter:
-  Lambda Event → Web Adapter → HTTP → FastAPI → Response
-  (FastAPIは普通のHTTPサーバーとして動く。Lambdaを意識しない)
+- Mangum は Python ASGI アプリを Lambda で動かすための薄いアダプター
+- main.py に2行追加するだけ（try/except で ImportError を吸収し、ローカルでも動く）
+- Lambda Web Adapter（awsguru ECR registry）は利用不可だったため Mangum を採用
 
-つまり:
-  docker-compose up  → 同じDockerイメージ → localhost:8000 で動く
-  Lambda deploy      → 同じDockerイメージ → API Gatewayで動く
-  ECS deploy         → 同じDockerイメージ → ALBの後ろで動く
+ローカル:  docker-compose up → uvicorn が起動、Mangum は使われない
+Lambda:    handler = Mangum(app) がエントリーポイントになる
 ```
 
 ### Why Terraform
@@ -126,24 +122,34 @@ Lambda Web Adapter:
 ### Dockerfile（概要）
 
 ```dockerfile
-# Lambda Web Adapter レイヤーを追加するだけで、通常のFastAPIコンテナがLambdaで動く
-FROM python:3.12-slim
-
-# Lambda Web Adapter をコピー（Lambdaで実行する場合のみ使われる）
-COPY --from=public.ecr.aws/awsguru/aws-lambda-web-adapter:0.8.4 /lambda-adapter /opt/extensions/lambda-adapter
-
+# ── dev: ローカル docker-compose ────────────────
+FROM python:3.12-slim AS base
 WORKDIR /app
-COPY backend/pyproject.toml .
-RUN pip install --no-cache-dir .
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/app ./app
 
-# ローカルでもLambdaでも同じコマンドで起動
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+FROM base AS dev
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+# ── lambda: AWS Lambda + Mangum (API関数) ───────
+FROM public.ecr.aws/lambda/python:3.12 AS lambda
+COPY backend/requirements.txt ${LAMBDA_TASK_ROOT}/
+RUN pip install --no-cache-dir -r requirements.txt
+COPY backend/app ${LAMBDA_TASK_ROOT}/app
+CMD ["app.main.handler"]   # Mangum handler
+
+# ── scheduler: EventBridge トリガー ─────────────
+FROM public.ecr.aws/lambda/python:3.12 AS scheduler
+COPY backend/requirements.txt ${LAMBDA_TASK_ROOT}/
+RUN pip install --no-cache-dir -r requirements.txt
+COPY backend/app ${LAMBDA_TASK_ROOT}/app
+CMD ["app.tasks.fetch_prices.lambda_handler"]
 ```
 
-- ローカル: `docker run -p 8000:8000` → uvicornが起動、普通のHTTPサーバー
-- Lambda: Web Adapterが自動検出され、Lambda EventをHTTPに変換してuvicornに転送
-- ECS: そのまま動く（Web Adapterは無視される）
+- ローカル: `docker-compose up` → `dev` ターゲット、uvicorn で起動
+- Lambda API: `lambda` ターゲット、Mangum がエントリーポイント
+- Lambda Scheduler: `scheduler` ターゲット、EventBridge から直接呼び出し
 
 ---
 

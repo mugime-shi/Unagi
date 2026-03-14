@@ -235,23 +235,22 @@
 - `docker/build-push-action` は `provenance: false` 必須（デフォルトのOCI image indexはLambda非対応）
 - arm64クロスビルドには `docker/setup-qemu-action` + `docker/setup-buildx-action` が必要
 
-### 4.4 Vercel デプロイ
-- [ ] Vercel にフロントエンドをデプロイ
-- [ ] 環境変数にバックエンドAPIのURLを設定
+### 4.4 Vercel デプロイ ✓
+- [x] Vercel にフロントエンドをデプロイ（`namazu-el.vercel.app`）
+- [x] GitHubリポジトリ（`mugime-shi/Namazu`）と Vercel プロジェクトを接続
+- [x] `frontend/vercel.json`: `/api/*` → Lambda への rewrite proxy + SPA フォールバック
+- [x] CORS設定: `main.py` に `https://namazu-el.vercel.app` を追加
 - [ ] カスタムドメイン設定（任意）
-- [ ] CORS設定の確認
 
-**完了条件**: `https://Namazu.vercel.app` （仮）でダッシュボードが動作する
+**完了条件**: 達成 ✓ — `https://namazu-el.vercel.app` でリアルデータが表示される
+**Note**:
+- Vercel の Root Directory を `frontend` に設定必須（`frontend/vercel.json` を認識させるため）
+- `vercel.json` には `buildCommand` と `outputDirectory` の明示が必要（自動検出が不安定だったため）
+- Vercel GitHub App に `Namazu` リポジトリへのアクセス権を付与してから接続
 
-### 4.5 README & ドキュメント
-- [ ] `README.md`（英語）: プロジェクト概要、デモURL、セットアップ手順
-  - What: 1段落で説明
-  - Why: 日本のFIT → スウェーデンのスポット市場（3文で）
-  - How to run locally: `git clone → docker-compose up`
-  - Architecture: 構成図（ARCHITECTURE.mdから抜粋）
-  - Tech stack: 一覧
-  - Screenshots: ダッシュボードのスクリーンショット
-- [ ] Swagger UI（`/docs`）が公開URLでアクセス可能であること
+### 4.5 README & ドキュメント ✓
+- [x] `README.md`（英語）: プロジェクト概要、デモURL、ローカルセットアップ手順、アーキテクチャ図、テックスタック、APIエンドポイント一覧、コスト表
+- [ ] Swagger UI（`/docs`）が公開URLでアクセス可能であること ※ 現状 `/docs` は Lambda からも到達可能
 - [ ] コードにdocstringとコメント（英語）
 
 **完了条件**: READMEを読んだ面接官が、5分以内にプロジェクトの価値を理解できる
