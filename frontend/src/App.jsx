@@ -7,20 +7,47 @@ import { PriceIndicator } from './components/PriceIndicator'
 import { SolarSimulator } from './components/SolarSimulator'
 import { usePrices } from './hooks/usePrices'
 
+const AREAS = [
+  { id: 'SE1', label: 'SE1', city: 'Luleå'      },
+  { id: 'SE2', label: 'SE2', city: 'Sundsvall'   },
+  { id: 'SE3', label: 'SE3', city: 'Göteborg'    },
+  { id: 'SE4', label: 'SE4', city: 'Malmö'       },
+]
+
 function todayISO() {
   return new Date().toISOString().split('T')[0]
 }
 
 export default function App() {
   const [layer, setLayer] = useState('prices')
-  const [day, setDay] = useState('today')
-  const { data, loading, error } = usePrices(day)
+  const [day, setDay]     = useState('today')
+  const [area, setArea]   = useState('SE3')
+  const { data, loading, error } = usePrices(day, area)
+
+  const areaCity = AREAS.find((a) => a.id === area)?.city ?? area
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
-      <header className="border-b border-gray-800 px-4 sm:px-6 py-4 flex items-center gap-3">
+      <header className="border-b border-gray-800 px-4 sm:px-6 py-4 flex items-center gap-3 flex-wrap">
         <span className="text-xl font-bold tracking-tight">Namazu</span>
-        <span className="text-gray-500 text-sm">SE3 · Göteborg</span>
+        <span className="text-gray-500 text-sm">{area} · {areaCity}</span>
+
+        {/* Area selector */}
+        <div className="flex gap-1">
+          {AREAS.map(({ id, label }) => (
+            <button
+              key={id}
+              onClick={() => setArea(id)}
+              className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                area === id
+                  ? 'bg-indigo-600 text-white'
+                  : 'text-gray-500 hover:text-gray-300 border border-gray-700'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
         {/* Layer selector */}
         <nav className="ml-auto flex gap-1">
@@ -117,7 +144,7 @@ export default function App() {
             )}
 
             {/* Appliance scheduler — today only */}
-            {day === 'today' && <CheapHoursWidget date={todayISO()} />}
+            {day === 'today' && <CheapHoursWidget date={todayISO()} area={area} />}
 
             {/* Consumption simulator */}
             <ConsumptionSimulator />
@@ -125,7 +152,7 @@ export default function App() {
         )}
 
         {/* ── History ── */}
-        {layer === 'history' && <PriceHistory />}
+        {layer === 'history' && <PriceHistory area={area} />}
 
         {/* ── Layer 2: Solar ── */}
         {layer === 'solar' && <SolarSimulator />}

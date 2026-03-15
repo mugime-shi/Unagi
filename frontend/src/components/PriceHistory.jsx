@@ -26,8 +26,8 @@ function CustomTooltip({ active, payload, label }) {
   )
 }
 
-export function PriceHistory() {
-  const { data, loading, error } = useHistory(90)
+export function PriceHistory({ area = 'SE3' }) {
+  const { data, loading, error } = useHistory(90, area)
 
   if (loading) return <p className="text-gray-500 text-sm">Loading history…</p>
   if (error)   return <p className="text-red-400 text-sm">Failed to load history: {error.message}</p>

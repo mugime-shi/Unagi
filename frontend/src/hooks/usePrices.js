@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-export function usePrices(day = 'today') {
+export function usePrices(day = 'today', area = 'SE3') {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -8,7 +8,7 @@ export function usePrices(day = 'today') {
   useEffect(() => {
     setLoading(true)
     setError(null)
-    fetch(`/api/v1/prices/${day}`)
+    fetch(`/api/v1/prices/${day}?area=${area}`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json()
@@ -16,7 +16,7 @@ export function usePrices(day = 'today') {
       .then(setData)
       .catch(setError)
       .finally(() => setLoading(false))
-  }, [day])
+  }, [day, area])
 
   return { data, loading, error }
 }

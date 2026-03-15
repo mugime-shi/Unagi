@@ -1,10 +1,19 @@
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.config import settings
+_STOCKHOLM = ZoneInfo("Europe/Stockholm")
+
+
+def _to_stockholm_date(dt_utc: datetime) -> date:
+    """Convert a UTC datetime to the calendar date in Europe/Stockholm (CET/CEST)."""
+    if dt_utc.tzinfo is None:
+        dt_utc = dt_utc.replace(tzinfo=timezone.utc)
+    return dt_utc.astimezone(_STOCKHOLM).date()
+
 from app.db.database import get_db
 from app.services.price_service import (
     find_cheapest_window,
@@ -19,16 +28,24 @@ DbDep = Annotated[Session, Depends(get_db)]
 MAX_RANGE_DAYS = 30
 
 
+VALID_AREAS = {"SE1", "SE2", "SE3", "SE4"}
+AreaDep = Annotated[
+    str,
+    Query(description="Bidding area (SE1=Luleå, SE2=Sundsvall, SE3=Göteborg, SE4=Malmö)"),
+]
+
+
 def _build_response(
     target_date: date,
     prices: list[dict],
     is_mock: bool,
+    area: str = "SE3",
     month_avg_sek_kwh: float | None = None,
     **extra,
 ) -> dict:
     sek_values = [p["price_sek_kwh"] for p in prices]
     return {
-        "area": settings.default_area,
+        "area": area,
         "date": target_date.isoformat(),
         "currency": "SEK/kWh",
         "is_mock": is_mock,
@@ -44,52 +61,55 @@ def _build_response(
     }
 
 
-def _get_month_avg(db: Session, ref_date: date) -> float | None:
+def _get_month_avg(db: Session, ref_date: date, area: str = "SE3") -> float | None:
     """Current-month average spot price (SEK/kWh) up to ref_date, or None if no data."""
     month_start = ref_date.replace(day=1)
-    rows = get_prices_for_date_range(db, month_start, ref_date, area=settings.default_area)
+    rows = get_prices_for_date_range(db, month_start, ref_date, area=area)
     if not rows:
         return None
     return round(sum(float(r.price_sek_kwh) for r in rows) / len(rows), 4)
 
 
 def _cet_hour_now() -> int:
-    """Current hour (0-23) in CET/CEST (Europe/Stockholm)."""
+    """Current hour (0-23) in Europe/Stockholm (CET in winter, CEST in summer)."""
     try:
-        from zoneinfo import ZoneInfo
-        return datetime.now(ZoneInfo("Europe/Stockholm")).hour
+        return datetime.now(_STOCKHOLM).hour
     except Exception:
-        # Rough fallback: UTC+1
+        # Rough fallback: UTC+1 (off by 1h during CEST but acceptable for the published check)
         return (datetime.now(timezone.utc) + timedelta(hours=1)).hour
 
 
 @router.get("/today")
-def get_today_prices(db: DbDep):
+def get_today_prices(db: DbDep, area: AreaDep = "SE3"):
     """
-    SE3 spot prices for today (CET calendar day).
+    Spot prices for today (Stockholm calendar day) for the given bidding area.
     Returns mock data during development if no API key or DB data is available.
     """
+    if area not in VALID_AREAS:
+        raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
     today = datetime.now(tz=timezone.utc).date()
-    prices, is_mock = get_or_fetch_prices(db, today)
-    month_avg = _get_month_avg(db, today)
-    return _build_response(today, prices, is_mock, month_avg_sek_kwh=month_avg)
+    prices, is_mock = get_or_fetch_prices(db, today, area=area)
+    month_avg = _get_month_avg(db, today, area=area)
+    return _build_response(today, prices, is_mock, area=area, month_avg_sek_kwh=month_avg)
 
 
 @router.get("/tomorrow")
-def get_tomorrow_prices(db: DbDep):
+def get_tomorrow_prices(db: DbDep, area: AreaDep = "SE3"):
     """
-    SE3 spot prices for tomorrow.
+    Spot prices for tomorrow for the given bidding area.
     ENTSO-E publishes tomorrow's prices around 12:00-13:00 CET.
     Before that, `published` is False and mock data is returned.
     """
+    if area not in VALID_AREAS:
+        raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
     tomorrow = datetime.now(tz=timezone.utc).date() + timedelta(days=1)
-    prices, is_mock = get_or_fetch_prices(db, tomorrow)
+    prices, is_mock = get_or_fetch_prices(db, tomorrow, area=area)
     today = datetime.now(tz=timezone.utc).date()
-    month_avg = _get_month_avg(db, today)
+    month_avg = _get_month_avg(db, today, area=area)
 
     # If we got mock data and it's before 13:00 CET, prices aren't published yet
     published = not is_mock or _cet_hour_now() >= 13
-    return _build_response(tomorrow, prices, is_mock, month_avg_sek_kwh=month_avg, published=published)
+    return _build_response(tomorrow, prices, is_mock, area=area, month_avg_sek_kwh=month_avg, published=published)
 
 
 @router.get("/range")
@@ -97,11 +117,14 @@ def get_price_range(
     db: DbDep,
     start: date = Query(..., description="Start date (YYYY-MM-DD, inclusive)"),
     end: date = Query(..., description="End date (YYYY-MM-DD, inclusive)"),
+    area: AreaDep = "SE3",
 ):
     """
-    SE3 spot prices for a date range. Max 30 days.
+    Spot prices for a date range. Max 30 days.
     Only returns data available in DB — no live ENTSO-E fetch per date.
     """
+    if area not in VALID_AREAS:
+        raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
     if end < start:
         raise HTTPException(status_code=422, detail="end must be >= start")
 
@@ -112,15 +135,13 @@ def get_price_range(
             detail=f"Range too large: {delta_days} days (max {MAX_RANGE_DAYS})",
         )
 
-    rows = get_prices_for_date_range(db, start, end)
+    rows = get_prices_for_date_range(db, start, end, area=area)
 
-    # Group rows by CET date
+    # Group rows by Stockholm local date (CET in winter, CEST in summer)
     from collections import defaultdict
     by_date: dict[date, list[dict]] = defaultdict(list)
     for r in rows:
-        # CET date = UTC timestamp + 1h (rough; good enough for bucketing)
-        cet_ts = r.timestamp_utc + timedelta(hours=1)
-        cet_date = cet_ts.date()
+        cet_date = _to_stockholm_date(r.timestamp_utc)
         by_date[cet_date].append({
             "timestamp_utc": r.timestamp_utc.isoformat(),
             "price_eur_mwh": float(r.price_eur_mwh),
@@ -146,7 +167,7 @@ def get_price_range(
         cur += timedelta(days=1)
 
     return {
-        "area": settings.default_area,
+        "area": area,
         "currency": "SEK/kWh",
         "start": start.isoformat(),
         "end": end.isoformat(),
@@ -158,19 +179,22 @@ def get_price_range(
 def get_price_history(
     db: DbDep,
     days: int = Query(90, ge=7, le=365, description="Number of past days to include"),
+    area: AreaDep = "SE3",
 ):
     """
-    Daily average SE3 spot prices for the past N days (default 90).
+    Daily average spot prices for the past N days (default 90).
     Returns only daily summaries (no raw 15-min slots) — efficient for trend charts.
     """
+    if area not in VALID_AREAS:
+        raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
     today = datetime.now(tz=timezone.utc).date()
     start = today - timedelta(days=days - 1)
-    rows = get_prices_for_date_range(db, start, today, area=settings.default_area)
+    rows = get_prices_for_date_range(db, start, today, area=area)
 
     from collections import defaultdict
     by_date: dict[date, list[float]] = defaultdict(list)
     for r in rows:
-        cet_date = (r.timestamp_utc + timedelta(hours=1)).date()
+        cet_date = _to_stockholm_date(r.timestamp_utc)
         by_date[cet_date].append(float(r.price_sek_kwh))
 
     daily = []
@@ -186,7 +210,7 @@ def get_price_history(
         cur += timedelta(days=1)
 
     return {
-        "area": settings.default_area,
+        "area": area,
         "currency": "SEK/kWh",
         "days": days,
         "start": start.isoformat(),
@@ -200,12 +224,15 @@ def get_cheapest_hours(
     db: DbDep,
     date: date = Query(..., description="Target date (YYYY-MM-DD)"),
     duration: int = Query(2, ge=1, le=12, description="Window size in hours (1-12)"),
+    area: AreaDep = "SE3",
 ):
     """
     Find the cheapest consecutive `duration`-hour block for the given date.
     Useful for scheduling appliances (washing machine, EV charging, etc.).
     """
-    prices, is_mock = get_or_fetch_prices(db, date)
+    if area not in VALID_AREAS:
+        raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
+    prices, is_mock = get_or_fetch_prices(db, date, area=area)
     if not prices:
         raise HTTPException(status_code=404, detail="No price data available for this date")
 
@@ -217,7 +244,7 @@ def get_cheapest_hours(
         )
 
     return {
-        "area": settings.default_area,
+        "area": area,
         "date": date.isoformat(),
         "currency": "SEK/kWh",
         "is_mock": is_mock,

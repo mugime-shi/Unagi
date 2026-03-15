@@ -278,3 +278,63 @@ def test_find_cheapest_window_picks_minimum():
     # The cheapest window avg must be at or below the overall average
     overall_avg = sum(p["price_sek_kwh"] for p in prices) / len(prices)
     assert window["avg_sek_kwh"] <= overall_avg
+
+
+# ---------------------------------------------------------------------------
+# CET/CEST timezone bucketing tests
+# ---------------------------------------------------------------------------
+
+def test_stockholm_timezone_cest_boundary():
+    """
+    22:00 UTC in summer (CEST = UTC+2) is midnight Stockholm → next calendar day.
+    This verifies the fix over the old UTC+1 hardcoded offset.
+    """
+    from app.routers.prices import _to_stockholm_date
+    # 2025-07-01 22:00 UTC = 2025-07-02 00:00 CEST  → 2025-07-02
+    dt = datetime(2025, 7, 1, 22, 0, tzinfo=timezone.utc)
+    assert _to_stockholm_date(dt) == date(2025, 7, 2)
+
+    # 2025-07-01 21:59 UTC = 2025-07-01 23:59 CEST  → 2025-07-01
+    dt2 = datetime(2025, 7, 1, 21, 59, tzinfo=timezone.utc)
+    assert _to_stockholm_date(dt2) == date(2025, 7, 1)
+
+
+def test_stockholm_timezone_cet_boundary():
+    """
+    23:00 UTC in winter (CET = UTC+1) is midnight Stockholm → next calendar day.
+    """
+    from app.routers.prices import _to_stockholm_date
+    # 2026-01-05 23:00 UTC = 2026-01-06 00:00 CET  → 2026-01-06
+    dt = datetime(2026, 1, 5, 23, 0, tzinfo=timezone.utc)
+    assert _to_stockholm_date(dt) == date(2026, 1, 6)
+
+    # 2026-01-05 22:59 UTC = 2026-01-05 23:59 CET  → 2026-01-05
+    dt2 = datetime(2026, 1, 5, 22, 59, tzinfo=timezone.utc)
+    assert _to_stockholm_date(dt2) == date(2026, 1, 5)
+
+
+def test_history_cest_bucketing_via_endpoint(client, db):
+    """History endpoint correctly buckets CEST-boundary prices across calendar dates."""
+    # Use dates within 365-day window; days=365 is max allowed
+    # 2025-07-01 22:00 UTC = 2025-07-02 00:00 CEST → should appear under 2025-07-02
+    # 2025-07-01 21:00 UTC = 2025-07-01 23:00 CEST → should appear under 2025-07-01
+    points = [
+        PricePoint(
+            timestamp_utc=datetime(2025, 7, 1, 21, 0, tzinfo=timezone.utc),
+            price_eur_mwh=50.0, price_sek_kwh=0.55, resolution="PT60M",
+        ),
+        PricePoint(
+            timestamp_utc=datetime(2025, 7, 1, 22, 0, tzinfo=timezone.utc),
+            price_eur_mwh=60.0, price_sek_kwh=0.66, resolution="PT60M",
+        ),
+    ]
+    upsert_prices(db, points)
+
+    response = client.get("/api/v1/prices/history?days=365")
+    assert response.status_code == 200
+    by_date = {d["date"]: d for d in response.json()["daily"] if d["avg_sek_kwh"] is not None}
+
+    assert "2025-07-01" in by_date, "21:00 UTC (23:00 CEST) must bucket to 2025-07-01"
+    assert "2025-07-02" in by_date, "22:00 UTC (00:00 CEST next day) must bucket to 2025-07-02"
+    assert abs(by_date["2025-07-01"]["avg_sek_kwh"] - 0.55) < 0.01
+    assert abs(by_date["2025-07-02"]["avg_sek_kwh"] - 0.66) < 0.01

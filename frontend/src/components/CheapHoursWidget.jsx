@@ -7,8 +7,8 @@ const APPLIANCES = [
   { name: 'EV charging',     duration: 4, emoji: '⚡' },
 ]
 
-function ApplianceRow({ name, emoji, duration, date }) {
-  const { data, loading } = useCheapHours(date, duration)
+function ApplianceRow({ name, emoji, duration, date, area }) {
+  const { data, loading } = useCheapHours(date, duration, area)
 
   const skeletonRow = (
     <div className="flex items-center justify-between py-2.5 border-b border-gray-800 last:border-0">
@@ -46,13 +46,13 @@ function ApplianceRow({ name, emoji, duration, date }) {
   )
 }
 
-export function CheapHoursWidget({ date }) {
+export function CheapHoursWidget({ date, area = 'SE3' }) {
   return (
     <div className="bg-gray-900 rounded-2xl p-4">
       <h2 className="text-sm font-medium text-gray-300 mb-1">Best time to run today</h2>
       <p className="text-xs text-gray-600 mb-3">Cheapest consecutive window per appliance</p>
       {APPLIANCES.map((a) => (
-        <ApplianceRow key={a.name} {...a} date={date} />
+        <ApplianceRow key={a.name} {...a} date={date} area={area} />
       ))}
     </div>
   )
