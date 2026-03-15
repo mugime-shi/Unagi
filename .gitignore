@@ -34,3 +34,13 @@ infra/*.tfvars
 # IDE
 .vscode/
 .idea/
+
+# Internal working documents (local only)
+TASKS.md
+ARCHITECTURE.md
+DOMAIN_KNOWLEDGE.md
+PROJECT_BRIEF.md
+FEATURES.md
+
+# Environment helpers
+.envrc

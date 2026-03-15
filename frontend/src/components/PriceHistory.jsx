@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   Area,
   AreaChart,
@@ -8,6 +9,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { ZoneComparison } from './ZoneComparison'
 import { useHistory } from '../hooks/useHistory'
 
 function CustomTooltip({ active, payload, label }) {
@@ -27,14 +29,53 @@ function CustomTooltip({ active, payload, label }) {
 }
 
 export function PriceHistory({ area = 'SE3' }) {
+  const [tab, setTab] = useState('history')
   const { data, loading, error } = useHistory(90, area)
 
-  if (loading) return <p className="text-gray-500 text-sm">Loading history…</p>
-  if (error)   return <p className="text-red-400 text-sm">Failed to load history: {error.message}</p>
+  const tabBtn = (id, label) => (
+    <button
+      key={id}
+      onClick={() => setTab(id)}
+      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+        tab === id ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'
+      }`}
+    >
+      {label}
+    </button>
+  )
+
+  if (tab === 'zones') {
+    return (
+      <div className="space-y-3">
+        <div className="flex gap-1">
+          {tabBtn('history', 'History')}
+          {tabBtn('zones', 'Zone Comparison')}
+        </div>
+        <ZoneComparison />
+      </div>
+    )
+  }
+
+  if (loading) return (
+    <div className="space-y-3">
+      <div className="flex gap-1">{tabBtn('history', 'History')}{tabBtn('zones', 'Zone Comparison')}</div>
+      <p className="text-gray-500 text-sm">Loading history…</p>
+    </div>
+  )
+  if (error) return (
+    <div className="space-y-3">
+      <div className="flex gap-1">{tabBtn('history', 'History')}{tabBtn('zones', 'Zone Comparison')}</div>
+      <p className="text-red-400 text-sm">Failed to load history: {error.message}</p>
+    </div>
+  )
 
   const points = (data?.daily ?? []).filter((d) => d.avg_sek_kwh != null)
-  if (points.length === 0)
-    return <p className="text-gray-500 text-sm">No historical data available yet.</p>
+  if (points.length === 0) return (
+    <div className="space-y-3">
+      <div className="flex gap-1">{tabBtn('history', 'History')}{tabBtn('zones', 'Zone Comparison')}</div>
+      <p className="text-gray-500 text-sm">No historical data available yet.</p>
+    </div>
+  )
 
   const allAvg = points.map((d) => d.avg_sek_kwh)
   const overallAvg = allAvg.reduce((a, b) => a + b, 0) / allAvg.length
@@ -54,10 +95,15 @@ export function PriceHistory({ area = 'SE3' }) {
   }
 
   return (
+    <div className="space-y-3">
+      <div className="flex gap-1">
+        {tabBtn('history', 'History')}
+        {tabBtn('zones', 'Zone Comparison')}
+      </div>
     <div className="bg-gray-900 rounded-2xl p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-gray-300">
-          Spot price history — last 90 days
+          Spot price history — last 90 days · {area}
         </h2>
         <span className="text-xs text-gray-500">SEK/kWh · daily avg</span>
       </div>
@@ -123,6 +169,7 @@ export function PriceHistory({ area = 'SE3' }) {
       <p className="text-xs text-gray-700 text-center">
         {points.length} days with data out of last 90 · dashed line = period average
       </p>
+    </div>
     </div>
   )
 }

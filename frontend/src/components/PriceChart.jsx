@@ -1,7 +1,8 @@
 import {
+  Area,
   CartesianGrid,
+  ComposedChart,
   Line,
-  LineChart,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -34,18 +35,43 @@ function CustomTooltip({ active, payload, label }) {
         {p.price_sek_kwh.toFixed(2)} <span className="text-gray-400 font-normal">SEK/kWh</span>
       </p>
       <p className="text-gray-500 text-xs">{p.price_eur_mwh.toFixed(1)} EUR/MWh</p>
+      {p.forecast_low != null && (
+        <p className="text-indigo-400 text-xs mt-1">
+          forecast {p.forecast_low.toFixed(2)}–{(p.forecast_low + p.forecast_band).toFixed(2)}
+        </p>
+      )}
       {p.is_mock && <p className="text-yellow-500 text-xs mt-1">mock data</p>}
     </div>
   )
 }
 
-export function PriceChart({ prices, isMock }) {
-  const chartData = prices.map((p) => ({
-    ...p,
-    hour: toLocalHour(p.timestamp_utc),
-    price_sek_kwh: parseFloat(p.price_sek_kwh),
-    price_eur_mwh: parseFloat(p.price_eur_mwh),
-  }))
+export function PriceChart({ prices, isMock, forecast = null }) {
+  // Build per-hour forecast lookup: hour (0-23) → { low, band }
+  const forecastByHour = {}
+  if (forecast?.slots) {
+    forecast.slots.forEach((s) => {
+      if (s.low_sek_kwh != null) {
+        forecastByHour[s.hour] = {
+          low:  s.low_sek_kwh,
+          band: s.high_sek_kwh - s.low_sek_kwh,
+        }
+      }
+    })
+  }
+
+  const chartData = prices.map((p) => {
+    const localHour = toLocalHour(p.timestamp_utc)
+    const hour = parseInt(localHour.split(':')[0], 10)
+    const fc = forecastByHour[hour]
+    return {
+      ...p,
+      hour: localHour,
+      price_sek_kwh: parseFloat(p.price_sek_kwh),
+      price_eur_mwh: parseFloat(p.price_eur_mwh),
+      forecast_low:  fc?.low  ?? null,
+      forecast_band: fc?.band ?? null,
+    }
+  })
 
   const avg = chartData.reduce((s, d) => s + d.price_sek_kwh, 0) / chartData.length
 
@@ -60,7 +86,7 @@ export function PriceChart({ prices, isMock }) {
         </p>
       )}
       <ResponsiveContainer width="100%" height={300}>
-        <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 24 }}>
+        <ComposedChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 24 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
           <XAxis
             dataKey="hour"
@@ -82,6 +108,33 @@ export function PriceChart({ prices, isMock }) {
             strokeDasharray="4 4"
             label={{ value: 'avg', fill: '#6b7280', fontSize: 11 }}
           />
+          {/* Forecast band: stacked areas — transparent base + shaded band */}
+          {forecast && (
+            <>
+              <Area
+                type="monotone"
+                dataKey="forecast_low"
+                stackId="fc"
+                fill="transparent"
+                stroke="none"
+                legendType="none"
+                connectNulls={false}
+                isAnimationActive={false}
+              />
+              <Area
+                type="monotone"
+                dataKey="forecast_band"
+                stackId="fc"
+                fill="rgba(99,102,241,0.15)"
+                stroke="rgba(99,102,241,0.4)"
+                strokeWidth={1}
+                strokeDasharray="4 4"
+                legendType="none"
+                connectNulls={false}
+                isAnimationActive={false}
+              />
+            </>
+          )}
           <Line
             type="monotone"
             dataKey="price_sek_kwh"
@@ -90,7 +143,7 @@ export function PriceChart({ prices, isMock }) {
             dot={<CustomDot />}
             activeDot={{ r: 4, fill: '#60a5fa' }}
           />
-        </LineChart>
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   )

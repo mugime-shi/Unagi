@@ -16,6 +16,7 @@ def _to_stockholm_date(dt_utc: datetime) -> date:
 
 from app.db.database import get_db
 from app.services.price_service import (
+    build_forecast,
     find_cheapest_window,
     get_or_fetch_prices,
     get_prices_for_date_range,
@@ -219,6 +220,50 @@ def get_price_history(
     }
 
 
+@router.get("/multi-zone")
+def get_multi_zone_history(
+    db: DbDep,
+    days: int = Query(90, ge=7, le=365, description="Number of past days to include"),
+):
+    """
+    Daily average spot prices for all four SE bidding zones (SE1-SE4) for the past N days.
+    Useful for visualising the north-south price gradient and transmission bottlenecks.
+    Zones with no DB data return null for each day (trigger a backfill first).
+    """
+    from collections import defaultdict
+
+    today = datetime.now(tz=timezone.utc).date()
+    start = today - timedelta(days=days - 1)
+
+    zones: dict[str, list[dict]] = {}
+    for area in sorted(VALID_AREAS):
+        rows = get_prices_for_date_range(db, start, today, area=area)
+
+        by_date: dict[date, list[float]] = defaultdict(list)
+        for r in rows:
+            cet_date = _to_stockholm_date(r.timestamp_utc)
+            by_date[cet_date].append(float(r.price_sek_kwh))
+
+        daily = []
+        cur = start
+        while cur <= today:
+            vals = by_date.get(cur)
+            daily.append({
+                "date": cur.isoformat(),
+                "avg_sek_kwh": round(sum(vals) / len(vals), 4) if vals else None,
+            })
+            cur += timedelta(days=1)
+        zones[area] = daily
+
+    return {
+        "currency": "SEK/kWh",
+        "days": days,
+        "start": start.isoformat(),
+        "end": today.isoformat(),
+        "zones": zones,
+    }
+
+
 @router.get("/cheapest-hours")
 def get_cheapest_hours(
     db: DbDep,
@@ -249,4 +294,48 @@ def get_cheapest_hours(
         "currency": "SEK/kWh",
         "is_mock": is_mock,
         "cheapest_window": window,
+    }
+
+
+@router.get("/forecast")
+def get_price_forecast(
+    db: DbDep,
+    date: date = Query(..., description="Target date to forecast (YYYY-MM-DD)"),
+    area: AreaDep = "SE3",
+    weeks: int = Query(8, ge=2, le=16, description="Past same-weekday weeks to sample"),
+):
+    """
+    Hourly price forecast for date using same-weekday historical averages.
+
+    For each Stockholm hour 0–23, returns avg (p50), low (p10), high (p90)
+    computed from the past N weeks of same-weekday data in the DB.
+    """
+    if area not in VALID_AREAS:
+        raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
+
+    today = datetime.now(tz=timezone.utc).date()
+    hist_start = date - timedelta(weeks=weeks)
+    hist_end = min(date - timedelta(days=1), today)
+
+    rows = get_prices_for_date_range(db, hist_start, hist_end, area=area)
+
+    # Count distinct same-weekday dates that were sampled
+    target_weekday = date.weekday()
+    sample_dates = {
+        r.timestamp_utc.astimezone(_STOCKHOLM).date()
+        for r in rows
+        if r.timestamp_utc.astimezone(_STOCKHOLM).date().weekday() == target_weekday
+    }
+
+    result = build_forecast(rows, date)
+
+    return {
+        "area": area,
+        "date": date.isoformat(),
+        "weekday": date.strftime("%A"),
+        "currency": "SEK/kWh",
+        "model": "same_weekday_avg",
+        "weeks_back": weeks,
+        "dates_sampled": len(sample_dates),
+        **result,
     }

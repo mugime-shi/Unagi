@@ -8,8 +8,12 @@ Design decisions:
 """
 
 import math
+from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional, Sequence
+from zoneinfo import ZoneInfo
+
+_STOCKHOLM = ZoneInfo("Europe/Stockholm")
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -279,3 +283,67 @@ def get_or_fetch_prices(
 
     # Fallback: mock data
     return _generate_mock_prices(target_date), True
+
+
+# ---------------------------------------------------------------------------
+# Same-weekday price forecast
+# ---------------------------------------------------------------------------
+
+def build_forecast(rows: list, target_date: date) -> dict:
+    """
+    Build an hourly price forecast for target_date using same-weekday historical data.
+
+    Algorithm:
+    - Filters rows to those whose Stockholm date shares the same weekday as target_date
+    - Groups into (date, hour) buckets and averages within each bucket
+    - For each hour 0-23, collects one avg per historical date, then computes:
+        low  = p10 of those averages
+        avg  = mean
+        high = p90 of those averages
+    Returns a dict with 'slots' (list of 24 hourly dicts) and 'summary'.
+    """
+    target_weekday = target_date.weekday()
+
+    # Collect prices per (stockholm_date, stockholm_hour) — same weekday only
+    date_hour_prices: dict[tuple, list[float]] = defaultdict(list)
+    for r in rows:
+        ts = r.timestamp_utc
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        local = ts.astimezone(_STOCKHOLM)
+        if local.date().weekday() != target_weekday:
+            continue
+        date_hour_prices[(local.date(), local.hour)].append(float(r.price_sek_kwh))
+
+    # One avg per (date, hour), then group by hour across dates
+    by_hour: dict[int, list[float]] = defaultdict(list)
+    for (_, h), prices in date_hour_prices.items():
+        by_hour[h].append(sum(prices) / len(prices))
+
+    slots = []
+    for hour in range(24):
+        samples = sorted(by_hour.get(hour, []))
+        if not samples:
+            slots.append({"hour": hour, "avg_sek_kwh": None, "low_sek_kwh": None, "high_sek_kwh": None})
+            continue
+        n = len(samples)
+        avg = sum(samples) / n
+        low_idx  = max(0, int(n * 0.10))
+        high_idx = min(n - 1, int(n * 0.90))
+        slots.append({
+            "hour": hour,
+            "avg_sek_kwh":  round(avg, 4),
+            "low_sek_kwh":  round(samples[low_idx], 4),
+            "high_sek_kwh": round(samples[high_idx], 4),
+        })
+
+    valid = [(s["low_sek_kwh"], s["avg_sek_kwh"], s["high_sek_kwh"])
+             for s in slots if s["avg_sek_kwh"] is not None]
+    return {
+        "slots": slots,
+        "summary": {
+            "predicted_avg_sek_kwh":  round(sum(v[1] for v in valid) / len(valid), 4) if valid else None,
+            "predicted_low_sek_kwh":  round(min(v[0] for v in valid), 4) if valid else None,
+            "predicted_high_sek_kwh": round(max(v[2] for v in valid), 4) if valid else None,
+        },
+    }

@@ -23,7 +23,7 @@ A real-time dashboard for SE3 (Göteborg) electricity spot prices, built to answ
 
 ## Why I built this
 
-In Japan I worked on a Feed-in Tariff system where utilities pay a government-fixed price for all solar generation — straightforward, no optimization needed. Sweden works differently: you sell at the real-time spot price and buy at the same spot price, so *when* you consume or export matters. This project is my way of understanding that market by building something useful for my own apartment in Göteborg.
+In Japan I worked on a Solar Power Retails system where utilities pay a government-fixed price for all solar generation — straightforward, no optimization needed. Sweden works differently: you sell at the real-time spot price and buy at the same spot price, so *when* you consume or export matters. This project is my way of understanding that market by building something useful for my own apartment in Göteborg.
 
 ---
 

@@ -5,6 +5,7 @@ import { PriceChart } from './components/PriceChart'
 import { PriceHistory } from './components/PriceHistory'
 import { PriceIndicator } from './components/PriceIndicator'
 import { SolarSimulator } from './components/SolarSimulator'
+import { useForecast } from './hooks/useForecast'
 import { usePrices } from './hooks/usePrices'
 
 const AREAS = [
@@ -18,11 +19,18 @@ function todayISO() {
   return new Date().toISOString().split('T')[0]
 }
 
+function tomorrowISO() {
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  return d.toISOString().split('T')[0]
+}
+
 export default function App() {
   const [layer, setLayer] = useState('prices')
   const [day, setDay]     = useState('today')
   const [area, setArea]   = useState('SE3')
   const { data, loading, error } = usePrices(day, area)
+  const { data: forecast } = useForecast(day === 'tomorrow' ? tomorrowISO() : null, area)
 
   const areaCity = AREAS.find((a) => a.id === area)?.city ?? area
 
@@ -117,7 +125,11 @@ export default function App() {
                     </h2>
                     <span className="text-xs text-gray-500">SEK/kWh</span>
                   </div>
-                  <PriceChart prices={data.prices} isMock={data.is_mock} />
+                  <PriceChart
+                    prices={data.prices}
+                    isMock={data.is_mock}
+                    forecast={day === 'tomorrow' ? forecast : null}
+                  />
                 </div>
 
                 {/* Min / Avg (date) / Avg (month) / Max */}

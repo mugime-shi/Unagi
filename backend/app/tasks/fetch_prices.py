@@ -101,28 +101,37 @@ def backfill(days: int, area: str = "SE3") -> list[dict]:
 # Lambda handler (EventBridge trigger)
 # ---------------------------------------------------------------------------
 
+ALL_AREAS = ["SE1", "SE2", "SE3", "SE4"]
+
+
 def lambda_handler(event: dict, context) -> dict:
     """
     Lambda entry point.
-    event = {}                      → today + tomorrow
-    event = {"backfill_days": N}    → past N days
-    event = {"date": "YYYY-MM-DD"}  → single date
+    event = {}                              → today + tomorrow for ALL areas (SE1-SE4)
+    event = {"area": "SE3"}                → today + tomorrow for a specific area
+    event = {"backfill_days": N}           → past N days for ALL areas
+    event = {"backfill_days": N, "area": "SE3"} → past N days for one area
+    event = {"date": "YYYY-MM-DD"}         → single date for ALL areas
     """
-    area = event.get("area", settings.default_area)
+    explicit_area = event.get("area")
+    areas = [explicit_area] if explicit_area else ALL_AREAS
 
-    if "backfill_days" in event:
-        results = backfill(int(event["backfill_days"]), area)
-    elif "date" in event:
-        results = [fetch_date(date.fromisoformat(event["date"]), area)]
-    else:
-        today = date.today()
-        tomorrow = today + timedelta(days=1)
-        results = fetch_dates([today, tomorrow], area)
+    all_results = []
+    for area in areas:
+        if "backfill_days" in event:
+            results = backfill(int(event["backfill_days"]), area)
+        elif "date" in event:
+            results = [fetch_date(date.fromisoformat(event["date"]), area)]
+        else:
+            today = date.today()
+            tomorrow = today + timedelta(days=1)
+            results = fetch_dates([today, tomorrow], area)
+        all_results.extend(results)
 
-    failed = [r for r in results if r["status"] == "error"]
+    failed = [r for r in all_results if r["status"] == "error"]
     return {
         "statusCode": 200 if not failed else 207,
-        "results": results,
+        "results": all_results,
     }
 
 
