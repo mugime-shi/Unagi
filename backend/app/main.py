@@ -8,6 +8,9 @@ app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
     description="Swedish electricity price optimization dashboard — SE3 (Göteborg)",
+    # Disable interactive docs in production (DEBUG=false) to prevent public API abuse
+    docs_url="/docs" if settings.debug else None,
+    redoc_url="/redoc" if settings.debug else None,
 )
 
 app.add_middleware(
