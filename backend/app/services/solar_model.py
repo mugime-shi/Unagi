@@ -361,12 +361,16 @@ def optimize_solar_month(
         - (base["revenue_sek"] + base["savings_sek"]), 2
     )
 
-    total_benefit = round(opt["revenue_sek"] + opt["savings_sek"], 2)
+    total_benefit      = round(opt["revenue_sek"] + opt["savings_sek"], 2)
+    total_benefit_base = round(base["revenue_sek"] + base["savings_sek"], 2)
 
     # --- Tax credit ---
     credit_applies = year <= TAX_CREDIT_END_YEAR
     eligible_kwh   = min(opt["sold_to_grid_kwh"], opt["bought_from_grid_kwh"])
     monthly_credit = round(eligible_kwh * TAX_CREDIT_RATE_SEK, 2) if credit_applies else 0.0
+
+    eligible_kwh_base  = min(base["sold_to_grid_kwh"], base["bought_from_grid_kwh"])
+    monthly_credit_base = round(eligible_kwh_base * TAX_CREDIT_RATE_SEK, 2) if credit_applies else 0.0
 
     return {
         "month": f"{year}-{month:02d}",
@@ -376,17 +380,27 @@ def optimize_solar_month(
         "data_source": data_source,
         # Generation
         "solar_generation_kwh": gen_result["total_generation_kwh"],
-        # Dispatch
+        # Dispatch (with battery / optimized)
         "self_consumed_kwh":    opt["self_consumed_kwh"],
         "sold_to_grid_kwh":     opt["sold_to_grid_kwh"],
         "bought_from_grid_kwh": opt["bought_from_grid_kwh"],
-        # Financials
+        # Financials (with battery / optimized)
         "avg_spot_sek_kwh":                 opt["avg_spot_sek_kwh"],
         "revenue_sek":                       opt["revenue_sek"],
         "savings_from_self_consumption_sek": opt["savings_sek"],
         "battery_effect_sek":                battery_effect_sek,
         "total_benefit_without_tax_credit_sek": total_benefit,
         "total_benefit_with_tax_credit_sek":    round(total_benefit + monthly_credit, 2),
+        # Baseline (no battery) — for with/without battery comparison in UI
+        "baseline": {
+            "self_consumed_kwh":    base["self_consumed_kwh"],
+            "sold_to_grid_kwh":     base["sold_to_grid_kwh"],
+            "bought_from_grid_kwh": base["bought_from_grid_kwh"],
+            "revenue_sek":          base["revenue_sek"],
+            "savings_sek":          base["savings_sek"],
+            "total_benefit_sek":    total_benefit_base,
+            "total_benefit_with_tax_credit_sek": round(total_benefit_base + monthly_credit_base, 2),
+        },
         # Tax credit detail
         "tax_credit": {
             "applies": credit_applies,

@@ -154,6 +154,44 @@ export function SolarSimulator() {
             </div>
           </div>
 
+          {/* Battery comparison — only when battery > 0 */}
+          {result.battery_kwh > 0 && (
+            <div>
+              <p className="text-xs text-gray-500 mb-2">
+                Battery impact — {result.battery_kwh} kWh battery vs no battery
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-blue-900/25 border border-blue-800/40 rounded-xl p-3 text-center">
+                  <p className="text-xs text-blue-400/70 mb-1">with battery</p>
+                  <p className="text-2xl font-bold text-blue-400">
+                    {result.total_benefit_without_tax_credit_sek.toFixed(0)}
+                  </p>
+                  <p className="text-xs text-gray-500 mb-1">SEK / month</p>
+                  <p className="text-xs text-gray-600">
+                    sold {result.sold_to_grid_kwh.toFixed(0)} kWh
+                    · bought {result.bought_from_grid_kwh.toFixed(0)} kWh
+                  </p>
+                </div>
+                <div className="bg-gray-800/40 border border-gray-700/40 rounded-xl p-3 text-center">
+                  <p className="text-xs text-gray-400/70 mb-1">without battery</p>
+                  <p className="text-2xl font-bold text-gray-300">
+                    {result.baseline.total_benefit_sek.toFixed(0)}
+                  </p>
+                  <p className="text-xs text-gray-500 mb-1">SEK / month</p>
+                  <p className="text-xs text-gray-600">
+                    sold {result.baseline.sold_to_grid_kwh.toFixed(0)} kWh
+                    · bought {result.baseline.bought_from_grid_kwh.toFixed(0)} kWh
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs text-center mt-2 font-medium" style={{
+                color: result.battery_effect_sek >= 0 ? '#4ade80' : '#f87171'
+              }}>
+                Battery adds {result.battery_effect_sek >= 0 ? '+' : ''}{result.battery_effect_sek.toFixed(0)} SEK/month
+              </p>
+            </div>
+          )}
+
           {/* Total benefit — context-aware display */}
           <div>
             {result.tax_credit.applies ? (
