@@ -104,7 +104,28 @@ export default function App() {
               ))}
             </div>
 
-            {loading && <p className="text-gray-500 text-sm">Loading prices…</p>}
+            {loading && (
+              <div className="animate-pulse space-y-4">
+                {/* Chart placeholder */}
+                <div className="bg-gray-900 rounded-2xl p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="h-4 bg-gray-700 rounded w-40" />
+                    <div className="h-3 bg-gray-700 rounded w-12" />
+                  </div>
+                  <div className="h-[300px] bg-gray-800 rounded-xl" />
+                </div>
+                {/* Summary cards placeholder */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[0, 1, 2, 3].map((i) => (
+                    <div key={i} className="bg-gray-900 rounded-xl py-3 px-4 space-y-2">
+                      <div className="h-3 bg-gray-700 rounded w-16 mx-auto" />
+                      <div className="h-6 bg-gray-700 rounded w-12 mx-auto" />
+                      <div className="h-3 bg-gray-700 rounded w-10 mx-auto" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {error && (
               <p className="text-red-400 text-sm">Failed to load prices: {error.message}</p>
             )}

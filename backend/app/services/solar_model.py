@@ -253,29 +253,36 @@ def _run_hourly_sim(
         is_high = spot > avg * HIGH_PRICE_THRESHOLD
         is_low  = spot < avg * LOW_PRICE_THRESHOLD
 
-        if net >= 0:                    # surplus
+        if net >= 0:                    # surplus generation
             surplus = net
             if is_high or battery_kwh == 0:
+                # High price window (or no battery): sell all surplus immediately.
+                # Exporting at peak price maximises revenue.
                 sold    += surplus
                 revenue += surplus * spot
             else:
-                # charge battery first, sell remainder
+                # Low/normal price: store in battery first; sell only what doesn't fit.
+                # Saved kWh will displace expensive grid purchases in later hours.
                 charge = min(surplus, battery_kwh - battery_soc)
                 battery_soc += charge
                 leftover = surplus - charge
                 sold    += leftover
                 revenue += leftover * spot
-        else:                           # deficit
+        else:                           # deficit — generation < consumption
             deficit = -net
             if not is_low and battery_soc > 0:
+                # Price is normal/high: discharge battery to cover the deficit.
+                # Avoids buying at full retail when we already have stored energy.
                 discharge    = min(deficit, battery_soc)
                 battery_soc -= discharge
                 bought      += deficit - discharge
             else:
+                # Price is low (cheap to buy) or battery empty: purchase from grid.
                 bought += deficit
 
-    # Savings = electricity not purchased from grid × avg full retail price.
-    # Includes both direct self-consumption AND battery discharge (both avoid grid purchases).
+    # Savings = energy not purchased from grid × average full retail price.
+    # "Not purchased" = direct self-consumption + battery discharge — both avoid
+    # paying margin + grid fee + energy tax + VAT on top of spot price.
     total_spots  = list(hourly_spot.values())
     avg_spot_all = sum(total_spots) / len(total_spots) if total_spots else 0.0
     avg_full_retail = (avg_spot_all + overhead_sek_kwh) * (1 + vat_rate)
@@ -364,8 +371,11 @@ def optimize_solar_month(
     total_benefit      = round(opt["revenue_sek"] + opt["savings_sek"], 2)
     total_benefit_base = round(base["revenue_sek"] + base["savings_sek"], 2)
 
-    # --- Tax credit ---
+    # --- Tax credit (skattereduktion) ---
     credit_applies = year <= TAX_CREDIT_END_YEAR
+    # Swedish tax law caps the credit at min(sold, bought).
+    # Households that export more than they import cannot claim credit on the excess —
+    # this prevents pure generators from benefiting from a consumer-oriented subsidy.
     eligible_kwh   = min(opt["sold_to_grid_kwh"], opt["bought_from_grid_kwh"])
     monthly_credit = round(eligible_kwh * TAX_CREDIT_RATE_SEK, 2) if credit_applies else 0.0
 

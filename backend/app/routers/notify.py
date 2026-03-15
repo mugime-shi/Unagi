@@ -86,13 +86,17 @@ def unsubscribe(data: UnsubscribeRequest, db: DbDep):
 
 @router.post("/test")
 def send_test_notification(db: DbDep, area: str = "SE3"):
-    """Dev/debug: trigger Web Push for all subscribers of this area."""
+    """Dev/debug: trigger Web Push for all subscribers of this area. Only available when DEBUG=true."""
+    if not settings.debug:
+        raise HTTPException(status_code=404, detail="Not found")
     from app.services.notify_service import notify_subscribers
     return notify_subscribers(db, area)
 
 
 @router.post("/telegram-test")
 def send_telegram_test(db: DbDep, area: str = "SE3"):
-    """Dev/debug: send a Telegram message immediately (requires TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID)."""
+    """Dev/debug: send a Telegram message immediately. Only available when DEBUG=true."""
+    if not settings.debug:
+        raise HTTPException(status_code=404, detail="Not found")
     from app.services.telegram_service import send_telegram_alert
     return send_telegram_alert(db, area)
