@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { CheapHoursWidget } from './components/CheapHoursWidget'
 import { ConsumptionSimulator } from './components/ConsumptionSimulator'
 import { PriceChart } from './components/PriceChart'
+import { PriceHistory } from './components/PriceHistory'
 import { PriceIndicator } from './components/PriceIndicator'
 import { SolarSimulator } from './components/SolarSimulator'
 import { usePrices } from './hooks/usePrices'
@@ -24,8 +25,9 @@ export default function App() {
         {/* Layer selector */}
         <nav className="ml-auto flex gap-1">
           {[
-            { id: 'prices', label: 'Prices' },
-            { id: 'solar',  label: 'Solar'  },
+            { id: 'prices',  label: 'Prices'  },
+            { id: 'history', label: 'History' },
+            { id: 'solar',   label: 'Solar'   },
           ].map(({ id, label }) => (
             <button
               key={id}
@@ -121,6 +123,9 @@ export default function App() {
             <ConsumptionSimulator />
           </>
         )}
+
+        {/* ── History ── */}
+        {layer === 'history' && <PriceHistory />}
 
         {/* ── Layer 2: Solar ── */}
         {layer === 'solar' && <SolarSimulator />}

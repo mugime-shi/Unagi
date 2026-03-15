@@ -154,6 +154,47 @@ def get_price_range(
     }
 
 
+@router.get("/history")
+def get_price_history(
+    db: DbDep,
+    days: int = Query(90, ge=7, le=365, description="Number of past days to include"),
+):
+    """
+    Daily average SE3 spot prices for the past N days (default 90).
+    Returns only daily summaries (no raw 15-min slots) — efficient for trend charts.
+    """
+    today = datetime.now(tz=timezone.utc).date()
+    start = today - timedelta(days=days - 1)
+    rows = get_prices_for_date_range(db, start, today, area=settings.default_area)
+
+    from collections import defaultdict
+    by_date: dict[date, list[float]] = defaultdict(list)
+    for r in rows:
+        cet_date = (r.timestamp_utc + timedelta(hours=1)).date()
+        by_date[cet_date].append(float(r.price_sek_kwh))
+
+    daily = []
+    cur = start
+    while cur <= today:
+        vals = by_date.get(cur)
+        daily.append({
+            "date": cur.isoformat(),
+            "avg_sek_kwh": round(sum(vals) / len(vals), 4) if vals else None,
+            "min_sek_kwh": round(min(vals), 4) if vals else None,
+            "max_sek_kwh": round(max(vals), 4) if vals else None,
+        })
+        cur += timedelta(days=1)
+
+    return {
+        "area": settings.default_area,
+        "currency": "SEK/kWh",
+        "days": days,
+        "start": start.isoformat(),
+        "end": today.isoformat(),
+        "daily": daily,
+    }
+
+
 @router.get("/cheapest-hours")
 def get_cheapest_hours(
     db: DbDep,
