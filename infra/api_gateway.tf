@@ -14,6 +14,15 @@ resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.main.id
   name        = "$default"
   auto_deploy = true
+
+  # Rate limiting at the HTTP API stage level.
+  # HTTP API v2 uses stage-level throttling instead of REST API's Usage Plans.
+  # burst_limit: max concurrent requests in a single burst (token bucket capacity)
+  # rate_limit:  steady-state requests per second (token refill rate)
+  default_route_settings {
+    throttling_burst_limit = 200
+    throttling_rate_limit  = 100
+  }
 }
 
 resource "aws_apigatewayv2_integration" "lambda" {
