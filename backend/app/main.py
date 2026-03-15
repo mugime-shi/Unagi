@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import prices, simulate, solar
+from app.routers import notify, prices, simulate, solar
 
 app = FastAPI(
     title=settings.app_name,
@@ -25,6 +25,7 @@ app.add_middleware(
 app.include_router(prices.router, prefix="/api/v1")
 app.include_router(simulate.router, prefix="/api/v1")
 app.include_router(solar.router, prefix="/api/v1")
+app.include_router(notify.router, prefix="/api/v1")
 
 
 @app.get("/health")

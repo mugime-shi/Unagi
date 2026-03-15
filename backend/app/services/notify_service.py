@@ -1,0 +1,110 @@
+"""
+Web Push notification service.
+
+Flow:
+  1. Browser subscribes via Push API (VAPID public key required)
+  2. Subscription (endpoint + p256dh + auth) is stored in push_subscriptions table
+  3. EventBridge triggers Lambda at 13:30 CET → fetch_prices → notify_subscribers()
+  4. For each subscription, send tomorrow's price summary via Web Push
+
+Push encryption:
+  - Content is encrypted with ECDH-ES + AES-128-GCM (handled by pywebpush)
+  - VAPID identifies our server to the push service (Google FCM, Mozilla, etc.)
+
+VAPID keys are stored in VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY env vars.
+Generate them once with: python scripts/gen_vapid_keys.py
+"""
+
+import json
+import logging
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.models.push_subscription import PushSubscription
+from app.services.price_service import get_prices_for_date
+
+log = logging.getLogger(__name__)
+
+_STOCKHOLM = ZoneInfo("Europe/Stockholm")
+
+
+def _build_notification(db: Session, area: str) -> dict | None:
+    """Build notification payload for tomorrow's prices. Returns None if no data."""
+    tomorrow = (datetime.now(tz=_STOCKHOLM) + timedelta(days=1)).date()
+    rows = get_prices_for_date(db, tomorrow, area)
+    if not rows:
+        return None
+
+    values = [float(r.price_sek_kwh) for r in rows]
+    avg = sum(values) / len(values)
+    lo = min(values)
+    hi = max(values)
+    day_label = tomorrow.strftime("%A, %d %b")  # e.g. "Monday, 16 Mar"
+
+    return {
+        "title": f"Namazu — {day_label}",
+        "body": f"{area} · avg {avg:.2f} SEK/kWh · range {lo:.2f}–{hi:.2f}",
+        "icon": "/icon.svg",
+        "tag": "namazu-price",  # replaces previous notification with same tag
+        "url": "/",
+    }
+
+
+def _send_push(sub: PushSubscription, payload: dict) -> bool:
+    """
+    Send a Web Push notification to a single subscription.
+    Returns True on success, False on failure.
+    Expired subscriptions (410 Gone) should be removed by the caller.
+    """
+    if not settings.vapid_private_key or not settings.vapid_public_key:
+        log.warning("VAPID keys not configured — skipping push notification")
+        return False
+
+    try:
+        from pywebpush import WebPushException, webpush
+
+        webpush(
+            subscription_info={
+                "endpoint": sub.endpoint,
+                "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
+            },
+            data=json.dumps(payload),
+            vapid_private_key=settings.vapid_private_key,
+            vapid_claims={"sub": settings.vapid_contact},
+        )
+        return True
+    except Exception as exc:  # WebPushException or network errors
+        # 404/410 = subscription expired; 401 = VAPID key mismatch
+        log.warning("Push failed for %s: %s", sub.endpoint[:60], exc)
+        return False
+
+
+def notify_subscribers(db: Session, area: str = "SE3") -> dict:
+    """
+    Send tomorrow's price summary to all subscribers for the given area.
+    Called by the Lambda scheduler after prices are fetched.
+
+    Returns a summary dict for logging.
+    """
+    payload = _build_notification(db, area)
+    if payload is None:
+        log.info("No tomorrow prices in DB for %s — skipping notifications", area)
+        return {"area": area, "sent": 0, "failed": 0, "skipped": "no_data"}
+
+    subs = db.query(PushSubscription).filter(PushSubscription.area == area).all()
+    if not subs:
+        log.info("No subscribers for %s", area)
+        return {"area": area, "sent": 0, "failed": 0}
+
+    sent = failed = 0
+    for sub in subs:
+        if _send_push(sub, payload):
+            sent += 1
+        else:
+            failed += 1
+
+    log.info("Notifications sent for %s: %d ok, %d failed", area, sent, failed)
+    return {"area": area, "sent": sent, "failed": failed}

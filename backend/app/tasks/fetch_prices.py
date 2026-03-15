@@ -129,10 +129,38 @@ def lambda_handler(event: dict, context) -> dict:
         all_results.extend(results)
 
     failed = [r for r in all_results if r["status"] == "error"]
+
+    # Send push notifications for tomorrow's prices after the daily scheduled run.
+    # Skip on backfill or single-date runs (those are maintenance ops, not daily triggers).
+    is_daily_run = "backfill_days" not in event and "date" not in event
+    if is_daily_run:
+        _send_notifications(areas)
+
     return {
         "statusCode": 200 if not failed else 207,
         "results": all_results,
     }
+
+
+def _send_notifications(areas: list[str]) -> None:
+    """Send Web Push + Telegram alerts for each area after a daily price fetch."""
+    db = SessionLocal()
+    try:
+        from app.services.notify_service import notify_subscribers
+        from app.services.telegram_service import send_telegram_alert
+        for area in areas:
+            try:
+                notify_subscribers(db, area)
+            except Exception as exc:
+                log.warning("Web Push error for %s: %s", area, exc)
+            try:
+                # Telegram is single-user: only send once (SE3 or first area)
+                if area == areas[0]:
+                    send_telegram_alert(db, area)
+            except Exception as exc:
+                log.warning("Telegram error for %s: %s", area, exc)
+    finally:
+        db.close()
 
 
 # ---------------------------------------------------------------------------

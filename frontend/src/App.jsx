@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { CheapHoursWidget } from './components/CheapHoursWidget'
 import { ConsumptionSimulator } from './components/ConsumptionSimulator'
+import { NotificationBell } from './components/NotificationBell'
 import { PriceChart } from './components/PriceChart'
 import { PriceHistory } from './components/PriceHistory'
 import { PriceIndicator } from './components/PriceIndicator'
@@ -56,6 +57,8 @@ export default function App() {
             </button>
           ))}
         </div>
+
+        <NotificationBell area={area} />
 
         {/* Layer selector */}
         <nav className="ml-auto flex gap-1">

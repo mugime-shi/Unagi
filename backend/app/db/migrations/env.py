@@ -7,6 +7,7 @@ from alembic import context
 from app.config import settings
 from app.db.database import Base
 import app.models.spot_price  # noqa: F401 — ensure model is registered
+import app.models.push_subscription  # noqa: F401
 
 config = context.config
 

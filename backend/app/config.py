@@ -14,5 +14,14 @@ class Settings(BaseSettings):
 
     default_area: str = "SE3"
 
+    # VAPID keys for Web Push notifications (generate with scripts/gen_vapid_keys.py)
+    vapid_private_key: str = ""  # base64url-encoded raw 32-byte P-256 private key
+    vapid_public_key: str = ""   # base64url-encoded uncompressed EC point (65 bytes)
+    vapid_contact: str = "mailto:namazu@example.com"
+
+    # Telegram Bot notifications (single-user; get token from @BotFather, chat_id from /getUpdates)
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+
 
 settings = Settings()

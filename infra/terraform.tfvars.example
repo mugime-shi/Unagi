@@ -1,0 +1,5 @@
+aws_region     = "eu-north-1"
+project        = "namazu"
+database_url   = "postgresql://postgres:password@db.xxxx.supabase.co:5432/postgres"
+entsoe_api_key = "your-entsoe-api-key"
+image_tag      = "latest"
