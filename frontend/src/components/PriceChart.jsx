@@ -33,8 +33,24 @@ function CustomTooltip({ active, payload, label }) {
       <p className="text-gray-400">{label}</p>
       <p className="font-semibold" style={{ color: priceColor(p.price_sek_kwh) }}>
         {p.price_sek_kwh.toFixed(2)} <span className="text-gray-400 font-normal">SEK/kWh</span>
+        <span className="text-gray-500 text-xs ml-2">Day-ahead</span>
       </p>
       <p className="text-gray-500 text-xs">{p.price_eur_mwh.toFixed(1)} EUR/MWh</p>
+      {p.imb_short != null && (
+        <p className="text-orange-400 text-xs mt-1">
+          Imbalance Short: {p.imb_short.toFixed(2)} SEK/kWh
+          {p.price_sek_kwh > 0 && (
+            <span className="ml-1 text-orange-500">
+              ({((p.imb_short / p.price_sek_kwh - 1) * 100).toFixed(0)}% vs DA)
+            </span>
+          )}
+        </p>
+      )}
+      {p.imb_long != null && (
+        <p className="text-green-400 text-xs">
+          Imbalance Long:  {p.imb_long.toFixed(2)} SEK/kWh
+        </p>
+      )}
       {p.forecast_low != null && (
         <p className="text-indigo-400 text-xs mt-1">
           forecast {p.forecast_low.toFixed(2)}–{(p.forecast_low + p.forecast_band).toFixed(2)}
@@ -45,8 +61,13 @@ function CustomTooltip({ active, payload, label }) {
   )
 }
 
-export function PriceChart({ prices, isMock, forecast = null }) {
-  // Build per-hour forecast lookup: hour (0-23) → { low, band }
+// Minute-precision UTC key for timestamp alignment between DA and balancing data
+function tsKey(iso) {
+  return iso.substring(0, 16)  // "2026-03-15T23:00"
+}
+
+export function PriceChart({ prices, isMock, forecast = null, balancing = null }) {
+  // Forecast lookup: hour (0-23) → { low, band }
   const forecastByHour = {}
   if (forecast?.slots) {
     forecast.slots.forEach((s) => {
@@ -59,10 +80,19 @@ export function PriceChart({ prices, isMock, forecast = null }) {
     })
   }
 
+  // Balancing lookup: tsKey → SEK/kWh for each category
+  const imbShortByTs = {}
+  const imbLongByTs  = {}
+  if (balancing) {
+    for (const p of balancing.short) imbShortByTs[tsKey(p.timestamp_utc)] = parseFloat(p.price_sek_kwh)
+    for (const p of balancing.long)  imbLongByTs[tsKey(p.timestamp_utc)]  = parseFloat(p.price_sek_kwh)
+  }
+
   const chartData = prices.map((p) => {
     const localHour = toLocalHour(p.timestamp_utc)
     const hour = parseInt(localHour.split(':')[0], 10)
-    const fc = forecastByHour[hour]
+    const fc   = forecastByHour[hour]
+    const key  = tsKey(p.timestamp_utc)
     return {
       ...p,
       hour: localHour,
@@ -70,6 +100,8 @@ export function PriceChart({ prices, isMock, forecast = null }) {
       price_eur_mwh: parseFloat(p.price_eur_mwh),
       forecast_low:  fc?.low  ?? null,
       forecast_band: fc?.band ?? null,
+      imb_short: imbShortByTs[key] ?? null,
+      imb_long:  imbLongByTs[key]  ?? null,
     }
   })
 
@@ -78,6 +110,8 @@ export function PriceChart({ prices, isMock, forecast = null }) {
   // Show only HH:00 labels (every full hour) to avoid overlap on 15-min data
   const tickFormatter = (value) => (value.endsWith(':00') ? value : '')
 
+  const hasBalancing = balancing && (balancing.short.length > 0 || balancing.long.length > 0)
+
   return (
     <div className="w-full">
       {isMock && (
@@ -85,6 +119,25 @@ export function PriceChart({ prices, isMock, forecast = null }) {
           ⚠ Showing mock data — add ENTSOE_API_KEY to see real prices
         </p>
       )}
+
+      {/* Balancing legend */}
+      {hasBalancing && (
+        <div className="flex gap-4 mb-2 text-xs text-gray-400 justify-end">
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-5 border-t-2 border-blue-400" />
+            Day-ahead
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-5 border-t-2 border-dashed border-orange-400" />
+            Imbalance Short
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-5 border-t-2 border-dashed border-green-400" />
+            Imbalance Long
+          </span>
+        </div>
+      )}
+
       <ResponsiveContainer width="100%" height={300}>
         <ComposedChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 24 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
@@ -108,6 +161,7 @@ export function PriceChart({ prices, isMock, forecast = null }) {
             strokeDasharray="4 4"
             label={{ value: 'avg', fill: '#6b7280', fontSize: 11 }}
           />
+
           {/* Forecast band: stacked areas — transparent base + shaded band */}
           {forecast && (
             <>
@@ -135,6 +189,36 @@ export function PriceChart({ prices, isMock, forecast = null }) {
               />
             </>
           )}
+
+          {/* Balancing overlay — rendered under DA line so DA stays readable */}
+          {hasBalancing && (
+            <>
+              <Line
+                type="monotone"
+                dataKey="imb_long"
+                stroke="#4ade80"
+                strokeWidth={1.5}
+                strokeDasharray="3 3"
+                dot={false}
+                connectNulls={false}
+                isAnimationActive={false}
+                legendType="none"
+              />
+              <Line
+                type="monotone"
+                dataKey="imb_short"
+                stroke="#f97316"
+                strokeWidth={1.5}
+                strokeDasharray="3 3"
+                dot={false}
+                connectNulls={false}
+                isAnimationActive={false}
+                legendType="none"
+              />
+            </>
+          )}
+
+          {/* Day-ahead line — rendered last so it stays on top */}
           <Line
             type="monotone"
             dataKey="price_sek_kwh"

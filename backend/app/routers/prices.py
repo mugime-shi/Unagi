@@ -15,6 +15,8 @@ def _to_stockholm_date(dt_utc: datetime) -> date:
     return dt_utc.astimezone(_STOCKHOLM).date()
 
 from app.db.database import get_db
+from app.services.balancing_service import fetch_and_store_balancing, get_balancing_for_date
+from app.services.esett_client import BalancingError
 from app.services.price_service import (
     build_forecast,
     find_cheapest_window,
@@ -338,4 +340,76 @@ def get_price_forecast(
         "weeks_back": weeks,
         "dates_sampled": len(sample_dates),
         **result,
+    }
+
+
+@router.get("/balancing")
+def get_balancing_prices(
+    db: DbDep,
+    date: date = Query(..., description="Target date (YYYY-MM-DD)"),
+    area: AreaDep = "SE3",
+):
+    """
+    Imbalance (balancing) prices for the given date from eSett EXP14.
+
+    Returns two price series for each 15-min slot:
+      - Long  (category A04): down-regulation price — typically at or below day-ahead
+      - Short (category A05): up-regulation price — can spike 2–3× day-ahead
+
+    Source: eSett Open Data API (Nordic imbalance settlement institution).
+    Data lags ~5–6 hours behind real time. No API key required.
+
+    These prices are set by Svenska kraftnät (SVK) and reflect the real cost
+    of balancing the SE3 grid — a direct proxy for intraday grid stress.
+    """
+    if area not in VALID_AREAS:
+        raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
+
+    rows = get_balancing_for_date(db, date, area)
+
+    if not rows:
+        # Try a live fetch (today or yesterday may not be in DB yet)
+        try:
+            rows = fetch_and_store_balancing(db, date, area)
+        except BalancingError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No balancing price data for {date}: {exc}",
+            )
+
+    long_prices  = []
+    short_prices = []
+    for r in rows:
+        entry = {
+            "timestamp_utc": r.timestamp_utc.isoformat(),
+            "price_eur_mwh": float(r.price_eur_mwh),
+            "price_sek_kwh": float(r.price_sek_kwh),
+            "resolution":    r.resolution,
+            "category":      r.category,
+        }
+        if r.category == "A04":
+            long_prices.append(entry)
+        else:
+            short_prices.append(entry)
+
+    all_prices = long_prices + short_prices
+    sek_vals   = [p["price_sek_kwh"] for p in all_prices]
+
+    return {
+        "area":     area,
+        "date":     date.isoformat(),
+        "currency": "SEK/kWh",
+        "source":   "eSett EXP14",
+        "note": (
+            "Long (A04) = down-regulation price, typically ≤ day-ahead. "
+            "Short (A05) = up-regulation price, can spike far above day-ahead."
+        ),
+        "count": len(all_prices),
+        "summary": {
+            "min_sek_kwh": round(min(sek_vals), 4) if sek_vals else None,
+            "max_sek_kwh": round(max(sek_vals), 4) if sek_vals else None,
+            "avg_sek_kwh": round(sum(sek_vals) / len(sek_vals), 4) if sek_vals else None,
+        },
+        "long":  long_prices,
+        "short": short_prices,
     }

@@ -24,7 +24,9 @@ from datetime import date, timedelta
 
 from app.config import settings
 from app.db.database import SessionLocal
+from app.services.balancing_service import fetch_and_store_balancing, get_balancing_for_date
 from app.services.entsoe_client import EntsoEError
+from app.services.esett_client import BalancingError
 from app.services.price_service import fetch_and_store, get_prices_for_date
 
 logging.basicConfig(
@@ -98,6 +100,46 @@ def backfill(days: int, area: str = "SE3") -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Balancing (imbalance) price fetch — ENTSO-E A85
+# ---------------------------------------------------------------------------
+
+def fetch_balancing_date(target_date: date, area: str = "SE3") -> dict:
+    """
+    Fetch and store imbalance prices for target_date. Returns a result dict.
+    Imbalance prices are settled continuously; yesterday is always fully available.
+    Today's data is available with a ~1-2 hour lag (partial day during the day).
+    """
+    db = SessionLocal()
+    try:
+        existing = get_balancing_for_date(db, target_date, area)
+        if existing:
+            log.info("SKIP balancing %s — %d rows already in DB", target_date, len(existing))
+            return {"date": target_date.isoformat(), "market": "balancing", "status": "cached", "rows": len(existing)}
+
+        last_error = None
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                rows = fetch_and_store_balancing(db, target_date, area)
+                log.info("OK   balancing %s — %d rows saved (attempt %d)", target_date, len(rows), attempt)
+                return {"date": target_date.isoformat(), "market": "balancing", "status": "ok", "rows": len(rows)}
+            except BalancingError as e:
+                last_error = e
+                if attempt < MAX_RETRIES:
+                    wait = RETRY_BASE_SECONDS * (2 ** (attempt - 1))
+                    log.warning(
+                        "WARN balancing %s — attempt %d/%d: %s. Retry in %ds…",
+                        target_date, attempt, MAX_RETRIES, e, wait,
+                    )
+                    time.sleep(wait)
+                else:
+                    log.error("FAIL balancing %s — all %d attempts failed: %s", target_date, MAX_RETRIES, e)
+
+        return {"date": target_date.isoformat(), "market": "balancing", "status": "error", "error": str(last_error)}
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
 # Lambda handler (EventBridge trigger)
 # ---------------------------------------------------------------------------
 
@@ -128,11 +170,21 @@ def lambda_handler(event: dict, context) -> dict:
             results = fetch_dates([today, tomorrow], area)
         all_results.extend(results)
 
+    # Fetch balancing (imbalance) prices for today and yesterday.
+    # Yesterday is always fully settled; today's data is available with ~1-2h lag.
+    # Skip during backfill runs (balancing history isn't needed for DA backfill ops).
+    is_daily_run = "backfill_days" not in event and "date" not in event
+    if is_daily_run:
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+        for area in areas:
+            for bal_date in [yesterday, today]:
+                bal_result = fetch_balancing_date(bal_date, area)
+                all_results.append(bal_result)
+
     failed = [r for r in all_results if r["status"] == "error"]
 
     # Send push notifications for tomorrow's prices after the daily scheduled run.
-    # Skip on backfill or single-date runs (those are maintenance ops, not daily triggers).
-    is_daily_run = "backfill_days" not in event and "date" not in event
     if is_daily_run:
         _send_notifications(areas)
 

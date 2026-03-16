@@ -6,6 +6,7 @@ import { PriceChart } from './components/PriceChart'
 import { PriceHistory } from './components/PriceHistory'
 import { PriceIndicator } from './components/PriceIndicator'
 import { SolarSimulator } from './components/SolarSimulator'
+import { useBalancing } from './hooks/useBalancing'
 import { useForecast } from './hooks/useForecast'
 import { usePrices } from './hooks/usePrices'
 
@@ -32,6 +33,10 @@ export default function App() {
   const [area, setArea]   = useState('SE3')
   const { data, loading, error } = usePrices(day, area)
   const { data: forecast } = useForecast(day === 'tomorrow' ? tomorrowISO() : null, area)
+  // Balancing prices: try today, fall back to yesterday if not yet published
+  const { data: balancing, dataDate: balancingDate } = useBalancing(
+    day === 'today' ? todayISO() : null, area,
+  )
 
   const areaCity = AREAS.find((a) => a.id === area)?.city ?? area
 
@@ -144,15 +149,26 @@ export default function App() {
                 {/* Price chart */}
                 <div className="bg-gray-900 rounded-2xl p-4">
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-sm font-medium text-gray-300">
-                      Spot price — {data.date} · {data.count} slots
-                    </h2>
+                    <div>
+                      <h2 className="text-sm font-medium text-gray-300">
+                        Spot price — {data.date} · {data.count} slots
+                      </h2>
+                      {day === 'today' && balancing && (
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          + Imbalance prices (ENTSO-E A85) · {balancing.count} pts
+                          {balancingDate && balancingDate !== data.date && (
+                            <span className="text-gray-600 ml-1">· {balancingDate}</span>
+                          )}
+                        </p>
+                      )}
+                    </div>
                     <span className="text-xs text-gray-500">SEK/kWh</span>
                   </div>
                   <PriceChart
                     prices={data.prices}
                     isMock={data.is_mock}
                     forecast={day === 'tomorrow' ? forecast : null}
+                    balancing={day === 'today' ? balancing : null}
                   />
                 </div>
 
