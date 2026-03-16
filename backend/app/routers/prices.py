@@ -367,15 +367,25 @@ def get_balancing_prices(
 
     rows = get_balancing_for_date(db, date, area)
 
-    if not rows:
-        # Try a live fetch (today or yesterday may not be in DB yet)
+    # Re-fetch if no data, or if querying today and data is stale (>30 min).
+    # eSett continuously publishes new 15-min slots with ~5-6h lag, so
+    # cached DB rows for today will be missing the most recent hours.
+    today_utc = datetime.now(tz=timezone.utc).date()
+    needs_fetch = not rows
+    if rows and date == today_utc:
+        latest_ts = max(r.timestamp_utc for r in rows)
+        stale_seconds = (datetime.now(timezone.utc) - latest_ts).total_seconds()
+        needs_fetch = stale_seconds > 30 * 60
+
+    if needs_fetch:
         try:
             rows = fetch_and_store_balancing(db, date, area)
         except BalancingError as exc:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No balancing price data for {date}: {exc}",
-            )
+            if not rows:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No balancing price data for {date}: {exc}",
+                )
 
     long_prices  = []
     short_prices = []

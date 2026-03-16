@@ -49,22 +49,34 @@ def get_today_generation(db: DbDep, area: AreaDep = "SE3"):
     today = datetime.now(tz=timezone.utc).date()
     rows = get_generation_for_date(db, today, area)
 
-    if not rows:
+    # Re-fetch if no data or the latest slot is older than 20 min.
+    # A75 data updates every 15 min with ~15-30 min ENTSO-E lag, so the
+    # "cache forever once in DB" pattern leaves data hours stale.
+    needs_fetch = not rows
+    if rows:
+        latest_ts = max(r.timestamp_utc for r in rows)
+        stale_seconds = (datetime.now(timezone.utc) - latest_ts).total_seconds()
+        needs_fetch = stale_seconds > 20 * 60
+
+    if needs_fetch:
         try:
             rows = fetch_and_store_generation(db, today, area)
         except EntsoEError as exc:
-            # Fallback: try yesterday (data may not be available yet for today)
-            yesterday = today - timedelta(days=1)
-            try:
-                rows = get_generation_for_date(db, yesterday, area)
-                if not rows:
-                    rows = fetch_and_store_generation(db, yesterday, area)
-                today = yesterday  # report the date we actually got data for
-            except EntsoEError:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"No generation data available: {exc}",
-                )
+            if rows:
+                pass  # stale data is better than nothing
+            else:
+                # Fallback: try yesterday (data may not be available yet for today)
+                yesterday = today - timedelta(days=1)
+                try:
+                    rows = get_generation_for_date(db, yesterday, area)
+                    if not rows:
+                        rows = fetch_and_store_generation(db, yesterday, area)
+                    today = yesterday  # report the date we actually got data for
+                except EntsoEError:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"No generation data available: {exc}",
+                    )
 
     summary = build_generation_summary(rows)
     if not summary:
