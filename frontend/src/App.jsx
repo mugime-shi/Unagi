@@ -153,9 +153,12 @@ export default function App() {
                         const tz = d.toLocaleTimeString('en-SE', {
                           timeZone: 'Europe/Stockholm', timeZoneName: 'short',
                         }).split(' ').at(-1)
-                        return `Generation mix · as of ${time} ${tz}`
+                        const ageMin = Math.round((Date.now() - d.getTime()) / 60000)
+                        const lagStr = ageMin < 60
+                          ? `~${ageMin} min lag`
+                          : `~${Math.round(ageMin / 60 * 10) / 10}h lag`
+                        return `Generation mix · as of ${time} ${tz} (${lagStr})`
                       })()}
-                      <span className="ml-1 text-gray-600">(~15 min lag)</span>
                     </p>
                   <div className="flex flex-wrap gap-2 text-xs">
                     <span className="bg-green-900/40 border border-green-700 text-green-300 rounded-full px-3 py-1">
