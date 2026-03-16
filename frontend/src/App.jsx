@@ -155,7 +155,7 @@ export default function App() {
                       </h2>
                       {day === 'today' && balancing && (
                         <p className="text-xs text-gray-500 mt-0.5">
-                          + Imbalance prices (ENTSO-E A85) · {balancing.count} pts
+                          + Imbalance prices (eSett EXP14) · {balancing.count} pts
                           {balancingDate && balancingDate !== data.date && (
                             <span className="text-gray-600 ml-1">· {balancingDate}</span>
                           )}
