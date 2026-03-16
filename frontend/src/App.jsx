@@ -143,6 +143,14 @@ export default function App() {
 
                 {/* Generation mix badge — today only */}
                 {day === 'today' && generation && generation.renewable_pct != null && (
+                  <div className="space-y-1.5">
+                    <p className="text-[11px] text-gray-500">
+                      Generation mix · as of{' '}
+                      {new Date(generation.latest_slot).toLocaleTimeString('sv-SE', {
+                        hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Stockholm',
+                      })} CET
+                      <span className="ml-1 text-gray-600">(~15 min lag)</span>
+                    </p>
                   <div className="flex flex-wrap gap-2 text-xs">
                     <span className="bg-green-900/40 border border-green-700 text-green-300 rounded-full px-3 py-1">
                       Renewable {generation.renewable_pct}%
@@ -165,6 +173,7 @@ export default function App() {
                         Nuclear {Math.round(generation.breakdown.nuclear)} MW
                       </span>
                     )}
+                  </div>
                   </div>
                 )}
 
