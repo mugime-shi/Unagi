@@ -342,6 +342,129 @@ def test_history_cest_bucketing_via_endpoint(client, db):
 
 
 # ---------------------------------------------------------------------------
+# DST transition day tests (spring-forward = 23h day, fall-back = 25h day)
+#
+# Swedish DST 2025:
+#   Spring forward: 2025-03-30  (last Sunday in March)  — 01:00 UTC → 02:00 CET becomes 03:00 CEST
+#   Fall back:      2025-10-26  (last Sunday in October) — 01:00 UTC → 03:00 CEST becomes 02:00 CET
+# ---------------------------------------------------------------------------
+
+def test_dst_spring_forward_skips_nonexistent_hour():
+    """
+    On 2025-03-30, 02:00 CET does not exist (clocks jump to 03:00 CEST at 01:00 UTC).
+    ZoneInfo must map 01:00 UTC → 03:00 CEST, still attributing the slot to Mar 30.
+    The day boundary (00:00 CEST Mar 31) falls at 22:00 UTC, not 23:00 UTC.
+    """
+    from app.routers.prices import _to_stockholm_date
+
+    # One second before the jump: 00:59 UTC = 01:59 CET → still March 30
+    assert _to_stockholm_date(datetime(2025, 3, 30, 0, 59, tzinfo=timezone.utc)) == date(2025, 3, 30)
+    # At the jump: 01:00 UTC = non-existent 02:00 CET → ZoneInfo maps to 03:00 CEST → still March 30
+    assert _to_stockholm_date(datetime(2025, 3, 30, 1, 0, tzinfo=timezone.utc)) == date(2025, 3, 30)
+    # End of spring-forward day: 21:59 UTC = 23:59 CEST → still March 30
+    assert _to_stockholm_date(datetime(2025, 3, 30, 21, 59, tzinfo=timezone.utc)) == date(2025, 3, 30)
+    # Start of next day: 22:00 UTC = 00:00 CEST Mar 31 → March 31
+    assert _to_stockholm_date(datetime(2025, 3, 30, 22, 0, tzinfo=timezone.utc)) == date(2025, 3, 31)
+
+
+def test_dst_fall_back_repeated_hour():
+    """
+    On 2025-10-26, 02:00 CET occurs twice (clocks go back at 01:00 UTC).
+    Both instances (before and after the fall-back) must attribute to Oct 26.
+    The day is 25 hours long: it starts at 22:00 UTC Oct 25 (CEST midnight) and
+    ends at 23:00 UTC Oct 26 (CET midnight of Oct 27).
+    """
+    from app.routers.prices import _to_stockholm_date
+
+    # 01:00 UTC Oct 25 is the day before (22:00 UTC Oct 24 = 00:00 CEST Oct 25)
+    # Start of fall-back day: 22:00 UTC Oct 25 = 00:00 CEST Oct 26
+    assert _to_stockholm_date(datetime(2025, 10, 25, 22, 0, tzinfo=timezone.utc)) == date(2025, 10, 26)
+    # One second before the fall-back: 00:59 UTC Oct 26 = 02:59 CEST → still Oct 26
+    assert _to_stockholm_date(datetime(2025, 10, 26, 0, 59, tzinfo=timezone.utc)) == date(2025, 10, 26)
+    # At the fall-back: 01:00 UTC Oct 26 = 02:00 CET (repeated hour) → still Oct 26
+    assert _to_stockholm_date(datetime(2025, 10, 26, 1, 0, tzinfo=timezone.utc)) == date(2025, 10, 26)
+    # End of fall-back day: 22:59 UTC Oct 26 = 23:59 CET → still Oct 26
+    assert _to_stockholm_date(datetime(2025, 10, 26, 22, 59, tzinfo=timezone.utc)) == date(2025, 10, 26)
+    # Start of next day: 23:00 UTC Oct 26 = 00:00 CET Oct 27 → Oct 27
+    assert _to_stockholm_date(datetime(2025, 10, 26, 23, 0, tzinfo=timezone.utc)) == date(2025, 10, 27)
+
+
+def test_dst_spring_forward_day_has_23_hourly_slots(client, db):
+    """
+    Inserting 24 hourly slots starting at 23:00 UTC Mar 29 (= 00:00 CET Mar 30):
+      - Slots 0–22 (23:00 UTC Mar 29 → 21:00 UTC Mar 30) all fall on Mar 30 in CEST
+      - Slot 23 (22:00 UTC Mar 30 = 00:00 CEST Mar 31) falls on Mar 31
+    Spring-forward day therefore has exactly 23 slots.
+    """
+    from datetime import timedelta
+
+    base = datetime(2025, 3, 29, 23, 0, tzinfo=timezone.utc)  # midnight CET Mar 30
+    points = [
+        PricePoint(
+            timestamp_utc=base + timedelta(hours=h),
+            price_eur_mwh=50.0,
+            price_sek_kwh=0.55,
+            resolution="PT60M",
+        )
+        for h in range(24)
+    ]
+    upsert_prices(db, points)
+
+    response = client.get("/api/v1/prices/history?days=365")
+    assert response.status_code == 200
+    by_date = {
+        d["date"]: d
+        for d in response.json()["daily"]
+        if d.get("avg_sek_kwh") is not None
+    }
+
+    # Spring-forward day: only 23 of the 24 slots fall on Mar 30
+    assert "2025-03-30" in by_date, "Spring-forward day must appear in history"
+    # The 24th slot (22:00 UTC = 00:00 CEST) crosses into Mar 31
+    assert "2025-03-31" in by_date, "Slot at 22:00 UTC must bucket to next day"
+    # Verify the price split: Mar 30 avg ≈ 0.55, Mar 31 avg ≈ 0.55 (same price — we're checking buckets, not values)
+    assert abs(by_date["2025-03-30"]["avg_sek_kwh"] - 0.55) < 0.01
+    assert abs(by_date["2025-03-31"]["avg_sek_kwh"] - 0.55) < 0.01
+
+
+def test_dst_fall_back_day_has_25_hourly_slots(client, db):
+    """
+    Inserting 26 hourly slots starting at 22:00 UTC Oct 25 (= 00:00 CEST Oct 26):
+      - Slots 0–24 (22:00 UTC Oct 25 → 22:00 UTC Oct 26) all fall on Oct 26
+        (the extra hour from the fall-back means 25 slots instead of 24)
+      - Slot 25 (23:00 UTC Oct 26 = 00:00 CET Oct 27) falls on Oct 27
+    Fall-back day therefore has exactly 25 slots.
+    """
+    from datetime import timedelta
+
+    base = datetime(2025, 10, 25, 22, 0, tzinfo=timezone.utc)  # midnight CEST Oct 26
+    points = [
+        PricePoint(
+            timestamp_utc=base + timedelta(hours=h),
+            price_eur_mwh=50.0,
+            price_sek_kwh=0.55,
+            resolution="PT60M",
+        )
+        for h in range(26)
+    ]
+    upsert_prices(db, points)
+
+    response = client.get("/api/v1/prices/history?days=365")
+    assert response.status_code == 200
+    by_date = {
+        d["date"]: d
+        for d in response.json()["daily"]
+        if d.get("avg_sek_kwh") is not None
+    }
+
+    # Fall-back day: 25 of the 26 slots fall on Oct 26 (23:00 UTC = midnight CET → Oct 27)
+    assert "2025-10-26" in by_date, "Fall-back day must appear in history"
+    assert "2025-10-27" in by_date, "Slot at 23:00 UTC must bucket to next day"
+    assert abs(by_date["2025-10-26"]["avg_sek_kwh"] - 0.55) < 0.01
+    assert abs(by_date["2025-10-27"]["avg_sek_kwh"] - 0.55) < 0.01
+
+
+# ---------------------------------------------------------------------------
 # /multi-zone tests
 # ---------------------------------------------------------------------------
 

@@ -187,3 +187,63 @@ def test_get_weather_for_date_range_calls_filter():
     result = get_weather_for_date_range(mock_db, start, end)
     assert result == []
     mock_db.query.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _fetch_parameter — HTTP level (mock httpx.get directly)
+# ---------------------------------------------------------------------------
+
+def test_fetch_parameter_returns_value_list():
+    """Successful HTTP response → parsed value list returned."""
+    from app.services.smhi_client import _fetch_parameter
+
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status.return_value = None
+    mock_resp.json.return_value = {
+        "value": [
+            {"date": 1_741_600_000_000, "value": "250.0", "quality": "G"},
+            {"date": 1_741_603_600_000, "value": "310.0", "quality": "G"},
+        ]
+    }
+
+    with patch("app.services.smhi_client.httpx.get", return_value=mock_resp):
+        result = _fetch_parameter(station=71415, parameter=11)
+
+    assert len(result) == 2
+    assert result[0]["value"] == "250.0"
+
+
+def test_fetch_parameter_http_status_error_raises():
+    """
+    Non-200 response (raise_for_status raises HTTPStatusError) → SMHIError.
+    Verifies that the HTTP-level error is caught and re-raised with context.
+    """
+    import httpx as _httpx
+    from app.services.smhi_client import SMHIError, _fetch_parameter
+
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status.side_effect = _httpx.HTTPStatusError(
+        "404 Not Found",
+        request=MagicMock(),
+        response=MagicMock(),
+    )
+
+    with patch("app.services.smhi_client.httpx.get", return_value=mock_resp):
+        with pytest.raises(SMHIError, match="SMHI request failed"):
+            _fetch_parameter(station=71415, parameter=11)
+
+
+def test_fetch_parameter_network_error_raises():
+    """
+    httpx.HTTPError (e.g. timeout, DNS failure) → SMHIError.
+    Verifies that network-level failures are wrapped, not propagated raw.
+    """
+    import httpx as _httpx
+    from app.services.smhi_client import SMHIError, _fetch_parameter
+
+    with patch(
+        "app.services.smhi_client.httpx.get",
+        side_effect=_httpx.HTTPError("connection timed out"),
+    ):
+        with pytest.raises(SMHIError, match="SMHI request failed"):
+            _fetch_parameter(station=71415, parameter=11)
