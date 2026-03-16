@@ -20,6 +20,7 @@ from app.services.entsoe_client import (
     GenerationPoint,
     PSR_GROUP,
     RENEWABLE_PSR,
+    _AREA_TO_EIC,
     fetch_generation_mix,
 )
 
@@ -174,9 +175,10 @@ def fetch_and_store_generation(
     Pull A75 generation mix from ENTSO-E and persist. Returns stored rows.
     Raises EntsoEError if the API call or parse fails.
     """
+    eic_code = _AREA_TO_EIC.get(area, area)
     points = fetch_generation_mix(
         target_date=target_date,
-        area=area,
+        area=eic_code,
         api_key=settings.entsoe_api_key,
     )
     upsert_generation(db, points, area=area)

@@ -477,6 +477,53 @@ imblSalesPrice           = Nordic SIB（2022年〜）の単一インバランス
 
 ---
 
+## Phase 9: 発電ミックス表示（再エネ比率）
+
+**目的**: ENTSO-E A75（発電種別実績）を取得し「今の電力の再エネ比率」を可視化。
+価格だけでなく "グリーン度" も提供することで差別化ポイントを追加する。
+
+**データソース**: ENTSO-E Transparency Platform（既存 API キー流用）
+- Document Type A75: Actual Generation Per Production Type
+- ~15-30分遅延。風力・太陽光・水力・原子力などの種別ごとの実発電量
+
+### 9.1 P9-1: ENTSO-E A75 疎通確認（工数: 小）✓
+
+- [x] ENTSO-E A75 で SE3 の発電ミックスが取得できるか確認
+  - SE3 で取得できる psr_type: B04(Gas), B12(Hydro), B14(Nuclear), B16(Solar), B19(Wind), B20(Other)
+  - B12(Hydro ~1500MW) が主力。北部風力は SE3 には少ない
+- [x] `entsoe_client.py` に `fetch_generation_mix()` 追加
+  - NS_GEN 名前空間、ステップ関数エンコーディングを展開して完全な15分スロットに変換
+  - PSR_GROUP マッピング、RENEWABLE_PSR セット定義
+- [x] DB: `generation_mix` テーブル新規作成（Alembic migration: e2f3a4b5c6d7）
+  - UNIQUE(area, timestamp_utc, psr_type)、UPSERT対応
+
+### 9.2 P9-2: バックエンド実装（工数: 中）✓
+
+- [x] `generation_service.py` 新規作成
+  - upsert_generation / get_generation_for_date / build_generation_summary
+  - renewable_pct (hydro+wind+solar)、carbon_free_pct (+nuclear)
+  - 時間別 time_series（将来のチャート用）
+- [x] `routers/generation.py`: `GET /api/v1/generation/today` + `/date`
+  - 今日データなし → live fetch → fallback to yesterday
+- [x] `main.py` にルーター追加
+
+### 9.3 P9-3: フロントエンド表示（工数: 中）✓
+
+- [x] `useGeneration.js` hook 追加
+- [x] 再エネ・カーボンフリー・Hydro/Wind/Nuclear バッジを PriceIndicator 下に表示
+- [ ] 任意: 発電ミックス積み上げグラフ（stacked area chart）— 未実装
+
+**完了条件** ✓
+- [x] 今日の再エネ比率（%）が UI に表示される
+- [x] データは ENTSO-E A75 から ~15-30分遅延で取得（オンデマンド live fetch）
+
+**実装メモ**:
+- SE3 は水力（B12 ~1500MW）が圧倒的主力。Renewable % は高め
+- 北部風力(SE1/SE2)からの輸入分は A75 に含まれない → SE3 表示値は実消費グリーン度より低い可能性
+- Lambda スケジューラーへの A75 組み込みは未実施（オンデマンドフェッチで充足）
+
+---
+
 ## Claude Code セッションの進め方
 
 ### 各セッション開始時に渡すもの

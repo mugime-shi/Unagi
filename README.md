@@ -99,8 +99,7 @@ docker compose exec api python -m app.tasks.fetch_prices --backfill 30
 
 ## API
 
-The backend is a standard FastAPI app. Interactive docs available at:
-`https://5ouka6u81a.execute-api.eu-north-1.amazonaws.com/docs`
+The backend is a standard FastAPI app (Swagger UI is disabled in production).
 
 Key endpoints:
 

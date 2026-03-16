@@ -18,6 +18,14 @@ from app.config import settings
 ENTSOE_BASE = "https://web-api.tp.entsoe.eu/api"
 SE3_AREA = "10Y1001A1001A46L"
 
+# Friendly name → EIC code (bidding zone domain)
+_AREA_TO_EIC: dict[str, str] = {
+    "SE1": "10Y1001A1001A44P",
+    "SE2": "10Y1001A1001A45N",
+    "SE3": "10Y1001A1001A46L",
+    "SE4": "10Y1001A1001A47J",
+}
+
 # XML namespace for A44 price documents
 NS = {"ns": "urn:iec62325.351:tc57wg16:451-3:publicationdocument:7:3"}
 

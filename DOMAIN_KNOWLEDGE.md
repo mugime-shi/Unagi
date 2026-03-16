@@ -451,6 +451,85 @@ def compare_tax_credit_impact(
 - EU指令でエネルギーシェアリングが認められれば、この差を縮める可能性がある
 - スウェーデンではまだ法整備が追いついていない（2025年時点）
 
+### 5.5 電力市場の価格透明性 — 誰が何を見えるか
+
+電力市場は「層ごと」に価格の見え方がまったく異なる。混乱しやすい重要な区別。
+
+#### イントラデイ市場（XBID）— 株式市場に近い
+
+```
+Nord Pool Intraday / XBID（Cross-Border Intraday）
+→ Day-ahead確定後〜配送1時間前まで、連続取引
+→ 注文板（買い板・売り板）がリアルタイムに存在
+→ マッチングで価格が決まる（株式と同じメカニズム）
+→ 【制約】板情報にアクセスできるのはBRP・ライセンス取得済み参加者のみ
+→ 【公開】取引終了後の約定価格はNord Poolが遅延公開
+```
+
+つまりイントラデイ価格は「リアルタイムで見えるが、見えるのは市場参加者だけ」。
+
+#### バランシング市場 — 行政命令＋事後精算
+
+```
+SVKが「今、電気が足りない → 火力発電所A、出力上げろ」と命令
+→ 発電所Aが事前入札した価格で約定
+→ eSett が15分間の精算価格を算出・公開（~5〜6時間後）
+```
+
+注文板は存在しない。SVKの内部判断であり、価格は事後にしか確定しない。
+
+#### 小規模発電者（家庭用太陽光）が見えるもの
+
+| 情報 | いつわかるか | ソース |
+|------|------------|--------|
+| 明日の24時間スポット価格 | 前日13:00 CET以降 | Tibber API / ENTSO-E |
+| 今日の現在時刻スポット価格 | 前日に確定済み（リアルタイム更新ではない） | Tibber API |
+| イントラデイ板情報 | 原則不可（BRP専用） | Nord Pool会員のみ |
+| 自分が今売るといくらか | 前日確定のスポット価格で計算可 | Tibber/Greenely アプリ |
+| バランシング価格 | ~5〜6時間後（eSett） | eSett EXP14 / Namazu |
+
+#### Tibber API が公開しているもの
+
+TibberはGraphQL APIで顧客向けに当日スポット価格を提供している：
+
+```graphql
+query {
+  viewer {
+    homes {
+      currentSubscription {
+        priceInfo {
+          current { total startsAt }  # 今の時間帯の価格
+          today { total startsAt }    # 今日の24時間分
+          tomorrow { total startsAt } # 翌日分（13:00 CET以降）
+        }
+      }
+    }
+  }
+}
+```
+
+これはDay-aheadスポット価格（前日確定済み）をユーザーに見やすく提供しているだけ。
+イントラデイやバランシングのリアルタイム価格ではない。
+
+#### なぜ小規模発電者はイントラデイ価格を活用できないか（構造的制約）
+
+| 障壁 | 内容 |
+|------|------|
+| 計量インフラ | スマートメーターでも15分〜1時間単位の計量が上限 |
+| 精算サイクル | ネット会社・eSett の精算処理が日次〜月次 |
+| 制御の自由度 | 太陽光パネルは「今発電するな」と制御できない |
+| 規制 | 100kW未満は簡易精算が義務付け（リアルタイム精算は義務なし） |
+
+#### VPPが本当に価値を出す場面
+
+制御可能なリソース（蓄電池・EV・ヒートポンプ）を持つ場合：
+
+- **Tibber Grid Rewards / Flower（スウェーデン VPP）**: 家庭用蓄電池をFCR/mFRR市場に参加させ収益を分配
+- **モデルの違い**: 「今この価格で売れる」ではなく「予備力として待機する対価をもらう」
+- **情報の非対称性を解消**する方向のサービスが今後の競争軸
+
+**結論**: 小規模発電者が"リアルタイム価格"を活かして行動最適化するには、まず計量・精算インフラの整備が前提。電力市場のデジタル化はまだ発展途上（2025年時点）。
+
 ---
 
 ## 6. 面接で使えるドメイン知識のQ&A
@@ -488,6 +567,16 @@ The key advantage is data freshness: eSett EXP14 lags about 5–6 hours behind r
 I also tried SVK Mimer — SVK's own statistics portal — but found it only covers reserve products (FCR, mFRR, aFRR) and doesn't expose the imbalance settlement prices via its public API.
 
 As for intraday (IDA): ENTSO-E's processType=A47 returns identical data to day-ahead for SE3. Nordic intraday trading happens via XBID continuous market, and XBID clearing prices aren't published through ENTSO-E's public REST API. So balancing prices are both the available and the more informative option."
+
+### Q: "Can a prosumer see real-time electricity prices to decide when to sell?"
+
+A: "It depends on which layer of the market you mean. The day-ahead spot price is determined by Nord Pool the afternoon before and is fully public — Tibber's API exposes it, and that's what most prosumers act on. So for a fixed generation source like rooftop solar, you do know the price 12–24 hours ahead, which is sufficient for most decisions.
+
+The intraday market (XBID) does operate like a stock exchange with a live order book — bids and asks, continuous matching — but order book access is restricted to licensed BRPs. The cleared prices are published by Nord Pool with a delay, after trading closes for each window.
+
+Balancing prices are different in nature: they're not an order book at all. SVK issues activation commands to regulation providers, and the settlement price is only calculated and published by eSett about 5–6 hours after the fact. So you can never see 'current balancing price' in real time.
+
+In practice, small prosumers can't leverage intraday prices anyway — their metering, settlement cycles, and lack of flexible generation make it structurally impossible. Where VPPs add value is for controllable assets like batteries or EVs: Tibber Grid Rewards, for instance, aggregates home batteries and participates in FCR/mFRR reserve markets on behalf of households."
 
 ### Q: "What's the difference between upRegPrice and downRegPrice in your chart?"
 
