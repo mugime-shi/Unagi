@@ -8,6 +8,7 @@ import { PriceIndicator } from './components/PriceIndicator'
 import { SolarSimulator } from './components/SolarSimulator'
 import { useBalancing } from './hooks/useBalancing'
 import { useForecast } from './hooks/useForecast'
+import { useGeneration } from './hooks/useGeneration'
 import { usePrices } from './hooks/usePrices'
 
 const AREAS = [
@@ -37,6 +38,7 @@ export default function App() {
   const { data: balancing, dataDate: balancingDate } = useBalancing(
     day === 'today' ? todayISO() : null, area,
   )
+  const { data: generation } = useGeneration(area)
 
   const areaCity = AREAS.find((a) => a.id === area)?.city ?? area
 
@@ -138,6 +140,33 @@ export default function App() {
             {data && (
               <>
                 {day === 'today' && <PriceIndicator prices={data.prices} />}
+
+                {/* Generation mix badge — today only */}
+                {day === 'today' && generation && generation.renewable_pct != null && (
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <span className="bg-green-900/40 border border-green-700 text-green-300 rounded-full px-3 py-1">
+                      Renewable {generation.renewable_pct}%
+                    </span>
+                    <span className="bg-gray-800 border border-gray-700 text-gray-400 rounded-full px-3 py-1">
+                      Carbon-free {generation.carbon_free_pct}%
+                    </span>
+                    {generation.breakdown?.hydro != null && (
+                      <span className="bg-blue-900/30 border border-blue-800 text-blue-400 rounded-full px-3 py-1">
+                        Hydro {Math.round(generation.breakdown.hydro)} MW
+                      </span>
+                    )}
+                    {generation.breakdown?.wind != null && (
+                      <span className="bg-cyan-900/30 border border-cyan-800 text-cyan-400 rounded-full px-3 py-1">
+                        Wind {Math.round(generation.breakdown.wind)} MW
+                      </span>
+                    )}
+                    {generation.breakdown?.nuclear != null && (
+                      <span className="bg-yellow-900/30 border border-yellow-800 text-yellow-500 rounded-full px-3 py-1">
+                        Nuclear {Math.round(generation.breakdown.nuclear)} MW
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {/* Tomorrow not published yet */}
                 {day === 'tomorrow' && data.is_mock && data.published === false && (

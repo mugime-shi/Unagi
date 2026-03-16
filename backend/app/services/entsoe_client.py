@@ -1,7 +1,8 @@
 """
 ENTSO-E Transparency Platform client.
 
-Fetches SE3 day-ahead spot prices (document type A44).
+Fetches SE3 day-ahead spot prices (document type A44) and
+actual generation per production type (document type A75).
 API docs: https://transparency.entsoe.eu/content/static_content/Static%20content/web%20api/Guide.html
 """
 
@@ -17,8 +18,27 @@ from app.config import settings
 ENTSOE_BASE = "https://web-api.tp.entsoe.eu/api"
 SE3_AREA = "10Y1001A1001A46L"
 
-# XML namespace used in ENTSO-E GL_MarketDocument responses
+# XML namespace for A44 price documents
 NS = {"ns": "urn:iec62325.351:tc57wg16:451-3:publicationdocument:7:3"}
+
+# XML namespace for A75 generation documents
+NS_GEN = {"ns": "urn:iec62325.351:tc57wg16:451-6:generationloaddocument:3:0"}
+
+# PSR type → human-readable group (ENTSO-E codes)
+PSR_GROUP: dict[str, str] = {
+    "B04": "fossil",   # Fossil Gas
+    "B05": "fossil",   # Fossil Hard coal
+    "B06": "fossil",   # Fossil Oil
+    "B11": "hydro",    # Hydro Run-of-river
+    "B12": "hydro",    # Hydro Water Reservoir
+    "B14": "nuclear",  # Nuclear
+    "B16": "solar",    # Solar
+    "B17": "other",    # Waste
+    "B18": "wind",     # Wind Offshore
+    "B19": "wind",     # Wind Onshore
+    "B20": "other",    # Other
+}
+RENEWABLE_PSR = {"B11", "B12", "B16", "B18", "B19"}
 
 
 @dataclass
@@ -172,6 +192,147 @@ def fetch_day_ahead_prices(
         raise EntsoEError(
             f"No price data found for {target_date} in SE3. "
             "Tomorrow's prices are published after ~13:00 CET."
+        )
+
+    return filtered
+
+
+# ---------------------------------------------------------------------------
+# A75: Actual Generation Per Production Type
+# ---------------------------------------------------------------------------
+
+@dataclass
+class GenerationPoint:
+    timestamp_utc: datetime
+    psr_type: str       # e.g. "B12" (Hydro), "B14" (Nuclear), "B16" (Solar)
+    value_mw: float
+    resolution: str     # "PT15M"
+
+
+def _parse_generation_xml(xml_text: str) -> list[GenerationPoint]:
+    """
+    Parse ENTSO-E A75 GL_MarketDocument XML into GenerationPoint list.
+
+    ENTSO-E uses step-function encoding: only positions where the value
+    changes are listed. Intermediate slots carry the previous value forward.
+    This function expands the step function into one row per 15-min slot.
+    """
+    root = ET.fromstring(xml_text)
+
+    reason = root.find(".//ns:Reason/ns:code", NS_GEN)
+    if reason is not None and reason.text != "999":
+        text_el = root.find(".//ns:Reason/ns:text", NS_GEN)
+        raise EntsoEError(
+            f"ENTSO-E A75 error {reason.text}: {text_el.text if text_el is not None else ''}"
+        )
+
+    points: list[GenerationPoint] = []
+
+    for ts in root.findall(".//ns:TimeSeries", NS_GEN):
+        psr_el = ts.find("ns:MktPSRType/ns:psrType", NS_GEN)
+        if psr_el is None:
+            continue
+        psr_type = psr_el.text
+
+        period = ts.find("ns:Period", NS_GEN)
+        if period is None:
+            continue
+
+        start_el = period.find("ns:timeInterval/ns:start", NS_GEN)
+        end_el   = period.find("ns:timeInterval/ns:end",   NS_GEN)
+        res_el   = period.find("ns:resolution", NS_GEN)
+        if start_el is None or res_el is None:
+            continue
+
+        period_start = datetime.fromisoformat(start_el.text.replace("Z", "+00:00"))
+        slot_duration = _parse_resolution(res_el.text)
+        resolution_str = res_el.text
+
+        # Compute total slots in this period (needed for last step-function block)
+        if end_el is not None:
+            period_end_ts = datetime.fromisoformat(end_el.text.replace("Z", "+00:00"))
+            total_slots = int((period_end_ts - period_start) / slot_duration)
+        else:
+            total_slots = 0
+
+        # Collect explicitly listed (position, quantity) pairs
+        raw: list[tuple[int, float]] = []
+        for point_el in period.findall("ns:Point", NS_GEN):
+            pos_el = point_el.find("ns:position", NS_GEN)
+            qty_el = point_el.find("ns:quantity",  NS_GEN)
+            if pos_el is None or qty_el is None:
+                continue
+            raw.append((int(pos_el.text), float(qty_el.text)))
+
+        # Expand step function: each listed position applies until the next
+        for i, (pos, qty) in enumerate(raw):
+            next_pos = raw[i + 1][0] if i + 1 < len(raw) else total_slots + 1
+            for slot in range(pos, next_pos):
+                timestamp = period_start + slot_duration * (slot - 1)  # 1-based → offset
+                points.append(GenerationPoint(
+                    timestamp_utc=timestamp,
+                    psr_type=psr_type,
+                    value_mw=qty,
+                    resolution=resolution_str,
+                ))
+
+    return sorted(points, key=lambda p: (p.timestamp_utc, p.psr_type))
+
+
+def fetch_generation_mix(
+    target_date: date,
+    area: str = SE3_AREA,
+    api_key: Optional[str] = None,
+) -> list[GenerationPoint]:
+    """
+    Fetch actual generation per production type (A75/A16) for target_date.
+
+    Returns GenerationPoint list (one row per psr_type per 15-min slot)
+    filtered to the CET calendar day, sorted by (timestamp_utc, psr_type).
+    Raises EntsoEError on failure.
+    """
+    key = api_key or settings.entsoe_api_key
+    if not key:
+        raise EntsoEError("ENTSOE_API_KEY is not set. Add it to backend/.env")
+
+    period_start = target_date - timedelta(days=1)
+    period_end   = target_date + timedelta(days=1)
+
+    params = {
+        "securityToken": key,
+        "documentType":  "A75",
+        "processType":   "A16",
+        "in_Domain":     area,
+        "periodStart":   _period_param(period_start),
+        "periodEnd":     _period_param(period_end),
+    }
+
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            response = client.get(ENTSOE_BASE, params=params)
+    except httpx.RequestError as exc:
+        raise EntsoEError(f"Network error contacting ENTSO-E: {exc}") from exc
+
+    if response.status_code != 200:
+        raise EntsoEError(
+            f"ENTSO-E A75 returned HTTP {response.status_code}: {response.text[:200]}"
+        )
+
+    all_points = _parse_generation_xml(response.text)
+
+    # Filter to CET calendar day (same window as day-ahead prices)
+    day_start_utc = (
+        datetime(target_date.year, target_date.month, target_date.day, tzinfo=timezone.utc)
+        - timedelta(hours=1)
+    )
+    day_end_utc = day_start_utc + timedelta(hours=24)
+
+    filtered = [p for p in all_points if day_start_utc <= p.timestamp_utc < day_end_utc]
+
+    if not filtered:
+        raise EntsoEError(
+            f"No generation data found for {target_date} in {area}. "
+            "A75 data lags ~15-30 min behind real time."
         )
 
     return filtered
