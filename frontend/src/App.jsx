@@ -145,10 +145,16 @@ export default function App() {
                 {day === 'today' && generation && generation.renewable_pct != null && (
                   <div className="space-y-1.5">
                     <p className="text-[11px] text-gray-500">
-                      Generation mix · as of{' '}
-                      {new Date(generation.latest_slot).toLocaleTimeString('sv-SE', {
-                        hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Stockholm',
-                      })} CET
+                      {(() => {
+                        const d = new Date(generation.latest_slot)
+                        const time = d.toLocaleTimeString('sv-SE', {
+                          hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Stockholm',
+                        })
+                        const tz = d.toLocaleTimeString('en-SE', {
+                          timeZone: 'Europe/Stockholm', timeZoneName: 'short',
+                        }).split(' ').at(-1)
+                        return `Generation mix · as of ${time} ${tz}`
+                      })()}
                       <span className="ml-1 text-gray-600">(~15 min lag)</span>
                     </p>
                   <div className="flex flex-wrap gap-2 text-xs">

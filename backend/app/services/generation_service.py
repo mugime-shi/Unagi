@@ -152,8 +152,15 @@ def build_generation_summary(rows: list[GenerationMix]) -> dict:
             **hour_totals,
         })
 
+    # Ensure timezone-aware ISO string so JavaScript parses as UTC, not local time.
+    # psycopg2 may return naive datetimes for TIMESTAMPTZ depending on driver config.
+    def _utc_iso(dt: datetime) -> str:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.isoformat()
+
     return {
-        "latest_slot":      latest_ts.isoformat(),
+        "latest_slot":      _utc_iso(latest_ts),
         "total_mw":         round(total_mw, 1),
         "renewable_pct":    renewable_pct,
         "carbon_free_pct":  carbon_free_pct,
