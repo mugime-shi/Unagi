@@ -41,7 +41,15 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           ENTSOE_API_KEY: ${{ secrets.ENTSOE_API_KEY }}
 
-      # ── 2. AWS auth ───────────────────────────────────────────────────
+      # ── 2. DB migration (Supabase) ────────────────────────────────────
+      # Runs before image push so the schema is ready when the new Lambda starts.
+      # alembic is idempotent — safe to run on every deploy.
+      - name: Run database migrations
+        run: cd backend && alembic upgrade head
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # ── 3. AWS auth ───────────────────────────────────────────────────
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -62,7 +70,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # ── 3. Build & push (arm64 = Lambda architecture) ─────────────────
+      # ── 4. Build & push (arm64 = Lambda architecture) ─────────────────
       - name: Set image tag
         id: tag
         run: echo "sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
@@ -91,7 +99,7 @@ jobs:
             ${{ env.ECR_REGISTRY }}/namazu-scheduler:${{ steps.tag.outputs.sha }}
             ${{ env.ECR_REGISTRY }}/namazu-scheduler:latest
 
-      # ── 4. Update Lambda functions ────────────────────────────────────
+      # ── 5. Update Lambda functions ────────────────────────────────────
       - name: "Update Lambda: API"
         run: |
           aws lambda update-function-code \
@@ -104,7 +112,7 @@ jobs:
             --function-name namazu-scheduler \
             --image-uri ${{ env.ECR_REGISTRY }}/namazu-scheduler:${{ steps.tag.outputs.sha }}
 
-      # ── 5. Smoke test ─────────────────────────────────────────────────
+      # ── 6. Smoke test ─────────────────────────────────────────────────
       - name: Wait for Lambda update
         run: |
           aws lambda wait function-updated --function-name namazu-api

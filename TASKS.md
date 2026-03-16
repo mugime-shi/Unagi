@@ -224,9 +224,12 @@
 - Supabase DBパスワード: 記号なし（URLエンコード不要）に変更済み
 
 ### 4.3 GitHub Actions ✓
-- [x] `.github/workflows/deploy.yml`: main push時に pytest → ECR push → Lambda update → smoke test
+- [x] `.github/workflows/deploy.yml`: main push時に pytest → **alembic migrate** → ECR push → Lambda update → smoke test
 - [x] GitHub Secrets 設定: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `DATABASE_URL`, `ENTSOE_API_KEY`
 - [x] push → Actions成功（2m27s）→ `/health` 200 確認
+- [x] **Migration自動化**: `deploy.yml` に `cd backend && alembic upgrade head` ステップを追加（step 2）
+  - テスト後・ECR push 前に実行 → 新Lambdaが起動した時点でスキーマが確定している
+  - alembic はべき等（同じ migration を2回適用しても安全）
 
 **完了条件**: 達成 ✓
 **Note**:
@@ -234,6 +237,7 @@
 - YAML構文: ステップ名に `:` を含む場合はクォート必須
 - `docker/build-push-action` は `provenance: false` 必須（デフォルトのOCI image indexはLambda非対応）
 - arm64クロスビルドには `docker/setup-qemu-action` + `docker/setup-buildx-action` が必要
+- **ローカル migration**: `Dockerfile dev` ターゲットが起動時に `alembic upgrade head` を自動実行（`alembic.ini` をコンテナにコピー済み）。`docker compose up` するだけでローカル DB も常に最新スキーマになる
 
 ### 4.4 Vercel デプロイ ✓
 - [x] Vercel にフロントエンドをデプロイ（`namazu-el.vercel.app`）
@@ -511,15 +515,30 @@ imblSalesPrice           = Nordic SIB（2022年〜）の単一インバランス
 
 - [x] `useGeneration.js` hook 追加
 - [x] 再エネ・カーボンフリー・Hydro/Wind/Nuclear バッジを PriceIndicator 下に表示
+- [x] バッジ上に「Generation mix · as of HH:MM CET/CEST（実際のラグ時間）」を表示
+  - CET/CEST を Intl API で動的取得（夏時間対応）
+  - ラグ時間も実測値を動的表示（固定 "~15 min lag" ではなく実際の分/時間）
 - [ ] 任意: 発電ミックス積み上げグラフ（stacked area chart）— 未実装
+
+### 9.4 P9-4: バグ修正（工数: 小）✓
+
+- [x] **EIC コードバグ修正**: `generation_service.py` が "SE3" をそのまま ENTSO-E `in_Domain` に渡していた
+  - 修正: `_AREA_TO_EIC.get(area, area)` で EIC コード（"10Y1001A1001A46L"）に変換
+- [x] **データ鮮度バグ修正**: DB にデータが1行でもあると永久にキャッシュされる問題
+  - 修正: `latest_slot` の age が 20分超なら ENTSO-E に再 fetch（generation）
+  - 修正: `latest_slot` の age が 30分超かつ today なら eSett に再 fetch（balancing）
+- [x] **UTC タイムゾーンバグ修正**: DB から返る naive datetime を JS が localtime として解釈し1時間ずれる
+  - 修正: `build_generation_summary()` で naive datetime に `+00:00` を付与してから JSON に出力
 
 **完了条件** ✓
 - [x] 今日の再エネ比率（%）が UI に表示される
-- [x] データは ENTSO-E A75 から ~15-30分遅延で取得（オンデマンド live fetch）
+- [x] データは ENTSO-E A75 から最新スロットを取得（ページアクセス時に 20分超なら自動再 fetch）
+- [x] タイムスタンプが Stockholm 時刻で正確に表示される
 
 **実装メモ**:
 - SE3 は水力（B12 ~1500MW）が圧倒的主力。Renewable % は高め
 - 北部風力(SE1/SE2)からの輸入分は A75 に含まれない → SE3 表示値は実消費グリーン度より低い可能性
+- ENTSO-E A75 のラグは ~15-30分と文書化されているが、実測では 1-2時間になることがある（SE3 固有の遅延？）
 - Lambda スケジューラーへの A75 組み込みは未実施（オンデマンドフェッチで充足）
 
 ---
