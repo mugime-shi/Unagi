@@ -582,52 +582,58 @@ imblSalesPrice           = Nordic SIB（2022年〜）の単一インバランス
 
 ### 11.1 バックテスト基盤（工数: 小）
 
-- [ ] `models/forecast_accuracy.py`: `forecast_accuracy` テーブル
-  - カラム: date, area, model_name, hour, predicted_sek_kwh, actual_sek_kwh, created_at
-  - UNIQUE(date, area, model_name, hour)
-- [ ] `db/migrations/`: Alembic マイグレーション
-- [ ] `services/backtest_service.py`: スコアリング関数
-  - 予測 vs 実績を比較して MAE / RMSE を計算
-  - `score_forecast(db, date, area, model_name)` — 当日実績が揃った翌日に実行
-- [ ] `GET /api/v1/forecast/accuracy?area=SE3&days=30` エンドポイント
+- [x] `models/forecast_accuracy.py`: `forecast_accuracy` テーブル
+  - カラム: target_date, area, model_name, hour, predicted_sek_kwh, actual_sek_kwh, created_at
+  - UNIQUE(target_date, area, model_name, hour)
+- [x] `db/migrations/`: Alembic マイグレーション（`f3a4b5c6d7e8`）
+- [x] `services/backtest_service.py`: スコアリング関数
+  - `record_predictions()`: 予測を UPSERT
+  - `fill_actuals()`: spot_prices から実績をスロットに埋める
+  - `score_forecast(db, date, area, model_name)`: fill_actuals + MAE/RMSE 計算
+  - `get_accuracy(db, area, model_name, days)`: 過去 N 日の集計
+- [x] `GET /api/v1/prices/forecast/accuracy?area=SE3&days=30` エンドポイント
   - model_name 別の MAE / RMSE を返す
+- [x] `GET /api/v1/prices/forecast` に `record=true` パラメータ追加
+  - 予測生成時に forecast_accuracy テーブルへ自動記録（オプション）
 
 **完了条件**: `same_weekday_avg` の過去 30日 MAE が数値で取得できる（ベースライン確立）
 
 ### 11.2 特徴量エンジニアリング（工数: 中）
 
-- [ ] `services/feature_service.py`: 特徴量生成パイプライン
+- [x] `services/feature_service.py`: 特徴量生成パイプライン
   - 時間帯（0-23）、曜日（0-6）、月（1-12）
   - 前日同時間帯の価格、前週同曜日の価格
   - Generation Mix: hydro_ratio, wind_ratio（当日分は前日の実績値を使用）
   - 季節エンコーディング（sin/cos 変換で cyclical feature）
-- [ ] `scripts/build_feature_matrix.py`: 過去 N 日分の特徴量行列を CSV/DataFrame で出力
-  - 動作確認用。Jupyter Notebook 不要
-- [ ] テスト: 特徴量が NaN なく生成されることを確認（DST 境界日も含む）
+  - SQLite naive datetime 対応（`_ensure_utc()`）
+- [x] `scripts/build_feature_matrix.py`: 過去 N 日分の特徴量行列を CSV/DataFrame で出力
+  - `--csv` フラグで stdout に CSV 出力。`--days N` で期間指定
+- [x] テスト: `test_features.py`（9テスト全通過、DST 境界日含む）
 
 **完了条件**: 過去 90日分の特徴量行列が生成できる
 
 ### 11.3 LightGBM モデル訓練（工数: 中）
 
-- [ ] `requirements.txt` に `lightgbm` を追加（Lambda でも動く wheel あり）
-- [ ] `services/ml_forecast_service.py`
-  - 訓練: 最新 90日 − 最後 7日（テストセット）
+- [x] `requirements.txt` に `lightgbm>=4.0.0` を追加
+- [x] `services/ml_forecast_service.py`
+  - 訓練: 最新 90日 − 最後 7日（early stopping 用 validation set）
   - 予測対象: 翌日 24時間の SEK/kWh
   - 出力: `build_forecast()` と同じ `{slots: [{hour, avg, low, high}], summary}` フォーマット
-  - モデルバイナリは `/tmp/` にキャッシュ（Lambda コールド/ウォーム対応）
-- [ ] `GET /api/v1/prices/forecast` に `model=lgbm` クエリパラメータを追加
+  - low/high は training residual ±1σ で算出
+  - モデルバイナリは `/tmp/namazu_lgbm/` にキャッシュ（Lambda コールド/ウォーム対応）
+- [x] `GET /api/v1/prices/forecast` に `model=lgbm` クエリパラメータを追加
   - `model=same_weekday_avg`（デフォルト、既存）/ `model=lgbm`（新規）
-- [ ] バックテスト連携: 予測実行時に `forecast_accuracy` テーブルへ自動記録
+- [x] バックテスト連携: `record=true` で model_name ごとに `forecast_accuracy` テーブルへ自動記録
 
 **完了条件**: LightGBM の翌日予測が `same_weekday_avg` と同じ API フォーマットで返る
 
 ### 11.4 精度比較 UI（工数: 小）
 
-- [ ] フロントエンド: Tomorrow タブに「Forecast accuracy」ミニカード
-  - same_weekday_avg: MAE = X.X öre/kWh（過去 30日）
-  - LightGBM: MAE = X.X öre/kWh（過去 30日）
-  - 改善率: -XX%（LightGBM が優れていれば）
-- [ ] モデル切り替えトグル（任意: 予測バンドを sam_weekday_avg / lgbm で切り替え）
+- [x] フロントエンド: Tomorrow タブに「Forecast accuracy」ミニカード
+  - `ForecastAccuracy.jsx` + `useForecastAccuracy.js`
+  - model 別 MAE（öre/kWh）表示、改善率自動計算
+  - ベストモデルは緑ハイライト
+- [ ] モデル切り替えトグル（任意: 予測バンドを same_weekday_avg / lgbm で切り替え）
 
 **完了条件**: 「ML により MAE が X öre → Y öre に改善した」を画面上で証明できる
 

@@ -305,41 +305,82 @@ def get_price_forecast(
     date: date = Query(..., description="Target date to forecast (YYYY-MM-DD)"),
     area: AreaDep = "SE3",
     weeks: int = Query(8, ge=2, le=16, description="Past same-weekday weeks to sample"),
+    record: bool = Query(False, description="Record predictions for backtest scoring"),
+    model: str = Query("same_weekday_avg", description="Forecast model: same_weekday_avg | lgbm"),
 ):
     """
-    Hourly price forecast for date using same-weekday historical averages.
+    Hourly price forecast for date.
 
-    For each Stockholm hour 0–23, returns avg (p50), low (p10), high (p90)
-    computed from the past N weeks of same-weekday data in the DB.
+    Models:
+    - same_weekday_avg (default): p10/p50/p90 from past N same-weekday historical prices
+    - lgbm: LightGBM trained on 90 days of features (price lags, generation mix, calendar)
+
+    Pass record=true to save predictions for later accuracy scoring.
     """
     if area not in VALID_AREAS:
         raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
 
-    today = datetime.now(tz=timezone.utc).date()
-    hist_start = date - timedelta(weeks=weeks)
-    hist_end = min(date - timedelta(days=1), today)
+    model_name = model  # rename to avoid shadowing date param
 
-    rows = get_prices_for_date_range(db, hist_start, hist_end, area=area)
+    if model_name == "lgbm":
+        from app.services.ml_forecast_service import build_lgbm_forecast
+        result = build_lgbm_forecast(db, date, area=area)
+        extra = {}
+    else:
+        today = datetime.now(tz=timezone.utc).date()
+        hist_start = date - timedelta(weeks=weeks)
+        hist_end = min(date - timedelta(days=1), today)
 
-    # Count distinct same-weekday dates that were sampled
-    target_weekday = date.weekday()
-    sample_dates = {
-        r.timestamp_utc.astimezone(_STOCKHOLM).date()
-        for r in rows
-        if r.timestamp_utc.astimezone(_STOCKHOLM).date().weekday() == target_weekday
-    }
+        rows = get_prices_for_date_range(db, hist_start, hist_end, area=area)
 
-    result = build_forecast(rows, date)
+        target_weekday = date.weekday()
+        sample_dates = {
+            r.timestamp_utc.astimezone(_STOCKHOLM).date()
+            for r in rows
+            if r.timestamp_utc.astimezone(_STOCKHOLM).date().weekday() == target_weekday
+        }
+
+        result = build_forecast(rows, date)
+        extra = {"weeks_back": weeks, "dates_sampled": len(sample_dates)}
+
+    # Optionally record predictions for backtest accuracy scoring
+    if record and result.get("slots"):
+        from app.services.backtest_service import record_predictions
+        record_predictions(db, date, area, model_name, result["slots"])
 
     return {
         "area": area,
         "date": date.isoformat(),
         "weekday": date.strftime("%A"),
         "currency": "SEK/kWh",
-        "model": "same_weekday_avg",
-        "weeks_back": weeks,
-        "dates_sampled": len(sample_dates),
+        "model": model_name,
+        **extra,
         **result,
+    }
+
+
+@router.get("/forecast/accuracy")
+def get_forecast_accuracy(
+    db: DbDep,
+    area: AreaDep = "SE3",
+    days: int = Query(30, ge=1, le=365, description="Look-back window in days"),
+    model: str | None = Query(None, description="Filter by model name"),
+):
+    """
+    Forecast accuracy metrics (MAE, RMSE) per model over the last N days.
+
+    Only includes dates where both predictions and actuals are recorded.
+    """
+    if area not in VALID_AREAS:
+        raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
+
+    from app.services.backtest_service import get_accuracy
+    results = get_accuracy(db, area, model_name=model, days=days)
+
+    return {
+        "area": area,
+        "days": days,
+        "models": results,
     }
 
 

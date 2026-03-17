@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { CheapHoursWidget } from './components/CheapHoursWidget'
 import { ConsumptionSimulator } from './components/ConsumptionSimulator'
+import { ForecastAccuracy } from './components/ForecastAccuracy'
 import { GenerationChart } from './components/GenerationChart'
 import { NotificationBell } from './components/NotificationBell'
 import { PriceChart } from './components/PriceChart'
@@ -204,6 +205,9 @@ export default function App() {
                 </div>
               </>
             )}
+
+            {/* Forecast accuracy card — tomorrow only */}
+            {day === 'tomorrow' && <ForecastAccuracy area={area} />}
 
             {/* Appliance scheduler — today only */}
             {day === 'today' && <CheapHoursWidget date={todayISO()} area={area} />}
