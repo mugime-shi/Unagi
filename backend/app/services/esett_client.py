@@ -75,7 +75,11 @@ def fetch_imbalance_prices(
     `area` accepts either a friendly name ("SE3") or an EIC code.
     """
     mba = _AREA_TO_MBA.get(area, area)
-    rate = eur_to_sek if eur_to_sek is not None else settings.eur_to_sek_rate
+    if eur_to_sek is not None:
+        rate = eur_to_sek
+    else:
+        from app.services.riksbank_client import get_eur_sek_rate
+        rate = get_eur_sek_rate()
 
     # Query the full UTC day — eSett returns CET-labelled timestamps so we
     # widen the window by one day on each side to capture the CET calendar day.

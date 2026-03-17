@@ -19,7 +19,7 @@ from app.db.database import Base, get_db
 from app.main import app
 from app.services.entsoe_client import EntsoEError, PricePoint
 from app.services.price_service import (
-    _generate_mock_prices,
+    _generate_fallback_prices,
     build_forecast,
     find_cheapest_window,
     get_or_fetch_prices,
@@ -108,15 +108,15 @@ def test_get_prices_for_date_empty(db):
     assert rows == []
 
 
-def test_generate_mock_prices_returns_24_hours():
-    prices = _generate_mock_prices(date(2026, 3, 11))
+def test_generate_fallback_prices_returns_24_hours():
+    prices = _generate_fallback_prices(date(2026, 3, 11))
     assert len(prices) == 24
-    assert all(p["is_mock"] for p in prices)
+    assert all(p["is_estimate"] for p in prices)
     assert all(p["price_sek_kwh"] > 0 for p in prices)
 
 
 def test_mock_prices_realistic_range():
-    prices = _generate_mock_prices(date(2026, 3, 11))
+    prices = _generate_fallback_prices(date(2026, 3, 11))
     sek_values = [p["price_sek_kwh"] for p in prices]
     # SE3 typical range: 0.20 – 1.20 SEK/kWh
     assert min(sek_values) >= 0.15
@@ -125,15 +125,15 @@ def test_mock_prices_realistic_range():
 
 def test_get_or_fetch_prices_falls_back_to_mock(db):
     with patch("app.services.price_service.fetch_day_ahead_prices", side_effect=EntsoEError("no key")):
-        prices, is_mock = get_or_fetch_prices(db, date(2026, 3, 11))
-    assert is_mock is True
+        prices, is_estimate = get_or_fetch_prices(db, date(2026, 3, 11))
+    assert is_estimate is True
     assert len(prices) == 24
 
 
 def test_get_or_fetch_prices_returns_db_data(db):
     upsert_prices(db, [_make_point(h) for h in range(24)])
-    prices, is_mock = get_or_fetch_prices(db, date(2026, 3, 11))
-    assert is_mock is False
+    prices, is_estimate = get_or_fetch_prices(db, date(2026, 3, 11))
+    assert is_estimate is False
     assert len(prices) == 24
 
 
@@ -152,21 +152,21 @@ def test_get_today_prices_response_shape(client):
     assert "date" in data
     assert "prices" in data
     assert "summary" in data
-    assert "is_mock" in data
+    assert "is_estimate" in data
     assert "count" in data
 
 
 def test_get_today_prices_mock_when_no_db_data(client):
     with patch("app.services.price_service.fetch_day_ahead_prices", side_effect=EntsoEError("no key")):
         data = client.get("/api/v1/prices/today").json()
-    assert data["is_mock"] is True
+    assert data["is_estimate"] is True
     assert data["count"] == 24
 
 
 def test_get_today_prices_real_data_when_db_populated(client, db):
     upsert_prices(db, [_make_point(h) for h in range(24)])
     data = client.get("/api/v1/prices/today").json()
-    assert data["is_mock"] is False
+    assert data["is_estimate"] is False
 
 
 def test_get_tomorrow_prices_returns_200(client):
@@ -253,7 +253,7 @@ def test_cheapest_hours_finds_correct_window(client):
             "price_sek_kwh": price,
             "price_eur_mwh": round(price / 11 * 1000, 2),
             "resolution": "PT60M",
-            "is_mock": True,
+            "is_estimate": True,
         })
 
     with patch("app.routers.prices.get_or_fetch_prices", return_value=(cheap_prices, True)):
@@ -272,7 +272,7 @@ def test_find_cheapest_window_returns_none_for_empty():
 
 
 def test_find_cheapest_window_picks_minimum():
-    prices = _generate_mock_prices(date(2026, 3, 11))
+    prices = _generate_fallback_prices(date(2026, 3, 11))
     window = find_cheapest_window(prices, 3)
     assert window is not None
     assert window["duration_hours"] == 3

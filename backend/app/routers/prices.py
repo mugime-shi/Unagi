@@ -41,7 +41,7 @@ AreaDep = Annotated[
 def _build_response(
     target_date: date,
     prices: list[dict],
-    is_mock: bool,
+    is_estimate: bool,
     area: str = "SE3",
     month_avg_sek_kwh: float | None = None,
     **extra,
@@ -51,7 +51,7 @@ def _build_response(
         "area": area,
         "date": target_date.isoformat(),
         "currency": "SEK/kWh",
-        "is_mock": is_mock,
+        "is_estimate": is_estimate,
         "count": len(prices),
         "summary": {
             "min_sek_kwh": round(min(sek_values), 4) if sek_values else None,
@@ -86,14 +86,14 @@ def _cet_hour_now() -> int:
 def get_today_prices(db: DbDep, area: AreaDep = "SE3"):
     """
     Spot prices for today (Stockholm calendar day) for the given bidding area.
-    Returns mock data during development if no API key or DB data is available.
+    Returns estimated (fallback) data during development if no API key or DB data is available.
     """
     if area not in VALID_AREAS:
         raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
     today = datetime.now(tz=timezone.utc).date()
-    prices, is_mock = get_or_fetch_prices(db, today, area=area)
+    prices, is_estimate = get_or_fetch_prices(db, today, area=area)
     month_avg = _get_month_avg(db, today, area=area)
-    return _build_response(today, prices, is_mock, area=area, month_avg_sek_kwh=month_avg)
+    return _build_response(today, prices, is_estimate, area=area, month_avg_sek_kwh=month_avg)
 
 
 @router.get("/tomorrow")
@@ -101,18 +101,18 @@ def get_tomorrow_prices(db: DbDep, area: AreaDep = "SE3"):
     """
     Spot prices for tomorrow for the given bidding area.
     ENTSO-E publishes tomorrow's prices around 12:00-13:00 CET.
-    Before that, `published` is False and mock data is returned.
+    Before that, `published` is False and estimated data is returned.
     """
     if area not in VALID_AREAS:
         raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
     tomorrow = datetime.now(tz=timezone.utc).date() + timedelta(days=1)
-    prices, is_mock = get_or_fetch_prices(db, tomorrow, area=area)
+    prices, is_estimate = get_or_fetch_prices(db, tomorrow, area=area)
     today = datetime.now(tz=timezone.utc).date()
     month_avg = _get_month_avg(db, today, area=area)
 
     # If we got mock data and it's before 13:00 CET, prices aren't published yet
-    published = not is_mock or _cet_hour_now() >= 13
-    return _build_response(tomorrow, prices, is_mock, area=area, month_avg_sek_kwh=month_avg, published=published)
+    published = not is_estimate or _cet_hour_now() >= 13
+    return _build_response(tomorrow, prices, is_estimate, area=area, month_avg_sek_kwh=month_avg, published=published)
 
 
 @router.get("/range")
@@ -279,7 +279,7 @@ def get_cheapest_hours(
     """
     if area not in VALID_AREAS:
         raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
-    prices, is_mock = get_or_fetch_prices(db, date, area=area)
+    prices, is_estimate = get_or_fetch_prices(db, date, area=area)
     if not prices:
         raise HTTPException(status_code=404, detail="No price data available for this date")
 
@@ -294,7 +294,7 @@ def get_cheapest_hours(
         "area": area,
         "date": date.isoformat(),
         "currency": "SEK/kWh",
-        "is_mock": is_mock,
+        "is_estimate": is_estimate,
         "cheapest_window": window,
     }
 
@@ -384,6 +384,59 @@ def get_forecast_accuracy(
     }
 
 
+@router.get("/forecast/accuracy/breakdown")
+def get_forecast_accuracy_breakdown(
+    db: DbDep,
+    area: AreaDep = "SE3",
+    days: int = Query(30, ge=1, le=365, description="Look-back window in days"),
+    by: str = Query("hour", description="Breakdown dimension: hour | weekday"),
+):
+    """
+    Forecast accuracy broken down by hour (0-23) or weekday (0=Mon..6=Sun).
+
+    Shows where models are accurate vs. struggling (e.g. morning peaks, weekends).
+    """
+    if area not in VALID_AREAS:
+        raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
+    if by not in ("hour", "weekday"):
+        raise HTTPException(status_code=422, detail="'by' must be 'hour' or 'weekday'")
+
+    from app.services.backtest_service import get_accuracy_breakdown
+    results = get_accuracy_breakdown(db, area, days=days, by=by)
+
+    return {
+        "area": area,
+        "days": days,
+        "by": by,
+        "models": results,
+    }
+
+
+@router.get("/forecast/retrospective")
+def get_forecast_retrospective(
+    db: DbDep,
+    date: date = Query(..., description="Target date to retrieve predictions for (YYYY-MM-DD)"),
+    area: AreaDep = "SE3",
+):
+    """
+    Retrieve recorded forecast predictions for a past date.
+
+    Returns per-model hourly predictions alongside actuals (if available).
+    Used to overlay "what we predicted" vs "what actually happened" on the Today chart.
+    """
+    if area not in VALID_AREAS:
+        raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
+
+    from app.services.backtest_service import get_retrospective
+    models = get_retrospective(db, date, area)
+
+    return {
+        "area": area,
+        "date": date.isoformat(),
+        "models": models,
+    }
+
+
 @router.get("/balancing")
 def get_balancing_prices(
     db: DbDep,
@@ -463,4 +516,23 @@ def get_balancing_prices(
         },
         "long":  long_prices,
         "short": short_prices,
+    }
+
+
+@router.get("/exchange-rate")
+def get_exchange_rate():
+    """
+    Current EUR/SEK exchange rate from Riksbank SWEA API.
+
+    Published every Swedish business day at 16:15.
+    Falls back to 11.0 on API failure.
+    """
+    from app.services.riksbank_client import fetch_eur_sek_rate
+    rate, pub_date = fetch_eur_sek_rate()
+    return {
+        "pair": "EUR/SEK",
+        "rate": rate,
+        "published_date": pub_date.isoformat() if pub_date else None,
+        "source": "Riksbank SWEA API",
+        "is_fallback": pub_date is None,
     }

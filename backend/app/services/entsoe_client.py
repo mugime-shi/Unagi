@@ -158,7 +158,11 @@ def fetch_day_ahead_prices(
     if not key:
         raise EntsoEError("ENTSOE_API_KEY is not set. Add it to backend/.env")
 
-    rate = eur_to_sek if eur_to_sek is not None else settings.eur_to_sek_rate
+    if eur_to_sek is not None:
+        rate = eur_to_sek
+    else:
+        from app.services.riksbank_client import get_eur_sek_rate
+        rate = get_eur_sek_rate()
 
     # ENTSO-E day-ahead prices are published for CET day (UTC-1 in winter, UTC-2 in summer).
     # A safe query window: day-1 22:00 UTC → day+1 02:00 UTC captures the full CET day.

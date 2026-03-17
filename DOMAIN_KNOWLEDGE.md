@@ -532,54 +532,6 @@ query {
 
 ---
 
-## 6. 面接で使えるドメイン知識のQ&A
+## 6. 面接 Q&A
 
-### Q: "What's the difference between FIT and spot market pricing?"
-
-A: "FIT guarantees a fixed price per kWh for a set period — typically 10 years in Japan. The producer doesn't need to think about timing or market conditions. Spot pricing, like Sweden's Kvartspris, changes every 15 minutes based on supply and demand at Nord Pool. This creates both risk and opportunity — you can lose money selling at the wrong time, but you can also optimize by shifting when you sell or consume."
-
-### Q: "Why is the micro-producer tax credit removal a big deal?"
-
-A: "It's essentially Sweden's version of Japan's FIT expiry. The tax credit was 60 öre per kWh sold — often more than the spot price itself. Without it, solar ROI drops significantly, and the economic incentive flips from 'sell everything' to 'consume as much as possible yourself.' This drives demand for batteries and smart optimization, which is exactly what companies like Tibber and Greenely are building products around."
-
-### Q: "How does your experience in Japan apply to the Swedish market?"
-
-A: "The backend structure is fundamentally the same — data ingestion, price calculation, billing, user dashboards. The key difference is that Japan's fixed pricing makes the calculation trivial: quantity times price. Sweden's dynamic pricing adds a time dimension to every calculation. Instead of 'how much did you sell this month,' it becomes 'how much did you sell in each 15-minute window, and what was the price in each of those windows.' That's a more interesting engineering problem, but the data pipeline and system architecture patterns are directly transferable."
-
-### Q: "What would you do differently if you rebuilt your Japanese system today?"
-
-A: "I'd design for dynamic pricing from day one. Japan is also moving toward more market-based mechanisms — JEPX spot prices are increasingly relevant for post-FIT households. A system built on fixed pricing assumptions needs significant refactoring to handle time-varying prices. The API-first, event-driven architecture I'm using in Namazu is what I wish we'd had from the start."
-
-### Q: "What are imbalance prices and why does Namazu show them?"
-
-A: "Imbalance prices are the prices used to settle BRPs (Balance Responsible Parties) who deviated from their nominated schedules. Every 15 minutes, after supply and demand have played out in real time, SVK determines the regulation direction and price.
-
-I show two series on top of the day-ahead chart: the up-regulation price (what short BRPs pay — can spike 2–3× day-ahead during grid stress) and the down-regulation price (what over-generating BRPs receive — often near zero or even negative when there's surplus). The gap between them, and the gap vs. day-ahead, is a direct measure of how unexpected the grid conditions were.
-
-When a price spike appears on the balancing chart that isn't in the day-ahead, that's the grid signaling unexpected stress — exactly the kind of event where a smart home appliance should have shifted its load. That's the VPP thesis made visible in a single chart."
-
-### Q: "Why did you use eSett instead of ENTSO-E A85 for balancing prices?"
-
-A: "I started with ENTSO-E A85 and it worked, but I then discovered eSett's Open Data API — eSett is the Nordic balance settlement institution that actually manages imbalance settlement across Sweden, Finland, Norway, and Denmark. They expose the data directly via a public REST API with no API key required.
-
-The key advantage is data freshness: eSett EXP14 lags about 5–6 hours behind real time, vs. ENTSO-E A85 which lags ~12 hours. Since the main value of showing imbalance prices is to reveal 'what actually happened today,' cutting the lag in half materially improves the usefulness.
-
-I also tried SVK Mimer — SVK's own statistics portal — but found it only covers reserve products (FCR, mFRR, aFRR) and doesn't expose the imbalance settlement prices via its public API.
-
-As for intraday (IDA): ENTSO-E's processType=A47 returns identical data to day-ahead for SE3. Nordic intraday trading happens via XBID continuous market, and XBID clearing prices aren't published through ENTSO-E's public REST API. So balancing prices are both the available and the more informative option."
-
-### Q: "Can a prosumer see real-time electricity prices to decide when to sell?"
-
-A: "It depends on which layer of the market you mean. The day-ahead spot price is determined by Nord Pool the afternoon before and is fully public — Tibber's API exposes it, and that's what most prosumers act on. So for a fixed generation source like rooftop solar, you do know the price 12–24 hours ahead, which is sufficient for most decisions.
-
-The intraday market (XBID) does operate like a stock exchange with a live order book — bids and asks, continuous matching — but order book access is restricted to licensed BRPs. The cleared prices are published by Nord Pool with a delay, after trading closes for each window.
-
-Balancing prices are different in nature: they're not an order book at all. SVK issues activation commands to regulation providers, and the settlement price is only calculated and published by eSett about 5–6 hours after the fact. So you can never see 'current balancing price' in real time.
-
-In practice, small prosumers can't leverage intraday prices anyway — their metering, settlement cycles, and lack of flexible generation make it structurally impossible. Where VPPs add value is for controllable assets like batteries or EVs: Tibber Grid Rewards, for instance, aggregates home batteries and participates in FCR/mFRR reserve markets on behalf of households."
-
-### Q: "What's the difference between upRegPrice and downRegPrice in your chart?"
-
-A: "These are the two ends of the balancing market in any given 15-minute interval. The up-regulation price is what SVK paid to activate more generation — or what a BRP who was short (had a deficit) must pay. The down-regulation price is what SVK paid to reduce generation — what a BRP who was long (had a surplus) receives.
-
-Both can exist in the same interval because the grid can have regional imbalances simultaneously: one area may be short while another is long, requiring counter-activation to manage congestion. Since Nordic SIB (Single Imbalance Balance) was introduced in April 2022, both short and long BRPs are settled at a single imbalance price, which equals the up-regulation price when the system's net direction is short."
+ドメイン知識に関する面接 Q&A は [INTERVIEW_PREP.md §6](INTERVIEW_PREP.md) に集約。

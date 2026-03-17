@@ -196,3 +196,94 @@ def get_accuracy(
         }
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# Accuracy breakdown by hour or weekday
+# ---------------------------------------------------------------------------
+
+def get_accuracy_breakdown(
+    db: Session,
+    area: str = "SE3",
+    days: int = 30,
+    by: str = "hour",
+) -> dict[str, list[dict]]:
+    """
+    Compute MAE per model broken down by hour (0-23) or weekday (0=Mon..6=Sun).
+
+    Returns: {model_name: [{"key": int, "mae_sek_kwh": float, "rmse_sek_kwh": float, "n": int}, ...]}
+    """
+    cutoff = date.today() - timedelta(days=days)
+
+    rows = (
+        db.query(ForecastAccuracy)
+        .filter(
+            ForecastAccuracy.area == area,
+            ForecastAccuracy.target_date >= cutoff,
+            ForecastAccuracy.actual_sek_kwh.isnot(None),
+        )
+        .all()
+    )
+
+    # Group errors by (model_name, bucket_key)
+    buckets: dict[str, dict[int, list[float]]] = defaultdict(lambda: defaultdict(list))
+    for r in rows:
+        error = abs(float(r.predicted_sek_kwh) - float(r.actual_sek_kwh))
+        if by == "weekday":
+            key = r.target_date.weekday()
+        else:
+            key = r.hour
+        buckets[r.model_name][key].append(error)
+
+    results = {}
+    for model, keys in buckets.items():
+        breakdown = []
+        for key in sorted(keys.keys()):
+            errors = keys[key]
+            n = len(errors)
+            mae = sum(errors) / n
+            rmse = sqrt(sum(e ** 2 for e in errors) / n)
+            breakdown.append({
+                "key": key,
+                "mae_sek_kwh": round(mae, 4),
+                "rmse_sek_kwh": round(rmse, 4),
+                "n": n,
+            })
+        results[model] = breakdown
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Retrospective: retrieve past predictions for a given date
+# ---------------------------------------------------------------------------
+
+def get_retrospective(
+    db: Session,
+    target_date: date,
+    area: str = "SE3",
+) -> dict[str, list[dict]]:
+    """
+    Retrieve recorded predictions for a past date (both models).
+
+    Returns: {model_name: [{"hour": 0-23, "predicted_sek_kwh": float, "actual_sek_kwh": float|None}, ...]}
+    """
+    rows = (
+        db.query(ForecastAccuracy)
+        .filter(
+            ForecastAccuracy.target_date == target_date,
+            ForecastAccuracy.area == area,
+        )
+        .order_by(ForecastAccuracy.hour)
+        .all()
+    )
+
+    by_model: dict[str, list[dict]] = defaultdict(list)
+    for r in rows:
+        by_model[r.model_name].append({
+            "hour": r.hour,
+            "predicted_sek_kwh": round(float(r.predicted_sek_kwh), 4),
+            "actual_sek_kwh": round(float(r.actual_sek_kwh), 4) if r.actual_sek_kwh is not None else None,
+        })
+
+    return dict(by_model)

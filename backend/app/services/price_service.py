@@ -3,7 +3,7 @@ Price service: orchestrates ENTSO-E fetch → DB UPSERT → read for API endpoin
 
 Design decisions:
 - UPSERT via INSERT ... ON CONFLICT DO UPDATE (idempotent; safe to call daily)
-- Returns mock data when DB has no rows for today (allows development without API key)
+- Returns estimated (fallback) data when DB has no rows for today (allows development without API key)
 - All timestamps stored as UTC; conversion to local time is a frontend concern
 """
 
@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.spot_price import SpotPrice
 from app.services.entsoe_client import SE3_AREA, EntsoEError, PricePoint, fetch_day_ahead_prices
+from app.services.riksbank_client import get_eur_sek_rate as _get_eur_sek
 
 # Map friendly area names (used in DB/API) to ENTSO-E EIC codes
 _AREA_TO_EIC = {
@@ -203,10 +204,10 @@ def find_cheapest_window(prices_data: list[dict], duration_hours: int) -> dict |
 
 
 # ---------------------------------------------------------------------------
-# Mock data (development fallback when no API key or DB is empty)
+# Fallback data (development fallback when no API key or DB is empty)
 # ---------------------------------------------------------------------------
 
-def _generate_mock_prices(target_date: date) -> list[dict]:
+def _generate_fallback_prices(target_date: date) -> list[dict]:
     """
     Produce a realistic 24-hour SE3 price curve with hourly slots.
     Pattern: cheap overnight, morning/evening peaks, mid-day moderate.
@@ -227,10 +228,10 @@ def _generate_mock_prices(target_date: date) -> list[dict]:
         ts = base_utc + timedelta(hours=hour)
         result.append({
             "timestamp_utc": ts.isoformat(),
-            "price_eur_mwh": round(sek / settings.eur_to_sek_rate * 1000, 2),
+            "price_eur_mwh": round(sek / _get_eur_sek() * 1000, 2),
             "price_sek_kwh": sek,
             "resolution": "PT60M",
-            "is_mock": True,
+            "is_estimate": True,
         })
     return result
 
@@ -245,10 +246,10 @@ def get_or_fetch_prices(
     area: str = "SE3",
 ) -> tuple[list, bool]:
     """
-    Returns (price_data, is_mock).
+    Returns (price_data, is_estimate).
     1. Try DB first (fastest, no external call)
     2. If empty, try ENTSO-E (requires API key)
-    3. If that fails (no key, API down, future date), return mock data
+    3. If that fails (no key, API down, future date), return fallback estimates
     """
     rows = get_prices_for_date(db, target_date, area)
     if rows:
@@ -258,7 +259,7 @@ def get_or_fetch_prices(
                 "price_eur_mwh": float(r.price_eur_mwh),
                 "price_sek_kwh": float(r.price_sek_kwh),
                 "resolution": r.resolution,
-                "is_mock": False,
+                "is_estimate": False,
             }
             for r in rows
         ]
@@ -273,7 +274,7 @@ def get_or_fetch_prices(
                 "price_eur_mwh": float(r.price_eur_mwh),
                 "price_sek_kwh": float(r.price_sek_kwh),
                 "resolution": r.resolution,
-                "is_mock": False,
+                "is_estimate": False,
             }
             for r in rows
         ]
@@ -281,8 +282,8 @@ def get_or_fetch_prices(
     except EntsoEError:
         pass
 
-    # Fallback: mock data
-    return _generate_mock_prices(target_date), True
+    # Fallback: estimated data
+    return _generate_fallback_prices(target_date), True
 
 
 # ---------------------------------------------------------------------------
