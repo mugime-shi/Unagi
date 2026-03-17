@@ -11,9 +11,10 @@
 │                      (Vercel)                                │
 │                                                              │
 │  ┌──────────┐  ┌──────────────┐  ┌────────────────────┐     │
-│  │ Price     │  │ Consumption  │  │ Solar Optimizer    │     │
-│  │ Dashboard │  │ Simulator    │  │ (Layer 2)          │     │
-│  │ (Layer 1) │  │ (Layer 1)    │  │                    │     │
+│  │ Prices   │  │ History      │  │ Simulators         │     │
+│  │ (Today/  │  │ (90d trend / │  │ (Cost comparison + │     │
+│  │ Tomorrow/│  │  Zone comp.) │  │  Solar PV sim)     │     │
+│  │ Review)  │  │              │  │                    │     │
 │  └──────────┘  └──────────────┘  └────────────────────┘     │
 └─────────────────────┬───────────────────────────────────────┘
                       │ REST API (JSON)
@@ -321,7 +322,77 @@ CREATE TABLE weather_data (
 );
 ```
 
-### 4.3 simulations（シミュレーション結果キャッシュ）
+### 4.3 generation_mix（発電ミックス — ENTSO-E A75）
+
+```sql
+CREATE TABLE generation_mix (
+    id            SERIAL PRIMARY KEY,
+    area          VARCHAR(4) NOT NULL DEFAULT 'SE3',
+    timestamp_utc TIMESTAMPTZ NOT NULL,
+    psr_type      VARCHAR(4) NOT NULL,       -- ENTSO-E PSR code: B12=水力, B14=原子力, B19=風力, etc.
+    value_mw      DECIMAL(10,2) NOT NULL,    -- 発電量 (MW)
+    resolution    VARCHAR(10) DEFAULT 'PT15M',
+    created_at    TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(area, timestamp_utc, psr_type)
+);
+
+CREATE INDEX idx_generation_mix_area_time ON generation_mix(area, timestamp_utc DESC);
+```
+
+### 4.4 weather_data（天候データ — Layer 2用）
+
+```sql
+CREATE TABLE weather_data (
+    id              SERIAL PRIMARY KEY,
+    station_id      INTEGER NOT NULL DEFAULT 71420,
+    timestamp_utc   TIMESTAMPTZ NOT NULL,
+    temperature_c   DECIMAL(5,1),
+    global_radiation_wm2 DECIMAL(8,2),       -- W/m², 太陽光発電量計算に使用
+    sunshine_hours  DECIMAL(4,1),
+    source          VARCHAR(20) DEFAULT 'smhi',
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(station_id, timestamp_utc, source)
+);
+```
+
+### 4.5 forecast_accuracy（予測精度バックテスト）
+
+```sql
+CREATE TABLE forecast_accuracy (
+    id                SERIAL PRIMARY KEY,
+    target_date       DATE NOT NULL,           -- 予測対象日
+    area              VARCHAR(4) NOT NULL DEFAULT 'SE3',
+    model_name        VARCHAR(30) NOT NULL,    -- 'same_weekday_avg' or 'lgbm'
+    hour              INTEGER NOT NULL,        -- 0-23 (ストックホルム時間)
+    predicted_sek_kwh DECIMAL(10,4) NOT NULL,  -- 前日に記録される予測値
+    actual_sek_kwh    DECIMAL(10,4),           -- 翌日に埋められる実績値 (nullable)
+    created_at        TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(target_date, area, model_name, hour)
+);
+
+CREATE INDEX idx_forecast_accuracy_date_area ON forecast_accuracy(target_date, area);
+```
+
+**ワークフロー**:
+1. Day N-1: cron ジョブが `record_predictions()` で明日の予測を24時間分保存
+2. Day N: `fill_actuals()` が spot_prices から実績を `actual_sek_kwh` に埋める
+3. `get_accuracy()` / `get_accuracy_breakdown()` で MAE/RMSE を集計
+
+### 4.6 push_subscriptions（Web Push 通知購読）
+
+```sql
+CREATE TABLE push_subscriptions (
+    id        SERIAL PRIMARY KEY,
+    endpoint  TEXT NOT NULL,
+    p256dh    TEXT NOT NULL,               -- ECDH public key (base64url)
+    auth      TEXT NOT NULL,               -- Auth secret (base64url)
+    area      VARCHAR(4) NOT NULL DEFAULT 'SE3',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(endpoint)
+);
+```
+
+### 4.7 simulations（シミュレーション結果キャッシュ）
 
 ```sql
 CREATE TABLE simulations (
@@ -349,11 +420,25 @@ GET /api/v1/prices/tomorrow
   → 明日のスポット価格（13:00以降に取得可能）
 
 GET /api/v1/prices/range?start=2026-03-01&end=2026-03-08
-  → 期間指定の価格履歴
+  → 期間指定の価格履歴（Review モードでも使用: 単日指定で過去日の15分スロット取得）
 
 GET /api/v1/prices/cheapest-hours?date=2026-03-08&duration=2
   → 指定日の連続N時間で最安の時間帯
   Response: { cheapest_start: "02:00", avg_price_sek: 0.25, savings_vs_peak_pct: 62 }
+
+GET /api/v1/prices/forecast?date=2026-03-18&area=SE3&model=lgbm
+  → 翌日24時間の価格予測（model: same_weekday_avg | lgbm）
+  Response: { slots: [{hour: 0, avg_sek_kwh: 0.32, low_sek_kwh: 0.25, high_sek_kwh: 0.40}, ...] }
+
+GET /api/v1/prices/forecast/accuracy?area=SE3&days=30
+  → モデル別の予測精度（MAE/RMSE）過去N日集計
+
+GET /api/v1/prices/forecast/accuracy/breakdown?by=hour|weekday
+  → 時間帯別 or 曜日別の予測精度内訳
+
+GET /api/v1/prices/forecast/retrospective?date=2026-03-16&area=SE3
+  → 指定過去日の予測値 vs 実績値（Review モードで使用）
+  Response: { models: { lgbm: [{hour, predicted_sek_kwh, actual_sek_kwh}, ...], same_weekday_avg: [...] } }
 
 POST /api/v1/simulate/consumption
   Body: { monthly_kwh: 500, contract_type: "fixed", fixed_price_sek: 1.20 }
@@ -586,47 +671,131 @@ jobs:
 
 ---
 
-## 9. Key Technical Decisions — 面接で聞かれた場合の回答
+## 9. Key Technical Decisions
 
-### Q: "Balancing prices update every 15 minutes — why not poll in real-time instead of batching daily?"
-
-A: "Three deliberate trade-offs: cost, complexity, and the use case.
-Cost: a 15-minute EventBridge trigger would make ~96 Lambda invocations per day instead of 2 — still within free tier, but adds operational noise for little gain.
-Complexity: real-time streaming (WebSocket/SSE) requires a different architecture — persistent connections, back-pressure handling, a message broker — none of which the current use case justifies.
-Use case: the dashboard shows 'what happened yesterday' to help users understand grid stress patterns and correlate them with their consumption. That's inherently retrospective. The correct place for real-time alerts is a push notification (which we already have), not a live chart update.
-If I were building a VPP control system where 15-minute prices drive actual device dispatch, I'd rethink this — that's a genuinely real-time problem and would warrant a streaming architecture."
-
-### Q: "Why not just use Tibber's or Greenely's API?"
-
-A: "Those are proprietary and customer-only. By building on ENTSO-E's public API, the tool works for anyone regardless of their electricity provider. This mirrors the provider-agnostic approach I took in Japan, where our system needed to work across multiple utility companies."
-
-### Q: "Why Lambda instead of a container service?"
-
-A: "For a portfolio project with sporadic traffic, Lambda is the right cost/scale tradeoff — it's free at this usage level. I use AWS Lambda Web Adapter, which means the same Docker image runs locally, on Lambda, and on ECS without any code changes. There's no Lambda-specific adapter in the application code — FastAPI just runs as a normal HTTP server. In my current role, I run the same Docker containers on ECS for always-on workloads, so I'm comfortable with both models and can migrate by changing the deployment target, not the code."
-
-### Q: "How would this scale to production?"
-
-A: "Because I use Lambda Web Adapter, the exact same Docker image deploys to ECS/Fargate — no code changes, just a different Terraform target. I'd add RDS for the database, ElastiCache for price caching, and CloudFront for the frontend. The Terraform configuration is modular, so adding these resources is extending the existing IaC, not starting from scratch. In my current role, I manage exactly this kind of Docker + ECS + RDS setup."
-
-### Q: "Why Terraform over CloudFormation or SAM?"
-
-A: "Three reasons: Terraform is cloud-agnostic so the skill transfers beyond AWS. The module system makes it easier to organize infrastructure for a project this size. And frankly, Terraform has higher market value than CloudFormation for job searches — most energy tech startups I'm targeting use Terraform or Pulumi, not SAM."
-
-### Q: "Why separate backend and frontend?"
-
-A: "The API-first approach means the same backend can serve a future mobile app, a Home Assistant integration, or even a Slack bot. In my previous role, we started with a monolithic Rails app and later wished we had separated the API earlier."
-
-### Q: "Why PostgreSQL over a time-series database?"
-
-A: "For this scale (96 price points/day × 365 days = ~35k rows/year), PostgreSQL with a proper index is more than sufficient. A time-series DB like TimescaleDB would be justified at 10x+ this volume, but adds operational complexity that isn't warranted for an MVP."
-
-### Q: "Why Supabase instead of RDS?"
-
-A: "Cost. RDS free tier expires after 12 months, and I want this portfolio to stay live indefinitely. Supabase gives me a full PostgreSQL with no expiry. The SQL and schema are identical — migrating to RDS is a connection string change, not a rewrite."
+技術選定の根拠は上記各セクションに記載。面接向け Q&A は [INTERVIEW_PREP.md §4](INTERVIEW_PREP.md) に集約。
 
 ---
 
-## 10. Cost Estimate
+## 10. ML Price Prediction — LightGBM
+
+### 10.1 なぜ LightGBM か
+
+LightGBM（Light Gradient Boosting Machine）は Microsoft が開発した勾配ブースティング決定木（GBDT）ライブラリ。
+電力価格予測に採用した理由:
+
+- **表形式データに最強クラス**: 時間・曜日・季節・前日価格・発電ミックスといった構造化データに対して、深層学習より高精度かつ高速
+- **欠損値をネイティブ処理**: generation_mix データがない時間帯でも `NaN` として自然に扱える。前処理不要
+- **軽量・高速**: Lambda（512MB / 30s制約）上でも訓練+推論が完了する。PyTorch/TensorFlow は Lambda に載せにくい
+- **解釈可能性**: `feature_importance()` で「どの特徴量が効いているか」を可視化できる → 面接で説明しやすい
+
+### 10.2 LightGBM の仕組み（概要）
+
+```
+入力データ（特徴量行列）
+    │
+    ▼
+┌─────────────────────────────────────────────┐
+│  勾配ブースティング（Gradient Boosting）         │
+│                                              │
+│  1. 最初の予測 = データ全体の平均値               │
+│  2. 残差（実際の値 − 予測値）を計算               │
+│  3. 残差を予測する決定木を1本追加                 │
+│  4. 学習率（0.05）で補正を加算                   │
+│  5. 新しい残差を計算 → 2に戻る                   │
+│  6. 500ラウンドまで繰り返し（early stoppingあり）  │
+│                                              │
+│  最終予測 = 平均値 + Σ(各木の補正 × 学習率)       │
+└─────────────────────────────────────────────┘
+
+LightGBM の特徴（vs XGBoost）:
+- Leaf-wise 分割: 最も損失を減らすリーフを選んで分割（XGBoost は level-wise）
+  → 同じ精度をより少ないラウンドで達成
+- Histogram-based: 特徴量を離散ビンに変換してから分割点を探索
+  → メモリ効率が高く、大規模データでも高速
+- Categorical feature 対応: カテゴリ変数を one-hot 化せずに直接扱える
+```
+
+### 10.3 Namazu での実装
+
+```
+訓練データ                    予測
+───────────────────────     ────────────────
+[target_date − 90日]        [target_date]
+     ↓                          ↓
+  90日分の                    翌日24時間の
+  (date, hour) 行             特徴量を構築
+  = ~2,160行                  = 24行
+     ↓                          ↓
+  train/val 分割              model.predict()
+  (最後7日 = val)                  ↓
+     ↓                     24時間のSEK/kWh予測
+  LightGBM 訓練
+  (early stopping)
+     ↓
+  /tmp/ にキャッシュ
+  (Lambda warm start)
+```
+
+**特徴量（19次元）**:
+
+| カテゴリ | 特徴量 | 説明 |
+|---------|--------|------|
+| カレンダー | `hour`, `weekday`, `month` | 整数値 |
+| カレンダー | `hour_sin/cos`, `weekday_sin/cos`, `month_sin/cos` | 周期性を表現する sin/cos エンコーディング。「23時→0時」の断崖を滑らかに |
+| ラグ | `prev_day_same_hour` | 前日の同時間帯価格 |
+| ラグ | `prev_week_same_hour` | 前週同曜日の同時間帯価格 |
+| ラグ | `daily_avg_prev_day` | 前日の日平均価格 |
+| 発電 | `gen_hydro/wind/nuclear_mw` | 前日の各電源の発電量（MW） |
+| 発電 | `gen_total_mw` | 前日の総発電量 |
+| 発電 | `hydro/wind/nuclear_ratio` | 各電源の構成比率 |
+
+**ハイパーパラメータ**:
+
+```python
+{
+    "objective": "regression",    # 回帰問題
+    "metric": "mae",             # 平均絶対誤差で評価
+    "num_leaves": 31,            # 木の複雑さ（デフォルト）
+    "learning_rate": 0.05,       # 保守的な学習率
+    "feature_fraction": 0.8,     # 各木で80%の特徴量をランダム使用
+    "bagging_fraction": 0.8,     # 各木で80%のデータをランダム使用
+    "bagging_freq": 5,           # 5ラウンドごとにバギング
+    "verbose": -1,               # 出力抑制
+}
+# max 500 rounds, early stopping 20 rounds on validation set
+```
+
+**予測区間**: LightGBM は点推定のみ。low/high は訓練残差の ±1σ で簡易的に算出。
+ベイジアンな不確実性推定（Quantile Regression や NGBoost）は将来の改善候補。
+
+### 10.4 バックテスト基盤
+
+```
+forecast_accuracy テーブル
+┌──────────────┬──────┬────────────────────┬──────┬──────────────────┬──────────────┐
+│ target_date  │ area │ model_name         │ hour │ predicted_sek_kwh│ actual_sek_kwh│
+├──────────────┼──────┼────────────────────┼──────┼──────────────────┼──────────────┤
+│ 2026-03-17   │ SE3  │ same_weekday_avg   │ 0    │ 0.3200           │ 0.3150       │
+│ 2026-03-17   │ SE3  │ lgbm               │ 0    │ 0.3180           │ 0.3150       │
+│ ...          │      │                    │      │                  │              │
+└──────────────┴──────┴────────────────────┴──────┴──────────────────┴──────────────┘
+
+GET /api/v1/prices/forecast/accuracy?area=SE3&days=30
+→ {
+    "days": 30,
+    "models": {
+      "same_weekday_avg": { "mae_sek_kwh": 0.085, "rmse_sek_kwh": 0.12, "n_days": 28 },
+      "lgbm":             { "mae_sek_kwh": 0.052, "rmse_sek_kwh": 0.07, "n_days": 28 }
+    }
+  }
+```
+
+面接向け LightGBM Q&A は [INTERVIEW_PREP.md §5](INTERVIEW_PREP.md) に集約。
+
+---
+
+## 11. Cost Estimate
 
 
 | Resource          | Service                                 | Monthly Cost     |

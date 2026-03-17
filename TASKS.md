@@ -414,27 +414,21 @@
 > IDA のオークション結果を重ねることで、配送直前に市場参加者がどう修正したかが見えます。
 > さらに SVK のバランシングデータで、TSO がリアルタイムにどれだけ調整介入したかまで可視化しています。」
 
-### 8.1 P8-1: Intraday（IDA）重ね表示（工数: 小〜中）
+### 8.1 P8-1: Intraday（IDA）重ね表示 — スキップ（技術的制約）
 
-**データソース**: ENTSO-E Transparency Platform（既存と同じ API キー）
-**技術的変更点**: `documentType=A44` に `processType=A47` を追加するだけ。
-同じ XML 構造 → 既存の `_parse_xml` がそのまま動く。
+**調査結果（2026-03、2回目再調査含む）**:
 
-- [ ] ENTSO-E API 疎通確認（processType=A47 で SE3 の IDA データ取得）
-- [ ] `spot_prices` テーブルに `market_type` カラム追加（'day_ahead' / 'intraday'）
-  - 既存データは全て 'day_ahead' にマイグレーション
-- [ ] `entsoe_client.py` に `fetch_intraday_prices()` 追加
-- [ ] Scheduler Lambda に IDA 取得を追加（Day-ahead 取得後に実行）
-- [ ] API エンドポイント更新: `/prices/today` レスポンスに intraday 価格を含める
-- [ ] フロントエンド: PriceChart に Intraday ライン追加（Day-ahead と色分け）
-- [ ] テスト追加
+1. **ENTSO-E processType 全パターン**: A47/A51/A18/A40 いずれも Day-ahead と同一データを返す
+2. **ENTSO-E IDA 正式クエリ** (`contract_MarketAgreement.type=A07` + `classificationSequence...position=1/2/3`):
+   SE3 で "No matching data" が返る。ドイツ・フランス・フィンランド・ノルウェー・ベルギーも全て空。
+   IDA は2024年6月に全欧州で開始されたが、ENTSO-E Transparency Platform にはまだ清算価格が未公開
+3. **Nord Pool Data Portal API**: Swagger で全57エンドポイントを確認 → 全て OAuth2 認証必須（有料 €750〜€36,000/年）
+4. **Nord Pool public-intraday-api** (GitHub): Trading API のデータオブジェクト定義のみ。BRP 向け
+5. **entsoe-py ライブラリ**: `query_intraday_prices()` が存在するが "only some zones publish this" のコメント付き
+6. **その他**: SVK Mimer（IDA なし）、eSett（Balancing のみ）、Ember / euenergy.live / energyprices.eu（DA のみ）
 
-**IDA スケジュール（取得タイミング）**:
-- IDA1: ~15:00 CET（前日）— 翌日全時間帯の修正価格
-- IDA2: ~22:00 CET（前日）— 残り時間帯
-- IDA3: ~10:00 CET（当日）— 午後〜夜の最終修正
-
-**DB 負荷**: 24行/日の追加。年間 ~1MB。Supabase 500MB 枠に余裕あり。
+**結論**: 無料公開データソースが存在しないためスキップ。代わりに eSett EXP14 のバランシング価格（Phase 8.2）で
+「Day-ahead 予測 vs リアルタイム結果」の乖離を可視化している。面接では「6ソースを調査した上でスキップした理由」を説明できる。
 
 ### 8.2 P8-2: Balancing 指標表示（工数: 中）✓
 
@@ -637,6 +631,18 @@ imblSalesPrice           = Nordic SIB（2022年〜）の単一インバランス
 
 **完了条件**: 「ML により MAE が X öre → Y öre に改善した」を画面上で証明できる
 
+### 11.5 正式バックテスト実施 ✓
+
+- [x] `scripts/run_backtest.py` 新規作成 — 過去 N 日分で両モデルを一括比較
+- [x] ローカルバックテスト実施（30日, SE3, 720サンプル = 30日×24h）:
+
+| Model | MAE (SEK/kWh) | RMSE (SEK/kWh) |
+|-------|--------------|----------------|
+| **lgbm** | **0.2871** | **0.3935** |
+| same_weekday_avg | 0.4258 | 0.5371 |
+
+**結果: LightGBM が MAE で 32.6% 改善**
+
 ---
 
 ## Phase 12: 低優先度タスク（時間があれば）
@@ -646,14 +652,121 @@ imblSalesPrice           = Nordic SIB（2022年〜）の単一インバランス
 - [ ] `docs/screenshot.png` に配置（フォルダがなければ作成）
 - README の `![Namazu dashboard](docs/screenshot.png)` が表示されることを確認
 
-### 12.2 EUR/SEK 動的レート（Riksbank API）
-- [ ] Riksbank の SWEA API で当日の EUR/SEK を取得（認証不要）
-- [ ] `config.py` の `eur_to_sek_rate = 11.0` を Riksbank API フォールバック構成に変更
-  - API 取得成功 → 当日レート、失敗 → 11.0 にフォールバック
-- [ ] Scheduler Lambda に日次レート取得を追加
+### 12.2 EUR/SEK 動的レート（Riksbank API）✓
+- [x] `services/riksbank_client.py` 新規作成
+  - `GET https://api.riksbank.se/swea/v1/Observations/Latest/SEKEURPMI` → `{"date":"2026-03-16","value":10.769}`
+  - 認証不要、`lru_cache` で日次キャッシュ、失敗時は 11.0 にフォールバック
+- [x] `entsoe_client.py`, `esett_client.py`, `price_service.py` を Riksbank API 優先に変更
+  - `eur_to_sek` 引数が明示されていなければ `get_eur_sek_rate()` を使用
+- [x] `GET /api/v1/prices/exchange-rate` エンドポイント追加（レート・公表日・ソースを返却）
+- [x] テスト: `test_riksbank.py`（6テスト、142テスト全通過）
+- **Note**: Lambda へのデプロイ時は追加設定不要（認証なし API、キャッシュは Lambda インスタンス内で有効）
 
-### 12.3 Phase 8.1 — Intraday（IDA）重ね表示
-- [ ] 既存の未チェックタスク（Phase 8.1 参照）
+### 12.3 Phase 8.1 — Intraday（IDA）重ね表示 — 将来的な課題
+- [ ] ENTSO-E Transparency Platform で IDA 清算価格が公開され次第、実装を再検討
+- **背景**: IDA オークション自体は 2024年6月に全欧州で開始済みだが、ENTSO-E にはまだ清算価格が未掲載（2026年3月時点、SE3 含む全国で確認）。6ソースを調査済み（Phase 8.1 参照）
+- **実装方針**: ENTSO-E が IDA データを公開した時点で `contract_MarketAgreement.type=A07` + `classificationSequence...position=1/2/3` で IDA1/IDA2/IDA3 を取得し、Day-ahead チャートに重ねて表示
+- **Nord Pool 有料 API**: €750/年〜で IDA データ取得可能だが、個人プロジェクトのコストとして不適切
+
+---
+
+## Phase 13: 予測パイプライン改善
+
+### 13.1 予測の自動蓄積 ✓
+- [x] `fetch_prices.py` の `lambda_handler` に `_record_forecasts_and_actuals()` 追加
+  - 毎日13:30 CET のスケジュール実行時に自動で:
+    1. `fill_actuals(yesterday)` — 前日の実績を forecast_accuracy に埋める
+    2. `record_predictions(tomorrow, "same_weekday_avg")` — ベースライン予測を記録
+    3. `record_predictions(tomorrow, "lgbm")` — LightGBM 予測を記録
+  - 各ステップは独立して try/except + rollback（1つ失敗しても他は続行）
+- **Note**: これにより `record=true` を手動で渡す必要がなくなり、精度データが日次で自動蓄積される
+
+### 13.2 命名改善: is_mock → is_estimate ✓
+- [x] バックエンド: `is_mock` → `is_estimate`（APIレスポンスフィールド）
+- [x] バックエンド: `_generate_mock_prices()` → `_generate_fallback_prices()`
+- [x] フロントエンド: `isMock` prop → `isEstimate`、`"mock data"` → `"Estimated"`
+- [x] テスト: 全 assert の `is_mock` → `is_estimate`、142テスト全通過
+- **なぜ**: `is_mock` は開発者語で「フェイクデータ」のニュアンス。ユーザー向けには「推計値」が適切
+
+### 13.3 精度内訳分析 ✓
+- [x] `backtest_service.py` に `get_accuracy_breakdown(db, area, days, by)` 追加
+  - `by="hour"`: 時間帯別（0-23）の MAE/RMSE
+  - `by="weekday"`: 曜日別（0=Mon..6=Sun）の MAE/RMSE
+- [x] `GET /api/v1/prices/forecast/accuracy/breakdown?by=hour|weekday` エンドポイント追加
+- [x] フロントエンド: `ForecastAccuracy.jsx` に「By hour / By day」トグル + Recharts BarChart
+  - モデル別の MAE をグループドバーチャートで比較表示
+  - 「朝ピーク帯は予測が難しい」「週末は精度が高い」がデータで見える
+- [x] `useForecastBreakdown.js` hook 新規作成
+
+### 13.4 Tomorrow チャートに LightGBM 予測ラインを重ね表示 ✓
+- [x] `useLgbmForecast.js` hook 新規作成（`/api/v1/prices/forecast?model=lgbm` を取得）
+- [x] `PriceChart.jsx` に LightGBM 予測ライン（emerald `#34d399` 破線）を追加表示
+  - 既存の same_weekday_avg バンド（indigo 半透明帯）はそのまま維持
+  - LightGBM はポイント予測なので破線ラインで表示
+- [x] ツールチップに LGBM 予測値を表示
+- **なぜ**: 「2モデル比較を一画面で見せている」を面接で語れる。フロント変更のみ
+
+### 13.5 実績 vs 予測の振り返り表示 ✓
+- [x] `backtest_service.py` に `get_retrospective(db, target_date, area)` 追加
+  - forecast_accuracy テーブルから指定日の予測値を返す（両モデル）
+  - `{model_name: [{hour, predicted_sek_kwh, actual_sek_kwh}, ...]}`
+- [x] `GET /api/v1/prices/forecast/retrospective?date=YYYY-MM-DD&area=SE3` エンドポイント追加
+- [x] `useRetrospective.js` hook 新規作成
+- [x] Today チャートに予測ラインをオーバーレイ表示
+  - Weekday Avg 予測: violet `#a78bfa` dashed
+  - LGBM 予測: rose `#fb7185` dashed
+  - ツールチップに「Yesterday's prediction」+ 誤差を表示
+  - レジェンドに「Pred: Weekday」「Pred: LGBM」を追加
+- **なぜ**: 精度カードの数値だけでなく、ビジュアルで予測の良し悪しが一目でわかる
+
+### 13.6 Docker コンテナで LightGBM を動作させる修正 ✓
+- [x] `Dockerfile` に `libgomp1`（OpenMP）のインストールを追加
+  - `python:3.12-slim` には `libgomp.so.1` が含まれず、LightGBM のロードに失敗していた
+  - `RUN apt-get update && apt-get install -y --no-install-recommends libgomp1`
+- [x] Docker イメージ再ビルド → API コンテナで LGBM 予測が正常に24スロット返却されることを確認
+- **根本原因**: `lightgbm>=4.0.0` は requirements.txt にあったが、slim イメージに C ランタイム依存が不足
+
+### 13.7 ForecastAccuracy 表示改善 ✓
+- [x] 小数桁数を `.toFixed(4)` → `.toFixed(2)` に統一（BreakdownTooltip、Summary card）
+  - "0.2919 SEK/kWh" → "0.29 SEK/kWh" で見やすく
+- [x] 単位を SEK/kWh に統一（öre/kWh 表記を排除）
+
+### 13.8 ARCHITECTURE.md の DB テーブル定義を更新 ✓
+- [x] `generation_mix`, `forecast_accuracy`, `push_subscriptions` テーブルを追記
+  - 既存の §4 Data Model に 4.3〜4.7 として追加
+  - forecast_accuracy のワークフロー（記録 → 実績埋め → 集計）も記載
+
+### 13.10 Review モード — 過去日の予測 vs 実績オーバーレイ ✓
+- [x] `useDatePrices.js` hook 新規作成（`/api/v1/prices/range` から任意の過去日の価格を取得）
+  - レスポンスを `usePrices` と同じ形に整形し PriceChart にそのまま渡せる
+- [x] `App.jsx` に "Review" day オプション追加（Today / Tomorrow / Review の3択）
+  - Review 選択時に `<input type="date">` を表示（デフォルト: 昨日、max: 今日）
+  - `useDatePrices` で選択日の価格、`useRetrospective` で予測データを取得
+  - PriceChart に実績（blue 実線）+ 予測オーバーレイ（violet=Weekday Avg, rose=LGBM 破線）を表示
+  - 選択日の MAE をモデル別にカード表示（retrospective データからフロントで計算）
+- [x] 既存の Today / Tomorrow フローに影響なし（`day !== 'review'` ガードで分離）
+- [x] ビルド成功（`npx vite build`）
+
+**完了条件**: 過去日を選択すると、実績スポット価格と両モデルの予測が同一チャートに重なり、MAE が数値で表示される ✓
+**なぜ**: 集計指標（30日MAE）だけでなく、特定日の予測の形状・方向・外れ方のパターンを直感的に確認できる。モデル改善の方向性判断に使える
+
+### 13.11 UI再編 — Simulators タブ集約 ✓
+- [x] タブ名変更: `Solar` → `Simulators`
+- [x] `ConsumptionSimulator` を Prices タブから Simulators タブに移動
+- [x] Simulators タブ: ConsumptionSimulator + SolarSimulator を `space-y-6` で配置
+- [x] Prices タブ末尾に CTA カード「Cost & Solar Simulator →」を追加（全 day モードで表示）
+- [x] 関連 MD 更新（README, ARCHITECTURE, FEATURES, INTERVIEW_PREP, TASKS）
+- [x] ビルド成功（`npx vite build`）
+
+**完了条件**: Prices タブは実測・予測・精度に集中、シミュレーション系は Simulators に集約。CTA で導線維持 ✓
+**なぜ**: ConsumptionSimulator が Prices の文脈から浮いていた。目的別にタブを分けることで情報設計が明確になり、ダッシュボードがスキャンしやすくなった
+
+### 13.9 将来的な改善ロードマップ（未着手）
+- [ ] 特徴量追加: 気温（SMHI）、前日バランシング乖離を ML 特徴量に追加
+- [ ] ハイパラ最適化: Optuna で LightGBM パラメータ探索（MAE 5-10% 改善見込み）
+- [ ] アンサンブル: same_weekday_avg + lgbm の加重平均で安定性向上
+- [ ] スパイク検知: 残差 > 2σ の日をタグ付け、原因分析
+- [ ] forecast_accuracy に `metadata` JSONB カラム追加（特徴量重要度、訓練サンプル数等を保存）
 
 ---
 

@@ -8,14 +8,15 @@ A real-time dashboard for SE3 (Göteborg) electricity spot prices, built to answ
 
 ## What it does
 
-**Layer 1 — Consumption optimizer**
+**Prices** — real-time market data & forecasts
 - Today's and tomorrow's spot prices (15-min slots, ENTSO-E data)
 - Current price level indicator — cheap / normal / expensive vs daily average
 - Best time to run washing machine (2h), dishwasher (2h), EV charging (4h)
-- Monthly cost comparison: fixed contract vs dynamic (spot) vs Göteborg Energi monthly-average
+- **Review mode** — browse any past date and overlay actual prices with ML predictions (LightGBM + Weekday Avg), with per-day MAE
 
-**Layer 2 — Solar optimizer**
-- PV generation estimate using real SMHI irradiance data (Göteborg Sol station)
+**Simulators** — what-if planning tools
+- Monthly cost comparison: fixed contract vs dynamic (spot) vs Göteborg Energi monthly-average
+- Solar PV generation estimate using real SMHI irradiance data (Göteborg Sol station)
 - Revenue breakdown: self-consumption savings / grid export income / battery effect
 - Side-by-side tax credit comparison (≤2025 scheme vs 2026+ after Sweden abolished the deduction)
 
@@ -76,7 +77,7 @@ pytest backend/tests/ -v
 ```
 ┌──────────────────────────────────────────────┐
 │  React + Tailwind CSS  (Vercel)              │
-│  Price Dashboard │ Consumption Sim │ Solar   │
+│  Prices │ History │ Simulators (Cost + Solar) │
 └────────────────────┬─────────────────────────┘
                      │ /api/*  (Vercel rewrite proxy)
                      ▼
@@ -124,7 +125,11 @@ Key endpoints:
 ```
 GET  /api/v1/prices/today                         → today's 15-min spot prices
 GET  /api/v1/prices/tomorrow                      → tomorrow's prices (available after 13:00 CET)
+GET  /api/v1/prices/range?start=...&end=...       → prices for arbitrary date range (max 30 days)
 GET  /api/v1/prices/cheapest-hours?duration=2     → cheapest consecutive window
+GET  /api/v1/prices/forecast?model=lgbm           → ML forecast (LightGBM or same_weekday_avg)
+GET  /api/v1/prices/forecast/accuracy?days=30     → per-model MAE/RMSE over N days
+GET  /api/v1/prices/forecast/retrospective?date=… → predictions vs actuals for a past date
 POST /api/v1/simulate/consumption                 → fixed vs dynamic cost comparison
 POST /api/v1/simulate/solar                       → PV generation + revenue estimate
 GET  /health                                      → service health check
