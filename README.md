@@ -27,6 +27,13 @@ In Japan I worked on a Solar Power Retails system where utilities pay a governme
 
 ---
 
+## Screenshot
+
+<!-- Add a dashboard screenshot here: docs/screenshot.png -->
+![Namazu dashboard](docs/screenshot.png)
+
+---
+
 ## Quick start (local)
 
 ```bash
@@ -50,6 +57,17 @@ Then backfill historical prices:
 ```bash
 docker compose exec api python -m app.tasks.fetch_prices --backfill 30
 ```
+
+---
+
+## Testing
+
+```bash
+pip install -r backend/requirements-dev.txt
+pytest backend/tests/ -v
+```
+
+112 tests across unit and integration layers — price parsing, timezone/DST handling, solar simulation, push subscriptions, and API client edge cases (network errors, empty windows, HTTP error codes).
 
 ---
 
@@ -86,7 +104,7 @@ docker compose exec api python -m app.tasks.fetch_prices --backfill 30
 | Layer | Technology | Why |
 |---|---|---|
 | Backend | Python 3.12, FastAPI | Auto-docs (Swagger), Pydantic types, async-ready |
-| Runtime | AWS Lambda (arm64 Docker) | Zero cost at this scale; same image runs locally and on ECS |
+| Runtime | AWS Lambda (arm64 Docker) | Zero cost at this scale; same app code runs locally (dev target) and in Lambda |
 | ASGI adapter | Mangum | Wraps FastAPI for Lambda without modifying app code |
 | Database | PostgreSQL on Supabase | Full SQL, free tier with no 12-month expiry (unlike RDS) |
 | Frontend | React 19, Vite, Tailwind CSS | Fast iteration; Recharts for time-series visualization |

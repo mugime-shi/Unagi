@@ -1,4 +1,4 @@
-# ── API Lambda (Lambda Web Adapter → FastAPI via HTTP) ────────────────────────
+# ── API Lambda (Mangum wraps FastAPI for Lambda invocation) ──────────────────
 resource "aws_lambda_function" "api" {
   function_name = "${var.project}-api"
   role          = aws_iam_role.lambda_exec.arn

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { CheapHoursWidget } from './components/CheapHoursWidget'
 import { ConsumptionSimulator } from './components/ConsumptionSimulator'
+import { GenerationChart } from './components/GenerationChart'
 import { NotificationBell } from './components/NotificationBell'
 import { PriceChart } from './components/PriceChart'
 import { PriceHistory } from './components/PriceHistory'
@@ -141,50 +142,6 @@ export default function App() {
               <>
                 {day === 'today' && <PriceIndicator prices={data.prices} />}
 
-                {/* Generation mix badge — today only */}
-                {day === 'today' && generation && generation.renewable_pct != null && (
-                  <div className="space-y-1.5">
-                    <p className="text-[11px] text-gray-500">
-                      {(() => {
-                        const d = new Date(generation.latest_slot)
-                        const time = d.toLocaleTimeString('sv-SE', {
-                          hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Stockholm',
-                        })
-                        const tz = d.toLocaleTimeString('en-SE', {
-                          timeZone: 'Europe/Stockholm', timeZoneName: 'short',
-                        }).split(' ').at(-1)
-                        const ageMin = Math.round((Date.now() - d.getTime()) / 60000)
-                        const lagStr = ageMin < 60
-                          ? `~${ageMin} min lag`
-                          : `~${Math.round(ageMin / 60 * 10) / 10}h lag`
-                        return `Generation mix · as of ${time} ${tz} (${lagStr})`
-                      })()}
-                    </p>
-                  <div className="flex flex-wrap gap-2 text-xs">
-                    <span className="bg-green-900/40 border border-green-700 text-green-300 rounded-full px-3 py-1">
-                      Renewable {generation.renewable_pct}%
-                    </span>
-                    <span className="bg-gray-800 border border-gray-700 text-gray-400 rounded-full px-3 py-1">
-                      Carbon-free {generation.carbon_free_pct}%
-                    </span>
-                    {generation.breakdown?.hydro != null && (
-                      <span className="bg-blue-900/30 border border-blue-800 text-blue-400 rounded-full px-3 py-1">
-                        Hydro {Math.round(generation.breakdown.hydro)} MW
-                      </span>
-                    )}
-                    {generation.breakdown?.wind != null && (
-                      <span className="bg-cyan-900/30 border border-cyan-800 text-cyan-400 rounded-full px-3 py-1">
-                        Wind {Math.round(generation.breakdown.wind)} MW
-                      </span>
-                    )}
-                    {generation.breakdown?.nuclear != null && (
-                      <span className="bg-yellow-900/30 border border-yellow-800 text-yellow-500 rounded-full px-3 py-1">
-                        Nuclear {Math.round(generation.breakdown.nuclear)} MW
-                      </span>
-                    )}
-                  </div>
-                  </div>
-                )}
 
                 {/* Tomorrow not published yet */}
                 {day === 'tomorrow' && data.is_mock && data.published === false && (
@@ -216,8 +173,14 @@ export default function App() {
                     isMock={data.is_mock}
                     forecast={day === 'tomorrow' ? forecast : null}
                     balancing={day === 'today' ? balancing : null}
+                    generationTimeSeries={day === 'today' ? generation?.time_series : null}
                   />
                 </div>
+
+                {/* Generation mix stacked area chart — today only, directly below price for X-axis alignment */}
+                {day === 'today' && generation?.time_series?.length > 0 && (
+                  <GenerationChart generation={generation} prices={data.prices} />
+                )}
 
                 {/* Min / Avg (date) / Avg (month) / Max */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">

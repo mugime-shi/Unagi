@@ -518,7 +518,7 @@ imblSalesPrice           = Nordic SIB（2022年〜）の単一インバランス
 - [x] バッジ上に「Generation mix · as of HH:MM CET/CEST（実際のラグ時間）」を表示
   - CET/CEST を Intl API で動的取得（夏時間対応）
   - ラグ時間も実測値を動的表示（固定 "~15 min lag" ではなく実際の分/時間）
-- [ ] 任意: 発電ミックス積み上げグラフ（stacked area chart）— 未実装
+- [ ] 発電ミックス積み上げグラフ（stacked area chart）→ Phase 10.1 として正式タスク化
 
 ### 9.4 P9-4: バグ修正（工数: 小）✓
 
@@ -540,6 +540,114 @@ imblSalesPrice           = Nordic SIB（2022年〜）の単一インバランス
 - 北部風力(SE1/SE2)からの輸入分は A75 に含まれない → SE3 表示値は実消費グリーン度より低い可能性
 - ENTSO-E A75 のラグは ~15-30分と文書化されているが、実測では 1-2時間になることがある（SE3 固有の遅延？）
 - Lambda スケジューラーへの A75 組み込みは未実施（オンデマンドフェッチで充足）
+
+---
+
+## Phase 10: フロントエンド仕上げ（フロントエンド A → S）
+
+### 10.1 Generation Mix Stacked Area Chart（工数: 小）
+
+**前提**: バックエンドは `time_series`（毎時バケット: hydro/wind/nuclear/other MW）を既に返している。フロントエンドのみの変更で完結。
+
+- [x] `GenerationChart.jsx` 新規作成
+  - Recharts `AreaChart` + `stackOffset="none"`（面グラフ、各電源を積み上げ）
+  - X 軸: Stockholm 時刻（00:00〜現在）、Y 軸: MW
+  - 電源カラー: Hydro=青、Wind=シアン、Nuclear=黄、Solar=橙、Other=グレー
+- [x] 既存バッジ行の下に配置（バッジはサマリーとして残す）
+- [x] 価格チャートと上下に並べて「発電ミックス → 価格」の因果が視覚的に見えるレイアウト
+- [x] データなし / ローディング時のスケルトン UI（time_series が空なら null を返す）
+
+**完了条件**: 今日の 00:00〜現在の発電ミックスが積み上げ面グラフで表示され、価格チャートとの相関が一画面で確認できる
+
+**実装上のポイント**:
+- `useGeneration.js` が返す `generation.time_series` を直接 Recharts に渡すだけ
+- 追加 API コール不要（既存レスポンスに `time_series` 含まれている）
+- バックエンド変更ゼロ
+
+### 10.2 アクセシビリティ — カラーインジケーターにテキストラベル追加（工数: 極小）
+
+**なぜ**: 現在「安い/普通/高い」が色のみで表現されている。これが フロントエンド A に留まる唯一の理由。
+
+- [x] `PriceIndicator.jsx`: 色リングに加えて "Cheap" / "Normal" / "Expensive" テキストを追加
+  - 実装確認: line 32 `{level}` が既に "Cheap"/"Normal"/"Expensive" をテキスト表示済み
+- [x] カラーはそのまま維持、テキストを追加するだけ（デザイン変更最小）
+
+**完了条件**: スクリーンリーダーまたは色覚多様性ユーザーがテキストだけで価格水準を判断できる
+
+---
+
+## Phase 11: ML 価格予測（フル A/B テスト付き）
+
+**なぜやるか**: 現在の `same_weekday_avg` モデルは p10/p50/p90 を返すが、精度を証明する仕組みがない。「モデルを作った」ではなく「精度を数値で改善した」を面接で語るために、バックテスト基盤を先に構築する。
+
+### 11.1 バックテスト基盤（工数: 小）
+
+- [ ] `models/forecast_accuracy.py`: `forecast_accuracy` テーブル
+  - カラム: date, area, model_name, hour, predicted_sek_kwh, actual_sek_kwh, created_at
+  - UNIQUE(date, area, model_name, hour)
+- [ ] `db/migrations/`: Alembic マイグレーション
+- [ ] `services/backtest_service.py`: スコアリング関数
+  - 予測 vs 実績を比較して MAE / RMSE を計算
+  - `score_forecast(db, date, area, model_name)` — 当日実績が揃った翌日に実行
+- [ ] `GET /api/v1/forecast/accuracy?area=SE3&days=30` エンドポイント
+  - model_name 別の MAE / RMSE を返す
+
+**完了条件**: `same_weekday_avg` の過去 30日 MAE が数値で取得できる（ベースライン確立）
+
+### 11.2 特徴量エンジニアリング（工数: 中）
+
+- [ ] `services/feature_service.py`: 特徴量生成パイプライン
+  - 時間帯（0-23）、曜日（0-6）、月（1-12）
+  - 前日同時間帯の価格、前週同曜日の価格
+  - Generation Mix: hydro_ratio, wind_ratio（当日分は前日の実績値を使用）
+  - 季節エンコーディング（sin/cos 変換で cyclical feature）
+- [ ] `scripts/build_feature_matrix.py`: 過去 N 日分の特徴量行列を CSV/DataFrame で出力
+  - 動作確認用。Jupyter Notebook 不要
+- [ ] テスト: 特徴量が NaN なく生成されることを確認（DST 境界日も含む）
+
+**完了条件**: 過去 90日分の特徴量行列が生成できる
+
+### 11.3 LightGBM モデル訓練（工数: 中）
+
+- [ ] `requirements.txt` に `lightgbm` を追加（Lambda でも動く wheel あり）
+- [ ] `services/ml_forecast_service.py`
+  - 訓練: 最新 90日 − 最後 7日（テストセット）
+  - 予測対象: 翌日 24時間の SEK/kWh
+  - 出力: `build_forecast()` と同じ `{slots: [{hour, avg, low, high}], summary}` フォーマット
+  - モデルバイナリは `/tmp/` にキャッシュ（Lambda コールド/ウォーム対応）
+- [ ] `GET /api/v1/prices/forecast` に `model=lgbm` クエリパラメータを追加
+  - `model=same_weekday_avg`（デフォルト、既存）/ `model=lgbm`（新規）
+- [ ] バックテスト連携: 予測実行時に `forecast_accuracy` テーブルへ自動記録
+
+**完了条件**: LightGBM の翌日予測が `same_weekday_avg` と同じ API フォーマットで返る
+
+### 11.4 精度比較 UI（工数: 小）
+
+- [ ] フロントエンド: Tomorrow タブに「Forecast accuracy」ミニカード
+  - same_weekday_avg: MAE = X.X öre/kWh（過去 30日）
+  - LightGBM: MAE = X.X öre/kWh（過去 30日）
+  - 改善率: -XX%（LightGBM が優れていれば）
+- [ ] モデル切り替えトグル（任意: 予測バンドを sam_weekday_avg / lgbm で切り替え）
+
+**完了条件**: 「ML により MAE が X öre → Y öre に改善した」を画面上で証明できる
+
+---
+
+## Phase 12: 低優先度タスク（時間があれば）
+
+### 12.1 README スクリーンショット配置
+- [ ] `namazu-el.vercel.app` をブラウザで開き、スクリーンショットを撮影
+- [ ] `docs/screenshot.png` に配置（フォルダがなければ作成）
+- README の `![Namazu dashboard](docs/screenshot.png)` が表示されることを確認
+
+### 12.2 EUR/SEK 動的レート（Riksbank API）
+- [ ] Riksbank の SWEA API で当日の EUR/SEK を取得（認証不要）
+- [ ] `config.py` の `eur_to_sek_rate = 11.0` を Riksbank API フォールバック構成に変更
+  - API 取得成功 → 当日レート、失敗 → 11.0 にフォールバック
+- [ ] Scheduler Lambda に日次レート取得を追加
+
+### 12.3 Phase 8.1 — Intraday（IDA）重ね表示
+- [ ] 既存の未チェックタスク（Phase 8.1 参照）
 
 ---
 

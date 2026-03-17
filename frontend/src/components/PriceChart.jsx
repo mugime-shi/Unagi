@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   Area,
   CartesianGrid,
@@ -12,6 +13,19 @@ import {
 import { currentCETHour, toLocalHour } from '../utils/formatters'
 
 const NOW_HOUR = currentCETHour()
+
+// Generation sources for overlay background
+const GEN_SOURCES = [
+  { key: 'gen_hydro',   color: '#3b82f6' },
+  { key: 'gen_wind',    color: '#22d3ee' },
+  { key: 'gen_nuclear', color: '#eab308' },
+  { key: 'gen_solar',   color: '#f97316' },
+  { key: 'gen_other',   color: '#6b7280' },
+]
+
+function toUtc(iso) {
+  return iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z'
+}
 
 function priceColor(sek) {
   if (sek <= 0.40) return '#22c55e'   // green — cheap
@@ -56,6 +70,15 @@ function CustomTooltip({ active, payload, label }) {
           forecast {p.forecast_low.toFixed(2)}–{(p.forecast_low + p.forecast_band).toFixed(2)}
         </p>
       )}
+      {/* Generation breakdown when overlay is active */}
+      {p.gen_hydro != null && (
+        <div className="mt-1 pt-1 border-t border-gray-700 text-xs">
+          {p.gen_hydro > 0 && <p className="text-blue-400">Hydro {Math.round(p.gen_hydro)} MW</p>}
+          {p.gen_wind > 0 && <p className="text-cyan-400">Wind {Math.round(p.gen_wind)} MW</p>}
+          {p.gen_nuclear > 0 && <p className="text-yellow-400">Nuclear {Math.round(p.gen_nuclear)} MW</p>}
+          {p.gen_other > 0 && <p className="text-gray-400">Other {Math.round(p.gen_other)} MW</p>}
+        </div>
+      )}
       {p.is_mock && <p className="text-yellow-500 text-xs mt-1">mock data</p>}
     </div>
   )
@@ -66,7 +89,9 @@ function tsKey(iso) {
   return iso.substring(0, 16)  // "2026-03-15T23:00"
 }
 
-export function PriceChart({ prices, isMock, forecast = null, balancing = null }) {
+export function PriceChart({ prices, isMock, forecast = null, balancing = null, generationTimeSeries = null }) {
+  const [showGen, setShowGen] = useState(false)
+
   // Forecast lookup: hour (0-23) → { low, band }
   const forecastByHour = {}
   if (forecast?.slots) {
@@ -88,11 +113,21 @@ export function PriceChart({ prices, isMock, forecast = null, balancing = null }
     for (const p of balancing.long)  imbLongByTs[tsKey(p.timestamp_utc)]  = parseFloat(p.price_sek_kwh)
   }
 
+  // Generation lookup: "HH:00" → generation row
+  const genByHour = {}
+  if (generationTimeSeries) {
+    for (const d of generationTimeSeries) {
+      genByHour[toLocalHour(toUtc(d.timestamp_utc))] = d
+    }
+  }
+
   const chartData = prices.map((p) => {
     const localHour = toLocalHour(p.timestamp_utc)
     const hour = parseInt(localHour.split(':')[0], 10)
     const fc   = forecastByHour[hour]
     const key  = tsKey(p.timestamp_utc)
+    const hourKey = localHour.split(':')[0] + ':00'
+    const gen  = genByHour[hourKey]
     return {
       ...p,
       hour: localHour,
@@ -102,6 +137,11 @@ export function PriceChart({ prices, isMock, forecast = null, balancing = null }
       forecast_band: fc?.band ?? null,
       imb_short: imbShortByTs[key] ?? null,
       imb_long:  imbLongByTs[key]  ?? null,
+      gen_hydro:   gen?.hydro   ?? null,
+      gen_wind:    gen?.wind    ?? null,
+      gen_nuclear: gen?.nuclear ?? null,
+      gen_solar:   gen?.solar   ?? null,
+      gen_other:   gen?.other   ?? null,
     }
   })
 
@@ -111,6 +151,7 @@ export function PriceChart({ prices, isMock, forecast = null, balancing = null }
   const tickFormatter = (value) => (value.endsWith(':00') ? value : '')
 
   const hasBalancing = balancing && (balancing.short.length > 0 || balancing.long.length > 0)
+  const hasGen = generationTimeSeries?.length > 0
 
   return (
     <div className="w-full">
@@ -120,21 +161,39 @@ export function PriceChart({ prices, isMock, forecast = null, balancing = null }
         </p>
       )}
 
-      {/* Balancing legend */}
-      {hasBalancing && (
-        <div className="flex gap-4 mb-2 text-xs text-gray-400 justify-end">
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-5 border-t-2 border-blue-400" />
-            Day-ahead
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-5 border-t-2 border-dashed border-orange-400" />
-            Imbalance Short
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-5 border-t-2 border-dashed border-green-400" />
-            Imbalance Long
-          </span>
+      {/* Legend row + gen mix toggle */}
+      {(hasBalancing || hasGen) && (
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex gap-4 text-xs text-gray-400">
+            {hasBalancing && (
+              <>
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block w-5 border-t-2 border-blue-400" />
+                  Day-ahead
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block w-5 border-t-2 border-dashed border-orange-400" />
+                  Imbalance Short
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block w-5 border-t-2 border-dashed border-green-400" />
+                  Imbalance Long
+                </span>
+              </>
+            )}
+          </div>
+          {hasGen && (
+            <button
+              onClick={() => setShowGen((v) => !v)}
+              className={`text-xs px-2.5 py-0.5 rounded-full border transition-colors ${
+                showGen
+                  ? 'border-emerald-600 text-emerald-400 bg-emerald-900/20'
+                  : 'border-gray-700 text-gray-500 hover:text-gray-400'
+              }`}
+            >
+              {showGen ? '▪ Gen mix' : '◦ Gen mix'}
+            </button>
+          )}
         </div>
       )}
 
@@ -149,23 +208,47 @@ export function PriceChart({ prices, isMock, forecast = null, balancing = null }
             angle={-45}
             textAnchor="end"
           />
+          {/* Primary Y-axis: price (SEK/kWh) */}
           <YAxis
+            yAxisId="price"
             tickFormatter={(v) => `${v.toFixed(2)}`}
             tick={{ fill: '#9ca3af', fontSize: 11 }}
             width={48}
           />
+          {/* Hidden generation Y-axis — provides scale for background areas, no visual clutter */}
+          {showGen && <YAxis yAxisId="gen" orientation="right" hide />}
+
           <Tooltip content={<CustomTooltip />} />
           <ReferenceLine
+            yAxisId="price"
             y={avg}
             stroke="#6b7280"
             strokeDasharray="4 4"
             label={{ value: 'avg', fill: '#6b7280', fontSize: 11 }}
           />
 
+          {/* Generation background — rendered first so price line stays on top */}
+          {showGen && GEN_SOURCES.map(({ key, color }) => (
+            <Area
+              key={key}
+              yAxisId="gen"
+              type="monotone"
+              dataKey={key}
+              stackId="gen"
+              stroke="none"
+              fill={color + '35'}
+              dot={false}
+              legendType="none"
+              connectNulls={false}
+              isAnimationActive={false}
+            />
+          ))}
+
           {/* Forecast band: stacked areas — transparent base + shaded band */}
           {forecast && (
             <>
               <Area
+                yAxisId="price"
                 type="monotone"
                 dataKey="forecast_low"
                 stackId="fc"
@@ -176,6 +259,7 @@ export function PriceChart({ prices, isMock, forecast = null, balancing = null }
                 isAnimationActive={false}
               />
               <Area
+                yAxisId="price"
                 type="monotone"
                 dataKey="forecast_band"
                 stackId="fc"
@@ -194,6 +278,7 @@ export function PriceChart({ prices, isMock, forecast = null, balancing = null }
           {hasBalancing && (
             <>
               <Line
+                yAxisId="price"
                 type="monotone"
                 dataKey="imb_long"
                 stroke="#4ade80"
@@ -205,6 +290,7 @@ export function PriceChart({ prices, isMock, forecast = null, balancing = null }
                 legendType="none"
               />
               <Line
+                yAxisId="price"
                 type="monotone"
                 dataKey="imb_short"
                 stroke="#f97316"
@@ -220,6 +306,7 @@ export function PriceChart({ prices, isMock, forecast = null, balancing = null }
 
           {/* Day-ahead line — rendered last so it stays on top */}
           <Line
+            yAxisId="price"
             type="monotone"
             dataKey="price_sek_kwh"
             stroke="#60a5fa"
