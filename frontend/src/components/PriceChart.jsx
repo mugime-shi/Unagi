@@ -67,8 +67,39 @@ function CustomTooltip({ active, payload, label }) {
       )}
       {p.forecast_low != null && (
         <p className="text-indigo-400 text-xs mt-1">
-          forecast {p.forecast_low.toFixed(2)}–{(p.forecast_low + p.forecast_band).toFixed(2)}
+          Weekday Avg {p.forecast_low.toFixed(2)}–{(p.forecast_low + p.forecast_band).toFixed(2)}
         </p>
+      )}
+      {p.lgbm_forecast != null && (
+        <p className="text-emerald-400 text-xs">
+          LGBM {p.lgbm_forecast.toFixed(2)}
+        </p>
+      )}
+      {/* Retrospective predictions */}
+      {(p.retro_weekday != null || p.retro_lgbm != null) && (
+        <div className="mt-1 pt-1 border-t border-gray-700 text-xs">
+          <p className="text-gray-500">Yesterday&apos;s prediction:</p>
+          {p.retro_weekday != null && (
+            <p className="text-violet-400">
+              Weekday {p.retro_weekday.toFixed(2)}
+              {p.price_sek_kwh > 0 && (
+                <span className="ml-1 text-violet-500">
+                  (err {((p.retro_weekday - p.price_sek_kwh) * 100).toFixed(1)} öre)
+                </span>
+              )}
+            </p>
+          )}
+          {p.retro_lgbm != null && (
+            <p className="text-rose-400">
+              LGBM {p.retro_lgbm.toFixed(2)}
+              {p.price_sek_kwh > 0 && (
+                <span className="ml-1 text-rose-500">
+                  (err {((p.retro_lgbm - p.price_sek_kwh) * 100).toFixed(1)} öre)
+                </span>
+              )}
+            </p>
+          )}
+        </div>
       )}
       {/* Generation breakdown when overlay is active */}
       {p.gen_hydro != null && (
@@ -79,7 +110,7 @@ function CustomTooltip({ active, payload, label }) {
           {p.gen_other > 0 && <p className="text-gray-400">Other {Math.round(p.gen_other)} MW</p>}
         </div>
       )}
-      {p.is_mock && <p className="text-yellow-500 text-xs mt-1">mock data</p>}
+      {p.is_estimate && <p className="text-yellow-500 text-xs mt-1">Estimated</p>}
     </div>
   )
 }
@@ -89,20 +120,43 @@ function tsKey(iso) {
   return iso.substring(0, 16)  // "2026-03-15T23:00"
 }
 
-export function PriceChart({ prices, isMock, forecast = null, balancing = null, generationTimeSeries = null }) {
+export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast = null, retrospective = null, balancing = null, generationTimeSeries = null }) {
   const [showGen, setShowGen] = useState(false)
 
-  // Forecast lookup: hour (0-23) → { low, band }
+  // Forecast lookup: hour (0-23) → { low, band, avg }
   const forecastByHour = {}
   if (forecast?.slots) {
     forecast.slots.forEach((s) => {
-      if (s.low_sek_kwh != null) {
+      if (s.avg_sek_kwh != null) {
         forecastByHour[s.hour] = {
           low:  s.low_sek_kwh,
           band: s.high_sek_kwh - s.low_sek_kwh,
+          avg:  s.avg_sek_kwh,
         }
       }
     })
+  }
+
+  // LightGBM forecast lookup: hour (0-23) → predicted avg
+  const lgbmByHour = {}
+  if (lgbmForecast?.slots) {
+    lgbmForecast.slots.forEach((s) => {
+      if (s.avg_sek_kwh != null) {
+        lgbmByHour[s.hour] = s.avg_sek_kwh
+      }
+    })
+  }
+
+  // Retrospective lookups: hour (0-23) → predicted SEK/kWh per model
+  const retroByModel = {}
+  if (retrospective?.models) {
+    for (const [model, entries] of Object.entries(retrospective.models)) {
+      const byHour = {}
+      for (const e of entries) {
+        if (e.predicted_sek_kwh != null) byHour[e.hour] = e.predicted_sek_kwh
+      }
+      retroByModel[model] = byHour
+    }
   }
 
   // Balancing lookup: tsKey → SEK/kWh for each category
@@ -133,8 +187,10 @@ export function PriceChart({ prices, isMock, forecast = null, balancing = null, 
       hour: localHour,
       price_sek_kwh: parseFloat(p.price_sek_kwh),
       price_eur_mwh: parseFloat(p.price_eur_mwh),
-      forecast_low:  fc?.low  ?? null,
-      forecast_band: fc?.band ?? null,
+      forecast_low:  forecastByHour[hour]?.low  ?? null,
+      forecast_band: forecastByHour[hour]?.band ?? null,
+      forecast_avg:  forecastByHour[hour]?.avg  ?? null,
+      lgbm_forecast: lgbmByHour[hour] ?? null,
       imb_short: imbShortByTs[key] ?? null,
       imb_long:  imbLongByTs[key]  ?? null,
       gen_hydro:   gen?.hydro   ?? null,
@@ -142,6 +198,8 @@ export function PriceChart({ prices, isMock, forecast = null, balancing = null, 
       gen_nuclear: gen?.nuclear ?? null,
       gen_solar:   gen?.solar   ?? null,
       gen_other:   gen?.other   ?? null,
+      retro_weekday: retroByModel['same_weekday_avg']?.[hour] ?? null,
+      retro_lgbm:    retroByModel['lgbm']?.[hour] ?? null,
     }
   })
 
@@ -152,19 +210,21 @@ export function PriceChart({ prices, isMock, forecast = null, balancing = null, 
 
   const hasBalancing = balancing && (balancing.short.length > 0 || balancing.long.length > 0)
   const hasGen = generationTimeSeries?.length > 0
+  const hasForecast = forecast || lgbmForecast
+  const hasRetro = retrospective?.models && Object.keys(retrospective.models).length > 0
 
   return (
     <div className="w-full">
-      {isMock && (
+      {isEstimate && (
         <p className="text-xs text-yellow-400 mb-2 text-center">
-          ⚠ Showing mock data — add ENTSOE_API_KEY to see real prices
+          Showing estimated data — add ENTSOE_API_KEY to see real prices
         </p>
       )}
 
-      {/* Legend row + gen mix toggle */}
-      {(hasBalancing || hasGen) && (
+      {/* Legend row */}
+      {(hasBalancing || hasGen || hasForecast || hasRetro) && (
         <div className="flex items-center justify-between mb-2">
-          <div className="flex gap-4 text-xs text-gray-400">
+          <div className="flex gap-4 text-xs text-gray-400 flex-wrap">
             {hasBalancing && (
               <>
                 <span className="flex items-center gap-1.5">
@@ -179,6 +239,42 @@ export function PriceChart({ prices, isMock, forecast = null, balancing = null, 
                   <span className="inline-block w-5 border-t-2 border-dashed border-green-400" />
                   Imbalance Long
                 </span>
+              </>
+            )}
+            {hasForecast && (
+              <>
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block w-5 border-t-2 border-blue-400" />
+                  Day-ahead
+                </span>
+                {forecast && (
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block w-5 border-t-2 border-dashed border-indigo-400" />
+                    Weekday Avg
+                  </span>
+                )}
+                {lgbmForecast && (
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block w-5 border-t-2 border-emerald-400" />
+                    LGBM
+                  </span>
+                )}
+              </>
+            )}
+            {hasRetro && (
+              <>
+                {retroByModel['same_weekday_avg'] && (
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block w-5 border-t-2 border-dashed border-violet-400" />
+                    Pred: Weekday
+                  </span>
+                )}
+                {retroByModel['lgbm'] && (
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block w-5 border-t-2 border-dashed border-rose-400" />
+                    Pred: LGBM
+                  </span>
+                )}
               </>
             )}
           </div>
@@ -244,7 +340,7 @@ export function PriceChart({ prices, isMock, forecast = null, balancing = null, 
             />
           ))}
 
-          {/* Forecast band: stacked areas — transparent base + shaded band */}
+          {/* Weekday Avg forecast band: stacked areas — transparent base + shaded band */}
           {forecast && (
             <>
               <Area
@@ -302,6 +398,52 @@ export function PriceChart({ prices, isMock, forecast = null, balancing = null, 
                 legendType="none"
               />
             </>
+          )}
+
+          {/* LightGBM forecast line — emerald dashed */}
+          {lgbmForecast && (
+            <Line
+              yAxisId="price"
+              type="monotone"
+              dataKey="lgbm_forecast"
+              stroke="#34d399"
+              strokeWidth={1.5}
+              strokeDasharray="6 3"
+              dot={false}
+              connectNulls={false}
+              isAnimationActive={false}
+              legendType="none"
+            />
+          )}
+
+          {/* Retrospective prediction lines — dashed, muted */}
+          {hasRetro && retroByModel['same_weekday_avg'] && (
+            <Line
+              yAxisId="price"
+              type="monotone"
+              dataKey="retro_weekday"
+              stroke="#a78bfa"
+              strokeWidth={1.5}
+              strokeDasharray="4 4"
+              dot={false}
+              connectNulls={false}
+              isAnimationActive={false}
+              legendType="none"
+            />
+          )}
+          {hasRetro && retroByModel['lgbm'] && (
+            <Line
+              yAxisId="price"
+              type="monotone"
+              dataKey="retro_lgbm"
+              stroke="#fb7185"
+              strokeWidth={1.5}
+              strokeDasharray="4 4"
+              dot={false}
+              connectNulls={false}
+              isAnimationActive={false}
+              legendType="none"
+            />
           )}
 
           {/* Day-ahead line — rendered last so it stays on top */}

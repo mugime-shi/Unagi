@@ -9,8 +9,11 @@ import { PriceHistory } from './components/PriceHistory'
 import { PriceIndicator } from './components/PriceIndicator'
 import { SolarSimulator } from './components/SolarSimulator'
 import { useBalancing } from './hooks/useBalancing'
+import { useDatePrices } from './hooks/useDatePrices'
 import { useForecast } from './hooks/useForecast'
 import { useGeneration } from './hooks/useGeneration'
+import { useLgbmForecast } from './hooks/useLgbmForecast'
+import { useRetrospective } from './hooks/useRetrospective'
 import { usePrices } from './hooks/usePrices'
 
 const AREAS = [
@@ -30,17 +33,32 @@ function tomorrowISO() {
   return d.toISOString().split('T')[0]
 }
 
+function yesterdayISO() {
+  const d = new Date()
+  d.setDate(d.getDate() - 1)
+  return d.toISOString().split('T')[0]
+}
+
 export default function App() {
   const [layer, setLayer] = useState('prices')
   const [day, setDay]     = useState('today')
   const [area, setArea]   = useState('SE3')
-  const { data, loading, error } = usePrices(day, area)
+  const [reviewDate, setReviewDate] = useState(yesterdayISO)
+  const { data, loading, error } = usePrices(day !== 'review' ? day : 'today', area)
   const { data: forecast } = useForecast(day === 'tomorrow' ? tomorrowISO() : null, area)
+  const { data: lgbmForecast } = useLgbmForecast(day === 'tomorrow' ? tomorrowISO() : null, area)
   // Balancing prices: try today, fall back to yesterday if not yet published
   const { data: balancing, dataDate: balancingDate } = useBalancing(
     day === 'today' ? todayISO() : null, area,
   )
   const { data: generation } = useGeneration(area)
+  const { data: retrospective } = useRetrospective(
+    day === 'today' ? todayISO() : day === 'review' ? reviewDate : null, area,
+  )
+  // Review mode: fetch prices for an arbitrary past date
+  const { data: reviewData, loading: reviewLoading, error: reviewError } = useDatePrices(
+    day === 'review' ? reviewDate : null, area,
+  )
 
   const areaCity = AREAS.find((a) => a.id === area)?.city ?? area
 
@@ -74,7 +92,7 @@ export default function App() {
           {[
             { id: 'prices',  label: 'Prices'  },
             { id: 'history', label: 'History' },
-            { id: 'solar',   label: 'Solar'   },
+            { id: 'simulators', label: 'Simulators' },
           ].map(({ id, label }) => (
             <button
               key={id}
@@ -97,8 +115,8 @@ export default function App() {
         {layer === 'prices' && (
           <>
             {/* Day selector */}
-            <div className="flex gap-2">
-              {['today', 'tomorrow'].map((d) => (
+            <div className="flex gap-2 items-center">
+              {['today', 'tomorrow', 'review'].map((d) => (
                 <button
                   key={d}
                   onClick={() => setDay(d)}
@@ -108,120 +126,239 @@ export default function App() {
                       : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
                   }`}
                 >
-                  {d === 'today' ? 'Today' : 'Tomorrow'}
+                  {d === 'today' ? 'Today' : d === 'tomorrow' ? 'Tomorrow' : 'Review'}
                 </button>
               ))}
+              {day === 'review' && (
+                <input
+                  type="date"
+                  value={reviewDate}
+                  max={todayISO()}
+                  onChange={(e) => setReviewDate(e.target.value)}
+                  className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1 text-sm text-gray-300 focus:outline-none focus:border-blue-500"
+                />
+              )}
             </div>
 
-            {loading && (
-              <div className="animate-pulse space-y-4">
-                {/* Chart placeholder */}
-                <div className="bg-gray-900 rounded-2xl p-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="h-4 bg-gray-700 rounded w-40" />
-                    <div className="h-3 bg-gray-700 rounded w-12" />
-                  </div>
-                  <div className="h-[300px] bg-gray-800 rounded-xl" />
-                </div>
-                {/* Summary cards placeholder */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {[0, 1, 2, 3].map((i) => (
-                    <div key={i} className="bg-gray-900 rounded-xl py-3 px-4 space-y-2">
-                      <div className="h-3 bg-gray-700 rounded w-16 mx-auto" />
-                      <div className="h-6 bg-gray-700 rounded w-12 mx-auto" />
-                      <div className="h-3 bg-gray-700 rounded w-10 mx-auto" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {error && (
-              <p className="text-red-400 text-sm">Failed to load prices: {error.message}</p>
-            )}
-
-            {data && (
+            {/* ── Review mode ── */}
+            {day === 'review' && (
               <>
-                {day === 'today' && <PriceIndicator prices={data.prices} />}
+                {reviewLoading && (
+                  <div className="animate-pulse bg-gray-900 rounded-2xl p-4">
+                    <div className="h-[300px] bg-gray-800 rounded-xl" />
+                  </div>
+                )}
+                {reviewError && (
+                  <p className="text-red-400 text-sm">Failed to load prices: {reviewError.message}</p>
+                )}
+                {reviewData && (
+                  <>
+                    <div className="bg-gray-900 rounded-2xl p-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <h2 className="text-sm font-medium text-gray-300">
+                            Spot price — {reviewData.date} · {reviewData.count} slots
+                          </h2>
+                          {retrospective?.models && Object.keys(retrospective.models).length > 0 && (
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              + Forecast predictions overlay
+                            </p>
+                          )}
+                        </div>
+                        <span className="text-xs text-gray-500">SEK/kWh</span>
+                      </div>
+                      <PriceChart
+                        prices={reviewData.prices}
+                        isEstimate={false}
+                        retrospective={retrospective}
+                      />
+                    </div>
 
+                    {/* Summary cards */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-center">
+                      {[
+                        { label: 'Min', value: reviewData.summary.min_sek_kwh },
+                        { label: 'Avg', value: reviewData.summary.avg_sek_kwh },
+                        { label: 'Max', value: reviewData.summary.max_sek_kwh },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="bg-gray-900 rounded-xl py-3">
+                          <p className="text-xs text-gray-500 mb-1">{label}</p>
+                          <p className="text-lg font-semibold">
+                            {value != null ? value.toFixed(2) : '—'}
+                          </p>
+                          <p className="text-xs text-gray-500">SEK/kWh</p>
+                        </div>
+                      ))}
+                    </div>
 
-                {/* Tomorrow not published yet */}
-                {day === 'tomorrow' && data.is_mock && data.published === false && (
-                  <p className="text-yellow-400 text-xs text-center bg-yellow-400/10 rounded-lg py-2 px-3">
-                    Tomorrow&apos;s prices are typically published after 13:00 CET
+                    {/* Per-model accuracy for this specific date */}
+                    {retrospective?.models && Object.keys(retrospective.models).length > 0 && (
+                      <div className="bg-gray-900 rounded-xl p-4">
+                        <h3 className="text-xs text-gray-500 mb-3">
+                          Prediction accuracy — {reviewData.date}
+                        </h3>
+                        <div className="space-y-2">
+                          {Object.entries(retrospective.models).map(([model, entries]) => {
+                            const pairs = entries.filter((e) => e.predicted_sek_kwh != null && e.actual_sek_kwh != null)
+                            if (pairs.length === 0) return null
+                            const mae = pairs.reduce((s, e) => s + Math.abs(e.predicted_sek_kwh - e.actual_sek_kwh), 0) / pairs.length
+                            return (
+                              <div key={model} className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-800">
+                                <span className="text-sm font-medium text-gray-200">
+                                  {model === 'same_weekday_avg' ? 'Weekday Avg' : model.toUpperCase()}
+                                </span>
+                                <span className="text-sm text-gray-300">
+                                  MAE {mae.toFixed(2)} SEK/kWh · {pairs.length} hrs
+                                </span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+                {!reviewLoading && !reviewError && !reviewData && (
+                  <p className="text-gray-500 text-sm text-center py-8">
+                    Select a date to review past prices and forecast accuracy
                   </p>
                 )}
-
-                {/* Price chart */}
-                <div className="bg-gray-900 rounded-2xl p-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h2 className="text-sm font-medium text-gray-300">
-                        Spot price — {data.date} · {data.count} slots
-                      </h2>
-                      {day === 'today' && balancing && (
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          + Imbalance prices (eSett EXP14) · {balancing.count} pts
-                          {balancingDate && balancingDate !== data.date && (
-                            <span className="text-gray-600 ml-1">· {balancingDate}</span>
-                          )}
-                        </p>
-                      )}
-                    </div>
-                    <span className="text-xs text-gray-500">SEK/kWh</span>
-                  </div>
-                  <PriceChart
-                    prices={data.prices}
-                    isMock={data.is_mock}
-                    forecast={day === 'tomorrow' ? forecast : null}
-                    balancing={day === 'today' ? balancing : null}
-                    generationTimeSeries={day === 'today' ? generation?.time_series : null}
-                  />
-                </div>
-
-                {/* Generation mix stacked area chart — today only, directly below price for X-axis alignment */}
-                {day === 'today' && generation?.time_series?.length > 0 && (
-                  <GenerationChart generation={generation} prices={data.prices} />
-                )}
-
-                {/* Min / Avg (date) / Avg (month) / Max */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                  {[
-                    { label: 'Min', value: data.summary.min_sek_kwh },
-                    {
-                      label: `Avg (${new Date(data.date).toISOString().split('T')[0]})`,
-                      value: data.summary.avg_sek_kwh,
-                    },
-                    { label: 'Avg (month)', value: data.summary.month_avg_sek_kwh },
-                    { label: 'Max', value: data.summary.max_sek_kwh },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="bg-gray-900 rounded-xl py-3">
-                      <p className="text-xs text-gray-500 mb-1">{label}</p>
-                      <p className="text-lg font-semibold">
-                        {value != null ? value.toFixed(2) : '—'}
-                      </p>
-                      <p className="text-xs text-gray-500">SEK/kWh</p>
-                    </div>
-                  ))}
-                </div>
               </>
             )}
 
-            {/* Forecast accuracy card — tomorrow only */}
-            {day === 'tomorrow' && <ForecastAccuracy area={area} />}
+            {/* ── Today / Tomorrow mode ── */}
+            {day !== 'review' && (
+              <>
+                {loading && (
+                  <div className="animate-pulse space-y-4">
+                    {/* Chart placeholder */}
+                    <div className="bg-gray-900 rounded-2xl p-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="h-4 bg-gray-700 rounded w-40" />
+                        <div className="h-3 bg-gray-700 rounded w-12" />
+                      </div>
+                      <div className="h-[300px] bg-gray-800 rounded-xl" />
+                    </div>
+                    {/* Summary cards placeholder */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {[0, 1, 2, 3].map((i) => (
+                        <div key={i} className="bg-gray-900 rounded-xl py-3 px-4 space-y-2">
+                          <div className="h-3 bg-gray-700 rounded w-16 mx-auto" />
+                          <div className="h-6 bg-gray-700 rounded w-12 mx-auto" />
+                          <div className="h-3 bg-gray-700 rounded w-10 mx-auto" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {error && (
+                  <p className="text-red-400 text-sm">Failed to load prices: {error.message}</p>
+                )}
 
-            {/* Appliance scheduler — today only */}
-            {day === 'today' && <CheapHoursWidget date={todayISO()} area={area} />}
+                {data && (
+                  <>
+                    {day === 'today' && <PriceIndicator prices={data.prices} />}
 
-            {/* Consumption simulator */}
-            <ConsumptionSimulator />
+
+                    {/* Tomorrow not published yet */}
+                    {day === 'tomorrow' && data.is_estimate && data.published === false && (
+                      <p className="text-yellow-400 text-xs text-center bg-yellow-400/10 rounded-lg py-2 px-3">
+                        Tomorrow&apos;s prices are typically published after 13:00 CET
+                      </p>
+                    )}
+
+                    {/* Price chart */}
+                    <div className="bg-gray-900 rounded-2xl p-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <h2 className="text-sm font-medium text-gray-300">
+                            Spot price — {data.date} · {data.count} slots
+                          </h2>
+                          {day === 'today' && balancing && (
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              + Imbalance prices (eSett EXP14) · {balancing.count} pts
+                              {balancingDate && balancingDate !== data.date && (
+                                <span className="text-gray-600 ml-1">· {balancingDate}</span>
+                              )}
+                            </p>
+                          )}
+                        </div>
+                        <span className="text-xs text-gray-500">SEK/kWh</span>
+                      </div>
+                      <PriceChart
+                        prices={data.prices}
+                        isEstimate={data.is_estimate}
+                        forecast={day === 'tomorrow' ? forecast : null}
+                        lgbmForecast={day === 'tomorrow' ? lgbmForecast : null}
+                        retrospective={day === 'today' ? retrospective : null}
+                        balancing={day === 'today' ? balancing : null}
+                        generationTimeSeries={day === 'today' ? generation?.time_series : null}
+                      />
+                    </div>
+
+                    {/* Generation mix stacked area chart — today only, directly below price for X-axis alignment */}
+                    {day === 'today' && generation?.time_series?.length > 0 && (
+                      <GenerationChart generation={generation} prices={data.prices} />
+                    )}
+
+                    {/* Min / Avg (date) / Avg (month) / Max */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                      {[
+                        { label: 'Min', value: data.summary.min_sek_kwh },
+                        {
+                          label: `Avg (${new Date(data.date).toISOString().split('T')[0]})`,
+                          value: data.summary.avg_sek_kwh,
+                        },
+                        { label: 'Avg (month)', value: data.summary.month_avg_sek_kwh },
+                        { label: 'Max', value: data.summary.max_sek_kwh },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="bg-gray-900 rounded-xl py-3">
+                          <p className="text-xs text-gray-500 mb-1">{label}</p>
+                          <p className="text-lg font-semibold">
+                            {value != null ? value.toFixed(2) : '—'}
+                          </p>
+                          <p className="text-xs text-gray-500">SEK/kWh</p>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {/* Forecast accuracy card — tomorrow only */}
+                {day === 'tomorrow' && <ForecastAccuracy area={area} />}
+
+                {/* Appliance scheduler — today only */}
+                {day === 'today' && <CheapHoursWidget date={todayISO()} area={area} />}
+
+              </>
+            )}
+
+            {/* CTA → Simulators */}
+            <button
+              onClick={() => setLayer('simulators')}
+              className="w-full bg-gray-900 rounded-xl p-4 text-left hover:bg-gray-800 transition-colors group"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-300">Cost & Solar Simulator</p>
+                  <p className="text-xs text-gray-500">Compare contracts, simulate solar PV revenue</p>
+                </div>
+                <span className="text-gray-600 group-hover:text-gray-400 transition-colors text-lg">&rarr;</span>
+              </div>
+            </button>
           </>
         )}
 
         {/* ── History ── */}
         {layer === 'history' && <PriceHistory area={area} />}
 
-        {/* ── Layer 2: Solar ── */}
-        {layer === 'solar' && <SolarSimulator />}
+        {/* ── Simulators ── */}
+        {layer === 'simulators' && (
+          <div className="space-y-6">
+            <ConsumptionSimulator />
+            <SolarSimulator />
+          </div>
+        )}
 
       </main>
     </div>
