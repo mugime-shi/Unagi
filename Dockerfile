@@ -14,9 +14,8 @@ FROM base AS dev
 COPY backend/alembic.ini .
 CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
 
-# ─── lambda-base: shared Lambda setup (LightGBM needs libgomp) ────────────────
+# ─── lambda-base: shared Lambda setup ─────────────────────────────────────────
 FROM public.ecr.aws/lambda/python:3.12 AS lambda-base
-RUN yum install -y libgomp && yum clean all
 COPY backend/requirements.txt ${LAMBDA_TASK_ROOT}/
 RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/app ${LAMBDA_TASK_ROOT}/app
