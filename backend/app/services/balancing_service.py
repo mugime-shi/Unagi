@@ -45,15 +45,12 @@ def upsert_balancing(db: Session, points: list[BalancingPoint], area: str = "SE3
             price_sek_kwh = EXCLUDED.price_sek_kwh
     """)
 
-    for p in points:
-        db.execute(stmt, {
-            "area": area,
-            "ts":   p.timestamp_utc,
-            "eur":  p.price_eur_mwh,
-            "sek":  p.price_sek_kwh,
-            "cat":  p.category,
-            "res":  p.resolution,
-        })
+    params = [
+        {"area": area, "ts": p.timestamp_utc, "eur": p.price_eur_mwh,
+         "sek": p.price_sek_kwh, "cat": p.category, "res": p.resolution}
+        for p in points
+    ]
+    db.execute(stmt, params)
     db.commit()
     return len(points)
 

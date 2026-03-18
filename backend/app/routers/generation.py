@@ -6,6 +6,7 @@ Endpoints:
   GET /api/v1/generation/date    — generation mix for an arbitrary date (DB only)
 """
 
+import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated
 
@@ -30,6 +31,22 @@ AreaDep = Annotated[
     Query(description="Bidding area (SE1–SE4)"),
 ]
 
+# ---------------------------------------------------------------------------
+# In-memory cache (survives between Lambda warm invocations)
+# ---------------------------------------------------------------------------
+_CACHE_TTL = 45 * 60  # seconds — matches the staleness threshold
+_generation_cache: dict[tuple[str, str], tuple[dict, float]] = {}
+
+
+def _get_cached(area: str, date_str: str) -> dict | None:
+    key = (area, date_str)
+    if key in _generation_cache:
+        resp, cached_at = _generation_cache[key]
+        if time.time() - cached_at <= _CACHE_TTL:
+            return resp
+        del _generation_cache[key]
+    return None
+
 
 @router.get("/today")
 def get_today_generation(db: DbDep, area: AreaDep = "SE3"):
@@ -47,16 +64,24 @@ def get_today_generation(db: DbDep, area: AreaDep = "SE3"):
         raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
 
     today = datetime.now(tz=timezone.utc).date()
+    today_str = today.isoformat()
+
+    # Fast path: return cached response if still fresh
+    cached = _get_cached(area, today_str)
+    if cached is not None:
+        return cached
+
     rows = get_generation_for_date(db, today, area)
 
-    # Re-fetch if no data or the latest slot is older than 20 min.
-    # A75 data updates every 15 min with ~15-30 min ENTSO-E lag, so the
-    # "cache forever once in DB" pattern leaves data hours stale.
+    # Re-fetch if no data or the latest slot is older than 45 min.
+    # A75 data updates every 15 min with ~15-30 min ENTSO-E lag.
+    # The scheduler Lambda pre-populates data at 12:30 UTC, so most
+    # requests hit the DB cache.  45 min balances freshness vs latency.
     needs_fetch = not rows
     if rows:
         latest_ts = max(r.timestamp_utc for r in rows)
         stale_seconds = (datetime.now(timezone.utc) - latest_ts).total_seconds()
-        needs_fetch = stale_seconds > 20 * 60
+        needs_fetch = stale_seconds > 45 * 60
 
     if needs_fetch:
         try:
@@ -82,13 +107,18 @@ def get_today_generation(db: DbDep, area: AreaDep = "SE3"):
     if not summary:
         raise HTTPException(status_code=404, detail="No generation data available")
 
-    return {
+    response = {
         "area":   area,
         "date":   today.isoformat(),
         "source": "ENTSO-E A75",
         "note":   "renewable = hydro + wind + solar. carbon_free adds nuclear.",
         **summary,
     }
+
+    # Cache the computed response for subsequent requests
+    _generation_cache[(area, today.isoformat())] = (response, time.time())
+
+    return response
 
 
 @router.get("/date")

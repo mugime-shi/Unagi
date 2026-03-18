@@ -16,6 +16,7 @@ engine = create_engine(
     pool_pre_ping=True,   # detect stale connections
     pool_size=5,
     max_overflow=10,
+    executemany_mode="values_plus_batch",  # batch UPSERTs via psycopg2 execute_values
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

@@ -1,3 +1,4 @@
+import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated
 from zoneinfo import ZoneInfo
@@ -266,6 +267,13 @@ def get_multi_zone_history(
     }
 
 
+# ---------------------------------------------------------------------------
+# In-memory cache for cheapest-hours (day-ahead prices are immutable once published)
+# ---------------------------------------------------------------------------
+_CHEAPEST_TTL = 60 * 60  # 1 hour
+_cheapest_cache: dict[tuple[str, str, int], tuple[dict, float]] = {}
+
+
 @router.get("/cheapest-hours")
 def get_cheapest_hours(
     db: DbDep,
@@ -279,6 +287,15 @@ def get_cheapest_hours(
     """
     if area not in VALID_AREAS:
         raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
+
+    # Fast path: return cached response if still fresh
+    cache_key = (area, date.isoformat(), duration)
+    if cache_key in _cheapest_cache:
+        resp, cached_at = _cheapest_cache[cache_key]
+        if time.time() - cached_at <= _CHEAPEST_TTL:
+            return resp
+        del _cheapest_cache[cache_key]
+
     prices, is_estimate = get_or_fetch_prices(db, date, area=area)
     if not prices:
         raise HTTPException(status_code=404, detail="No price data available for this date")
@@ -290,13 +307,17 @@ def get_cheapest_hours(
             detail=f"Not enough data for a {duration}-hour window",
         )
 
-    return {
+    response = {
         "area": area,
         "date": date.isoformat(),
         "currency": "SEK/kWh",
         "is_estimate": is_estimate,
         "cheapest_window": window,
     }
+
+    _cheapest_cache[cache_key] = (response, time.time())
+
+    return response
 
 
 @router.get("/forecast")

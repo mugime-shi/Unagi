@@ -42,6 +42,10 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 @pytest.fixture(autouse=True)
 def setup_db():
+    # Clear module-level in-memory caches so tests don't leak state
+    from app.routers import prices as _prices_mod
+    _prices_mod._cheapest_cache.clear()
+
     Base.metadata.create_all(engine)
     yield
     Base.metadata.drop_all(engine)

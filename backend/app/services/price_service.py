@@ -53,14 +53,12 @@ def upsert_prices(db: Session, points: list[PricePoint], area: str = "SE3") -> i
             price_sek_kwh = EXCLUDED.price_sek_kwh
     """)
 
-    for p in points:
-        db.execute(stmt, {
-            "area": area,
-            "ts": p.timestamp_utc,
-            "eur": p.price_eur_mwh,
-            "sek": p.price_sek_kwh,
-            "res": p.resolution,
-        })
+    params = [
+        {"area": area, "ts": p.timestamp_utc, "eur": p.price_eur_mwh,
+         "sek": p.price_sek_kwh, "res": p.resolution}
+        for p in points
+    ]
+    db.execute(stmt, params)
     db.commit()
     return len(points)
 

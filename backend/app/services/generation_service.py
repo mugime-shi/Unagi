@@ -47,14 +47,12 @@ def upsert_generation(db: Session, points: list[GenerationPoint], area: str = "S
             resolution = EXCLUDED.resolution
     """)
 
-    for p in points:
-        db.execute(stmt, {
-            "area": area,
-            "ts":   p.timestamp_utc,
-            "psr":  p.psr_type,
-            "mw":   p.value_mw,
-            "res":  p.resolution,
-        })
+    params = [
+        {"area": area, "ts": p.timestamp_utc, "psr": p.psr_type,
+         "mw": p.value_mw, "res": p.resolution}
+        for p in points
+    ]
+    db.execute(stmt, params)
     db.commit()
     return len(points)
 
