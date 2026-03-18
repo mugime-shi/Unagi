@@ -192,7 +192,7 @@ export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast =
     <div className="w-full">
       {isEstimate && (
         <p className="text-xs text-yellow-400 mb-2 text-center">
-          Showing estimated data — add ENTSOE_API_KEY to see real prices
+          Prices not yet published — showing ML predictions
         </p>
       )}
 
@@ -200,10 +200,12 @@ export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast =
       {(hasBalancing || hasPred) && (
         <div className="flex items-center justify-between mb-2">
           <div className="flex gap-4 text-xs text-gray-400 flex-wrap">
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block w-5 border-t-2 border-blue-400" />
-              Day-ahead
-            </span>
+            {!isEstimate && (
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-5 border-t-2 border-blue-400" />
+                Day-ahead
+              </span>
+            )}
             {hasBalancing && (
               <>
                 <span className="flex items-center gap-1.5">
@@ -263,13 +265,15 @@ export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast =
             width={48}
           />
           <Tooltip content={<CustomTooltip />} />
-          <ReferenceLine
-            yAxisId="price"
-            y={avg}
-            stroke="#6b7280"
-            strokeDasharray="4 4"
-            label={{ value: 'avg', fill: '#6b7280', fontSize: 11 }}
-          />
+          {!isEstimate && (
+            <ReferenceLine
+              yAxisId="price"
+              y={avg}
+              stroke="#6b7280"
+              strokeDasharray="4 4"
+              label={{ value: 'avg', fill: '#6b7280', fontSize: 11 }}
+            />
+          )}
 
           {/* Weekday Avg forecast band: stacked areas — transparent base + shaded band */}
           {predsVisible && forecast && (
@@ -377,16 +381,18 @@ export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast =
             />
           )}
 
-          {/* Day-ahead line — rendered last so it stays on top */}
-          <Line
-            yAxisId="price"
-            type="monotone"
-            dataKey="price_sek_kwh"
-            stroke="#60a5fa"
-            strokeWidth={2}
-            dot={<CustomDot />}
-            activeDot={{ r: 4, fill: '#60a5fa' }}
-          />
+          {/* Day-ahead line — rendered last so it stays on top. Hidden when showing estimates. */}
+          {!isEstimate && (
+            <Line
+              yAxisId="price"
+              type="monotone"
+              dataKey="price_sek_kwh"
+              stroke="#60a5fa"
+              strokeWidth={2}
+              dot={<CustomDot />}
+              activeDot={{ r: 4, fill: '#60a5fa' }}
+            />
+          )}
         </ComposedChart>
       </ResponsiveContainer>
     </div>
