@@ -130,13 +130,37 @@ export default function App() {
                 </button>
               ))}
               {day === 'review' && (
-                <input
-                  type="date"
-                  value={reviewDate}
-                  max={todayISO()}
-                  onChange={(e) => setReviewDate(e.target.value)}
-                  className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1 text-sm text-gray-300 focus:outline-none focus:border-blue-500"
-                />
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => {
+                      const d = new Date(reviewDate)
+                      d.setDate(d.getDate() - 1)
+                      setReviewDate(d.toISOString().split('T')[0])
+                    }}
+                    className="px-2 py-1 rounded-lg bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors text-sm"
+                  >
+                    &larr;
+                  </button>
+                  <input
+                    type="date"
+                    value={reviewDate}
+                    max={todayISO()}
+                    onChange={(e) => setReviewDate(e.target.value)}
+                    className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1 text-sm text-gray-300 focus:outline-none focus:border-blue-500"
+                  />
+                  <button
+                    onClick={() => {
+                      const d = new Date(reviewDate)
+                      d.setDate(d.getDate() + 1)
+                      const next = d.toISOString().split('T')[0]
+                      if (next <= todayISO()) setReviewDate(next)
+                    }}
+                    disabled={reviewDate >= todayISO()}
+                    className="px-2 py-1 rounded-lg bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors text-sm disabled:opacity-30 disabled:pointer-events-none"
+                  >
+                    &rarr;
+                  </button>
+                </div>
               )}
             </div>
 

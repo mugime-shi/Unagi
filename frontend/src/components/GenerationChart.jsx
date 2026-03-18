@@ -146,7 +146,7 @@ export function GenerationChart({ generation, prices }) {
               if (!v.endsWith(':00')) return ''
               if (!isMobile) return v
               const h = parseInt(v.slice(0, 2), 10)
-              return h % 3 === 0 ? v : ''
+              return h % 2 === 0 ? v : ''
             }}
             tick={{ fill: '#9ca3af', fontSize: 11, dy: 4 }}
             angle={-45}

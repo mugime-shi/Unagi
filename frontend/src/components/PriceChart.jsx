@@ -212,7 +212,7 @@ export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast =
     if (!value.endsWith(':00')) return ''
     if (!isMobile) return value
     const h = parseInt(value.slice(0, 2), 10)
-    return h % 3 === 0 ? value : ''
+    return h % 2 === 0 ? value : ''
   }
 
   const hasBalancing = balancing && (balancing.short.length > 0 || balancing.long.length > 0)
@@ -262,7 +262,7 @@ export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast =
                 )}
                 {lgbmForecast && (
                   <span className="flex items-center gap-1.5">
-                    <span className="inline-block w-5 border-t-2 border-emerald-400" />
+                    <span className="inline-block w-5 border-t-2 border-dashed border-emerald-400" />
                     LGBM
                   </span>
                 )}
