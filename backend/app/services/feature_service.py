@@ -16,6 +16,7 @@ from app.models.balancing_price import BalancingPrice
 from app.models.generation_mix import GenerationMix
 from app.models.spot_price import SpotPrice
 from app.models.weather_data import WeatherData
+from app.models.weather_forecast import WeatherForecast
 
 _STOCKHOLM = ZoneInfo("Europe/Stockholm")
 
@@ -182,6 +183,72 @@ def _load_hourly_balancing(
     return result
 
 
+def _load_hourly_forecast(
+    db: Session, target_date: date,
+) -> dict[int, dict[str, float]]:
+    """
+    Load weather forecast for target_date, keyed by hour.
+    Returns {hour: {"wind_speed_10m": float, "wind_speed_100m": float,
+                     "temp_forecast": float, "radiation_forecast": float}}.
+
+    Uses weather_forecast table (forecast-as-issued) when available.
+    Falls back to weather_data actuals for historical dates where no
+    forecast was stored (enables backtesting before forecast collection started).
+    """
+    range_start, _ = _cet_window(target_date)
+    _, range_end = _cet_window(target_date)
+
+    # Try forecast table first (issued on target_date - 1, which is when
+    # the morning prediction would have fetched it)
+    issued = target_date - timedelta(days=1)
+    forecast_rows = (
+        db.query(WeatherForecast)
+        .filter(
+            WeatherForecast.issued_date == issued,
+            WeatherForecast.target_utc >= range_start,
+            WeatherForecast.target_utc < range_end,
+        )
+        .all()
+    )
+
+    if forecast_rows:
+        result: dict[int, dict[str, float]] = {}
+        for r in forecast_rows:
+            local = _ensure_utc(r.target_utc).astimezone(_STOCKHOLM)
+            entry: dict[str, float] = {}
+            if r.wind_speed_10m is not None:
+                entry["wind_speed_10m"] = float(r.wind_speed_10m)
+            if r.wind_speed_100m is not None:
+                entry["wind_speed_100m"] = float(r.wind_speed_100m)
+            if r.temperature_c is not None:
+                entry["temp_forecast"] = float(r.temperature_c)
+            if r.global_radiation_wm2 is not None:
+                entry["radiation_forecast"] = float(r.global_radiation_wm2)
+            result[local.hour] = entry
+        return result
+
+    # Fallback: use actual weather data as pseudo-forecast (for backtest)
+    weather_rows = (
+        db.query(WeatherData)
+        .filter(
+            WeatherData.timestamp_utc >= range_start,
+            WeatherData.timestamp_utc < range_end,
+        )
+        .all()
+    )
+    result = {}
+    for r in weather_rows:
+        local = _ensure_utc(r.timestamp_utc).astimezone(_STOCKHOLM)
+        entry = {}
+        if r.temperature_c is not None:
+            entry["temp_forecast"] = float(r.temperature_c)
+        if r.global_radiation_wm2 is not None:
+            entry["radiation_forecast"] = float(r.global_radiation_wm2)
+        # No wind data in weather_data table — will be None
+        result[local.hour] = entry
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Public: build feature matrix
 # ---------------------------------------------------------------------------
@@ -255,10 +322,18 @@ def build_feature_matrix(
         if "down" in bal:
             daily_bal_down[d].append(bal["down"])
 
+    # Pre-load weather forecasts for each date in the range
+    forecast_cache: dict[date, dict[int, dict[str, float]]] = {}
+
     # Build rows for [start_date, end_date]
     rows = []
     current = start_date
     while current <= end_date:
+        # Load forecast for this date (lazy, cached per date)
+        if current not in forecast_cache:
+            forecast_cache[current] = _load_hourly_forecast(db, current)
+        forecast_day = forecast_cache[current]
+
         for hour in range(24):
             if include_target:
                 target = prices.get((current, hour))
@@ -276,8 +351,11 @@ def build_feature_matrix(
             gen_prev = gen.get((prev_day, hour), {})
             gen_total = sum(gen_prev.values()) if gen_prev else 0.0
 
-            # Weather from previous day same hour
+            # Weather from previous day same hour (actuals)
             weather_prev = weather.get((prev_day, hour), {})
+
+            # Weather forecast for current date/hour (forward-looking)
+            fc = forecast_day.get(hour, {})
 
             # Rolling 7-day mean/std for this hour
             hour_prices_7d = [
@@ -399,6 +477,12 @@ def build_feature_matrix(
                 ),
                 "bal_spread_prev_day": bal_spread,
 
+                # Forecast features (forward-looking: target date)
+                "wind_speed_10m_fc": fc.get("wind_speed_10m"),
+                "wind_speed_100m_fc": fc.get("wind_speed_100m"),
+                "temp_forecast": fc.get("temp_forecast"),
+                "radiation_forecast": fc.get("radiation_forecast"),
+
                 # Interaction features
                 "wind_x_hour": (
                     round(gen_prev.get("wind", 0) * math.sin(2 * math.pi * hour / 24), 4)
@@ -451,6 +535,11 @@ FEATURE_COLS = [
     "bal_up_avg_prev_day",
     "bal_down_avg_prev_day",
     "bal_spread_prev_day",
+    # Forecast (4)
+    "wind_speed_10m_fc",
+    "wind_speed_100m_fc",
+    "temp_forecast",
+    "radiation_forecast",
     # Interactions (2)
     "wind_x_hour",
     "temp_x_month",

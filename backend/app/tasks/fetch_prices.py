@@ -246,6 +246,10 @@ def lambda_handler(event: dict, context) -> dict:
         weather_result = _fetch_weather()
         all_results.append(weather_result)
 
+        # Weather forecast (Open-Meteo) — wind/temp/radiation for ML features
+        forecast_result = _fetch_weather_forecast()
+        all_results.append(forecast_result)
+
     # Generation backfill via Lambda event
     if event.get("backfill_generation"):
         gen_days = int(event["backfill_generation"])
@@ -306,6 +310,36 @@ def _fetch_weather() -> dict:
                     log.error("FAIL weather — all %d attempts failed: %s", MAX_RETRIES, last_error)
 
         return {"market": "weather", "status": "error", "error": str(last_error)}
+    finally:
+        db.close()
+
+
+def _fetch_weather_forecast() -> dict:
+    """Fetch weather forecast from Open-Meteo for ML features."""
+    db = SessionLocal()
+    try:
+        from app.services.openmeteo_client import fetch_and_store as openmeteo_fetch_and_store
+
+        last_error = None
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                count = openmeteo_fetch_and_store(db, forecast_days=2)
+                log.info("OK   weather forecast — %d rows stored (attempt %d)", count, attempt)
+                return {"market": "weather_forecast", "status": "ok", "rows": count}
+            except Exception as exc:
+                last_error = exc
+                if attempt < MAX_RETRIES:
+                    wait = RETRY_BASE_SECONDS * (2 ** (attempt - 1))
+                    log.warning(
+                        "WARN weather forecast — attempt %d/%d: %s. Retry in %ds…",
+                        attempt, MAX_RETRIES, exc, wait,
+                    )
+                    time.sleep(wait)
+                else:
+                    log.error("FAIL weather forecast — all %d attempts failed: %s",
+                              MAX_RETRIES, last_error)
+
+        return {"market": "weather_forecast", "status": "error", "error": str(last_error)}
     finally:
         db.close()
 
