@@ -11,6 +11,7 @@ import {
   YAxis,
 } from 'recharts'
 import { currentCETHour, toLocalHour } from '../utils/formatters'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 const NOW_HOUR = currentCETHour()
 
@@ -122,6 +123,7 @@ function tsKey(iso) {
 
 export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast = null, retrospective = null, balancing = null, generationTimeSeries = null }) {
   const [showGen, setShowGen] = useState(false)
+  const isMobile = useIsMobile()
 
   // Forecast lookup: hour (0-23) → { low, band, avg }
   const forecastByHour = {}
@@ -205,8 +207,13 @@ export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast =
 
   const avg = chartData.reduce((s, d) => s + d.price_sek_kwh, 0) / chartData.length
 
-  // Show only HH:00 labels (every full hour) to avoid overlap on 15-min data
-  const tickFormatter = (value) => (value.endsWith(':00') ? value : '')
+  // Show only HH:00 labels on desktop, and every 3 hours on mobile to avoid overlap
+  const tickFormatter = (value) => {
+    if (!value.endsWith(':00')) return ''
+    if (!isMobile) return value
+    const h = parseInt(value.slice(0, 2), 10)
+    return h % 3 === 0 ? value : ''
+  }
 
   const hasBalancing = balancing && (balancing.short.length > 0 || balancing.long.length > 0)
   const hasGen = generationTimeSeries?.length > 0

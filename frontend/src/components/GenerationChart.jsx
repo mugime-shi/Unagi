@@ -8,6 +8,7 @@ import {
   YAxis,
 } from 'recharts'
 import { toLocalHour } from '../utils/formatters'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 const SOURCES = [
   { key: 'hydro',   color: '#3b82f6', label: 'Hydro'   },
@@ -57,6 +58,7 @@ function CustomTooltip({ active, payload, label }) {
 export function GenerationChart({ generation, prices }) {
   if (!generation?.time_series?.length) return null
 
+  const isMobile = useIsMobile()
   const { time_series: timeSeries, renewable_pct, carbon_free_pct, latest_slot } = generation
 
   // Build generation lookup: "HH:00" → data row
@@ -85,6 +87,20 @@ export function GenerationChart({ generation, prices }) {
       other:   d?.other   ?? null,
     }
   })
+
+  // Determine Y-axis ticks in 1000 MW steps for better readability
+  const maxTotalMw = chartData.reduce((max, d) => {
+    const total =
+      (d.hydro ?? 0) +
+      (d.wind ?? 0) +
+      (d.nuclear ?? 0) +
+      (d.solar ?? 0) +
+      (d.other ?? 0)
+    return Math.max(max, total)
+  }, 0)
+
+  const maxTickK = Math.max(1, Math.ceil(maxTotalMw / 1000))
+  const yTicks = Array.from({ length: maxTickK + 1 }, (_, i) => i * 1000)
 
   const activeSources = SOURCES.filter(({ key }) =>
     chartData.some((d) => (d[key] ?? 0) > 0),
@@ -126,7 +142,12 @@ export function GenerationChart({ generation, prices }) {
           <XAxis
             dataKey="hour"
             interval={0}
-            tickFormatter={(v) => (v.endsWith(':00') ? v : '')}
+            tickFormatter={(v) => {
+              if (!v.endsWith(':00')) return ''
+              if (!isMobile) return v
+              const h = parseInt(v.slice(0, 2), 10)
+              return h % 3 === 0 ? v : ''
+            }}
             tick={{ fill: '#9ca3af', fontSize: 11, dy: 4 }}
             angle={-45}
             textAnchor="end"
@@ -134,6 +155,8 @@ export function GenerationChart({ generation, prices }) {
           <YAxis
             tick={{ fill: '#9ca3af', fontSize: 11 }}
             width={48}
+            domain={[0, maxTickK * 1000]}
+            ticks={yTicks}
             tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v))}
           />
           <Tooltip content={<CustomTooltip />} />
