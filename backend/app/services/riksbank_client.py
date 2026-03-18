@@ -21,10 +21,6 @@ _FALLBACK_RATE = 11.0
 _TIMEOUT = 5.0  # seconds
 
 
-class RiksbankError(Exception):
-    pass
-
-
 def fetch_eur_sek_rate() -> tuple[float, date | None]:
     """
     Fetch the latest EUR/SEK rate from Riksbank.

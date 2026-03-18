@@ -27,6 +27,3 @@ export function currentCETHour() {
   )
 }
 
-export function formatSEK(value) {
-  return `${value.toFixed(2)} kr`
-}
