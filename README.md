@@ -278,6 +278,7 @@ Everything runs on permanent free tiers — no 12-month expiry.
 ```
 Namazu/
 ├── backend/
+│   ├── namazu                        # CLI for common operations (./namazu help)
 │   └── app/
 │       ├── main.py                     # FastAPI + Mangum handler
 │       ├── config.py                   # Pydantic settings
