@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _CACHE_DIR = Path(os.environ.get("LGBM_CACHE_DIR", "/tmp/namazu_lgbm"))
-_TRAIN_DAYS = 90       # days of history for training
+_TRAIN_DAYS = 365      # days of history for training (full seasonal cycle)
 _TEST_DAYS = 7         # held-out test set (last N days of training window)
 _MIN_TRAIN_ROWS = 200  # minimum rows to attempt training
 
