@@ -191,22 +191,28 @@ def build_feature_matrix(
     start_date: date,
     end_date: date,
     area: str = "SE3",
+    include_target: bool = True,
 ) -> list[dict]:
     """
     Build a feature matrix for [start_date, end_date] inclusive.
 
     Each row is one (date, hour) with:
-    - Target: price_sek_kwh
+    - Target: price_sek_kwh (only when include_target=True)
     - Calendar features: hour, weekday, month, sin/cos cyclical encodings
     - Lag features: prev_day_same_hour, prev_week_same_hour, daily_avg_prev_day
     - Generation features: hydro_ratio, wind_ratio, nuclear_ratio, total_mw
       (uses previous day's generation as proxy for next-day prediction)
 
+    When include_target=False, rows are generated for all 24 hours even without
+    actual prices for that date. This is used for prediction (future dates).
+
     Returns a list of dicts (easily convertible to DataFrame).
     """
     # Load extra history for lag + rolling features (14 days before start_date)
+    # When predicting (include_target=False), we only need prices up to end_date-1
     hist_start = start_date - timedelta(days=14)
-    prices = _load_hourly_prices(db, hist_start, end_date, area)
+    price_end = end_date if include_target else end_date - timedelta(days=1)
+    prices = _load_hourly_prices(db, hist_start, price_end, area)
     gen = _load_hourly_generation(db, hist_start, end_date, area)
     weather = _load_hourly_weather(db, hist_start, end_date)
     balancing = _load_hourly_balancing(db, hist_start, end_date, area)
@@ -254,9 +260,12 @@ def build_feature_matrix(
     current = start_date
     while current <= end_date:
         for hour in range(24):
-            target = prices.get((current, hour))
-            if target is None:
-                continue  # skip hours without actual price data
+            if include_target:
+                target = prices.get((current, hour))
+                if target is None:
+                    continue  # skip hours without actual price data
+            else:
+                target = None  # prediction mode: no actual price needed
 
             prev_day = current - timedelta(days=1)
             prev_2day = current - timedelta(days=2)
@@ -320,10 +329,10 @@ def build_feature_matrix(
             )
 
             row = {
-                # Target
+                # Target + identifiers
                 "date": current.isoformat(),
                 "hour": hour,
-                "price_sek_kwh": round(target, 4),
+                **({"price_sek_kwh": round(target, 4)} if target is not None else {}),
 
                 # Calendar features
                 "weekday": current.weekday(),
@@ -389,6 +398,17 @@ def build_feature_matrix(
                     round(bal_down_avg, 4) if bal_down_avg is not None else None
                 ),
                 "bal_spread_prev_day": bal_spread,
+
+                # Interaction features
+                "wind_x_hour": (
+                    round(gen_prev.get("wind", 0) * math.sin(2 * math.pi * hour / 24), 4)
+                    if gen_prev.get("wind") is not None else None
+                ),
+                "temp_x_month": (
+                    round(weather_prev.get("temperature_c", 0)
+                          * math.sin(2 * math.pi * (current.month - 1) / 12), 4)
+                    if weather_prev.get("temperature_c") is not None else None
+                ),
             }
             rows.append(row)
 
@@ -431,6 +451,9 @@ FEATURE_COLS = [
     "bal_up_avg_prev_day",
     "bal_down_avg_prev_day",
     "bal_spread_prev_day",
+    # Interactions (2)
+    "wind_x_hour",
+    "temp_x_month",
 ]
 
 TARGET_COL = "price_sek_kwh"
