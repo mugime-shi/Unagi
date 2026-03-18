@@ -15,18 +15,9 @@ import { useIsMobile } from '../hooks/useIsMobile'
 
 const NOW_HOUR = currentCETHour()
 
-// Generation sources for overlay background
-const GEN_SOURCES = [
-  { key: 'gen_hydro',   color: '#3b82f6' },
-  { key: 'gen_wind',    color: '#22d3ee' },
-  { key: 'gen_nuclear', color: '#eab308' },
-  { key: 'gen_solar',   color: '#f97316' },
-  { key: 'gen_other',   color: '#6b7280' },
-]
-
-function toUtc(iso) {
-  return iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z'
-}
+// Unified prediction colors
+const PRED_WEEKDAY_COLOR = '#a78bfa'  // violet-400
+const PRED_LGBM_COLOR    = '#fb7185'  // rose-400
 
 function priceColor(sek) {
   if (sek <= 0.40) return '#22c55e'   // green — cheap
@@ -72,17 +63,17 @@ function CustomTooltip({ active, payload, label }) {
         </p>
       )}
       {p.lgbm_forecast != null && (
-        <p className="text-emerald-400 text-xs">
+        <p className="text-rose-400 text-xs">
           LGBM {p.lgbm_forecast.toFixed(2)}
         </p>
       )}
       {/* Retrospective predictions */}
       {(p.retro_weekday != null || p.retro_lgbm != null) && (
         <div className="mt-1 pt-1 border-t border-gray-700 text-xs">
-          <p className="text-gray-500">Yesterday&apos;s prediction:</p>
+          <p className="text-gray-500">Prediction:</p>
           {p.retro_weekday != null && (
             <p className="text-violet-400">
-              Weekday {p.retro_weekday.toFixed(2)}
+              Weekday Avg {p.retro_weekday.toFixed(2)}
               {p.price_sek_kwh > 0 && (
                 <span className="ml-1 text-violet-500">
                   (err {((p.retro_weekday - p.price_sek_kwh) * 100).toFixed(1)} öre)
@@ -102,15 +93,6 @@ function CustomTooltip({ active, payload, label }) {
           )}
         </div>
       )}
-      {/* Generation breakdown when overlay is active */}
-      {p.gen_hydro != null && (
-        <div className="mt-1 pt-1 border-t border-gray-700 text-xs">
-          {p.gen_hydro > 0 && <p className="text-blue-400">Hydro {Math.round(p.gen_hydro)} MW</p>}
-          {p.gen_wind > 0 && <p className="text-cyan-400">Wind {Math.round(p.gen_wind)} MW</p>}
-          {p.gen_nuclear > 0 && <p className="text-yellow-400">Nuclear {Math.round(p.gen_nuclear)} MW</p>}
-          {p.gen_other > 0 && <p className="text-gray-400">Other {Math.round(p.gen_other)} MW</p>}
-        </div>
-      )}
       {p.is_estimate && <p className="text-yellow-500 text-xs mt-1">Estimated</p>}
     </div>
   )
@@ -121,8 +103,10 @@ function tsKey(iso) {
   return iso.substring(0, 16)  // "2026-03-15T23:00"
 }
 
-export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast = null, retrospective = null, balancing = null, generationTimeSeries = null }) {
-  const [showGen, setShowGen] = useState(false)
+export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast = null, retrospective = null, balancing = null, predToggle = false }) {
+  const [showPred, setShowPred] = useState(true)
+  // Tomorrow: always show predictions. Today: respect toggle.
+  const predsVisible = predToggle ? showPred : true
   const isMobile = useIsMobile()
 
   // Forecast lookup: hour (0-23) → { low, band, avg }
@@ -169,21 +153,10 @@ export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast =
     for (const p of balancing.long)  imbLongByTs[tsKey(p.timestamp_utc)]  = parseFloat(p.price_sek_kwh)
   }
 
-  // Generation lookup: "HH:00" → generation row
-  const genByHour = {}
-  if (generationTimeSeries) {
-    for (const d of generationTimeSeries) {
-      genByHour[toLocalHour(toUtc(d.timestamp_utc))] = d
-    }
-  }
-
   const chartData = prices.map((p) => {
     const localHour = toLocalHour(p.timestamp_utc)
     const hour = parseInt(localHour.split(':')[0], 10)
-    const fc   = forecastByHour[hour]
     const key  = tsKey(p.timestamp_utc)
-    const hourKey = localHour.split(':')[0] + ':00'
-    const gen  = genByHour[hourKey]
     return {
       ...p,
       hour: localHour,
@@ -195,11 +168,6 @@ export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast =
       lgbm_forecast: lgbmByHour[hour] ?? null,
       imb_short: imbShortByTs[key] ?? null,
       imb_long:  imbLongByTs[key]  ?? null,
-      gen_hydro:   gen?.hydro   ?? null,
-      gen_wind:    gen?.wind    ?? null,
-      gen_nuclear: gen?.nuclear ?? null,
-      gen_solar:   gen?.solar   ?? null,
-      gen_other:   gen?.other   ?? null,
       retro_weekday: retroByModel['same_weekday_avg']?.[hour] ?? null,
       retro_lgbm:    retroByModel['lgbm']?.[hour] ?? null,
     }
@@ -216,9 +184,9 @@ export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast =
   }
 
   const hasBalancing = balancing && (balancing.short.length > 0 || balancing.long.length > 0)
-  const hasGen = generationTimeSeries?.length > 0
   const hasForecast = forecast || lgbmForecast
   const hasRetro = retrospective?.models && Object.keys(retrospective.models).length > 0
+  const hasPred = hasForecast || hasRetro
 
   return (
     <div className="w-full">
@@ -229,72 +197,48 @@ export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast =
       )}
 
       {/* Legend row */}
-      {(hasBalancing || hasGen || hasForecast || hasRetro) && (
+      {(hasBalancing || hasPred) && (
         <div className="flex items-center justify-between mb-2">
           <div className="flex gap-4 text-xs text-gray-400 flex-wrap">
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-5 border-t-2 border-blue-400" />
+              Day-ahead
+            </span>
             {hasBalancing && (
               <>
                 <span className="flex items-center gap-1.5">
-                  <span className="inline-block w-5 border-t-2 border-blue-400" />
-                  Day-ahead
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block w-5 border-t-2 border-dashed border-orange-400" />
+                  <span className="inline-block w-5 border-t border-orange-400" />
                   Imbalance Short
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="inline-block w-5 border-t-2 border-dashed border-green-400" />
+                  <span className="inline-block w-5 border-t border-green-400" />
                   Imbalance Long
                 </span>
               </>
             )}
-            {hasForecast && (
-              <>
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block w-5 border-t-2 border-blue-400" />
-                  Day-ahead
-                </span>
-                {forecast && (
-                  <span className="flex items-center gap-1.5">
-                    <span className="inline-block w-5 border-t-2 border-dashed border-indigo-400" />
-                    Weekday Avg
-                  </span>
-                )}
-                {lgbmForecast && (
-                  <span className="flex items-center gap-1.5">
-                    <span className="inline-block w-5 border-t-2 border-dashed border-emerald-400" />
-                    LGBM
-                  </span>
-                )}
-              </>
+            {predsVisible && (forecast || retroByModel['same_weekday_avg']) && (
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-5 border-t-2 border-dashed border-violet-400" />
+                Weekday Avg
+              </span>
             )}
-            {hasRetro && (
-              <>
-                {retroByModel['same_weekday_avg'] && (
-                  <span className="flex items-center gap-1.5">
-                    <span className="inline-block w-5 border-t-2 border-dashed border-violet-400" />
-                    Pred: Weekday
-                  </span>
-                )}
-                {retroByModel['lgbm'] && (
-                  <span className="flex items-center gap-1.5">
-                    <span className="inline-block w-5 border-t-2 border-dashed border-rose-400" />
-                    Pred: LGBM
-                  </span>
-                )}
-              </>
+            {predsVisible && (lgbmForecast || retroByModel['lgbm']) && (
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-5 border-t-2 border-dashed border-rose-400" />
+                LGBM
+              </span>
             )}
           </div>
-          {hasGen && (
+          {predToggle && hasPred && (
             <button
-              onClick={() => setShowGen((v) => !v)}
+              onClick={() => setShowPred((v) => !v)}
               className={`text-xs px-2.5 py-0.5 rounded-full border transition-colors ${
-                showGen
-                  ? 'border-emerald-600 text-emerald-400 bg-emerald-900/20'
+                showPred
+                  ? 'border-indigo-600 text-indigo-400 bg-indigo-900/20'
                   : 'border-gray-700 text-gray-500 hover:text-gray-400'
               }`}
             >
-              {showGen ? '▪ Gen mix' : '◦ Gen mix'}
+              {showPred ? '▪ Predictions' : '◦ Predictions'}
             </button>
           )}
         </div>
@@ -318,9 +262,6 @@ export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast =
             tick={{ fill: '#9ca3af', fontSize: 11 }}
             width={48}
           />
-          {/* Hidden generation Y-axis — provides scale for background areas, no visual clutter */}
-          {showGen && <YAxis yAxisId="gen" orientation="right" hide />}
-
           <Tooltip content={<CustomTooltip />} />
           <ReferenceLine
             yAxisId="price"
@@ -330,25 +271,8 @@ export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast =
             label={{ value: 'avg', fill: '#6b7280', fontSize: 11 }}
           />
 
-          {/* Generation background — rendered first so price line stays on top */}
-          {showGen && GEN_SOURCES.map(({ key, color }) => (
-            <Area
-              key={key}
-              yAxisId="gen"
-              type="monotone"
-              dataKey={key}
-              stackId="gen"
-              stroke="none"
-              fill={color + '35'}
-              dot={false}
-              legendType="none"
-              connectNulls={false}
-              isAnimationActive={false}
-            />
-          ))}
-
           {/* Weekday Avg forecast band: stacked areas — transparent base + shaded band */}
-          {forecast && (
+          {predsVisible && forecast && (
             <>
               <Area
                 yAxisId="price"
@@ -366,8 +290,8 @@ export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast =
                 type="monotone"
                 dataKey="forecast_band"
                 stackId="fc"
-                fill="rgba(99,102,241,0.15)"
-                stroke="rgba(99,102,241,0.4)"
+                fill={PRED_WEEKDAY_COLOR + '26'}
+                stroke={PRED_WEEKDAY_COLOR + '66'}
                 strokeWidth={1}
                 strokeDasharray="4 4"
                 legendType="none"
@@ -385,8 +309,8 @@ export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast =
                 type="monotone"
                 dataKey="imb_long"
                 stroke="#4ade80"
-                strokeWidth={1.5}
-                strokeDasharray="3 3"
+                strokeWidth={1}
+                strokeOpacity={0.5}
                 dot={false}
                 connectNulls={false}
                 isAnimationActive={false}
@@ -397,8 +321,8 @@ export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast =
                 type="monotone"
                 dataKey="imb_short"
                 stroke="#f97316"
-                strokeWidth={1.5}
-                strokeDasharray="3 3"
+                strokeWidth={1}
+                strokeOpacity={0.5}
                 dot={false}
                 connectNulls={false}
                 isAnimationActive={false}
@@ -408,12 +332,12 @@ export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast =
           )}
 
           {/* LightGBM forecast line — emerald dashed */}
-          {lgbmForecast && (
+          {predsVisible && lgbmForecast && (
             <Line
               yAxisId="price"
               type="monotone"
               dataKey="lgbm_forecast"
-              stroke="#34d399"
+              stroke={PRED_LGBM_COLOR}
               strokeWidth={1.5}
               strokeDasharray="6 3"
               dot={false}
@@ -423,13 +347,13 @@ export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast =
             />
           )}
 
-          {/* Retrospective prediction lines — dashed, muted */}
-          {hasRetro && retroByModel['same_weekday_avg'] && (
+          {/* Retrospective prediction lines — dashed, color-matched with forward forecasts */}
+          {predsVisible && hasRetro && retroByModel['same_weekday_avg'] && (
             <Line
               yAxisId="price"
               type="monotone"
               dataKey="retro_weekday"
-              stroke="#a78bfa"
+              stroke={PRED_WEEKDAY_COLOR}
               strokeWidth={1.5}
               strokeDasharray="4 4"
               dot={false}
@@ -438,12 +362,12 @@ export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast =
               legendType="none"
             />
           )}
-          {hasRetro && retroByModel['lgbm'] && (
+          {predsVisible && hasRetro && retroByModel['lgbm'] && (
             <Line
               yAxisId="price"
               type="monotone"
               dataKey="retro_lgbm"
-              stroke="#fb7185"
+              stroke={PRED_LGBM_COLOR}
               strokeWidth={1.5}
               strokeDasharray="4 4"
               dot={false}

@@ -319,7 +319,7 @@ export default function App() {
                         lgbmForecast={day === 'tomorrow' ? lgbmForecast : null}
                         retrospective={day === 'today' ? retrospective : null}
                         balancing={day === 'today' ? balancing : null}
-                        generationTimeSeries={day === 'today' ? generation?.time_series : null}
+                        predToggle={day === 'today'}
                       />
                     </div>
 
