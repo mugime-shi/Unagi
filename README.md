@@ -18,8 +18,12 @@ A real-time dashboard for Swedish electricity spot prices with ML forecasting, b
 
 ### ML price prediction
 - **LightGBM** 24-hour forecast trained on 365 days of history (full seasonal cycle)
-- 19 features: calendar cycles, price lags, generation mix ratios
-- **~30.6% MAE improvement** over same-weekday-average baseline (backtest: 720 samples over 30 days)
+- **37 features** across 6 categories: calendar cycles, price lags (multi-day + 7d rolling mean/std), weather (temperature + solar radiation from SMHI/Open-Meteo), generation mix ratios, balancing price spreads, and interaction terms (wind×hour, temp×month)
+- **Optuna-tuned hyperparameters** via 4-fold walk-forward cross-validation (100 trials)
+- **46.3% MAE improvement** over same-weekday-average baseline (backtest: 720 samples, 30 days)
+  - Phase 1: feature expansion (19→35) reduced MAE by 14.4%
+  - Phase 2: Optuna tuning + quantile regression reduced MAE by another 5.5%
+- **Quantile regression** prediction intervals (α=0.10/0.90) — asymmetric, calibrated confidence bands replacing naive ±1σ
 - Same-weekday-average forecast with p10/p50/p90 uncertainty bands
 - **Review mode**: browse any past date with prev/next buttons, overlay predictions vs actuals
 
@@ -198,7 +202,8 @@ GET  /health                                           → service liveness chec
 | Tests | 142 passing (10 test files) |
 | API endpoints | 22 across 5 routers |
 | External APIs | 4 (ENTSO-E, SMHI, eSett, Riksbank) |
-| ML improvement | ~30.6% MAE reduction vs baseline |
+| ML improvement | 46.3% MAE reduction vs baseline (0.44 → 0.24 SEK/kWh) |
+| ML features | 37 (calendar, lags, weather, generation, balancing, interactions) |
 | Training data | 365 days (full seasonal cycle) |
 | UI components | 10 components, 16 data hooks |
 | Infrastructure | 3 Lambdas, API GW, EventBridge, ECR × 2, CloudWatch × 2, SNS |
@@ -245,7 +250,7 @@ Namazu/
 │       │   ├── generation_service.py   # generation mix processing
 │       │   ├── balancing_service.py    # imbalance price handling
 │       │   ├── ml_forecast_service.py  # LightGBM training + prediction
-│       │   ├── feature_service.py      # ML feature engineering (19 features)
+│       │   ├── feature_service.py      # ML feature engineering (37 features)
 │       │   ├── backtest_service.py     # forecast accuracy tracking
 │       │   ├── solar_model.py          # PV generation + optimization
 │       │   ├── consumption_optimizer.py # cost comparison engine
