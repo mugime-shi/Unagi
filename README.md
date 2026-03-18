@@ -6,6 +6,8 @@
 
 A real-time dashboard for Swedish electricity spot prices with ML forecasting, built to answer one practical question: *when should you run your dishwasher?*
 
+![Namazu dashboard](docs/namazu_top.png)
+
 ---
 
 ## What it does
