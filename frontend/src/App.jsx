@@ -225,11 +225,17 @@ export default function App() {
                           Prediction accuracy — {reviewData.date}
                         </h3>
                         <div className="space-y-2">
-                          {Object.entries(retrospective.models).map(([model, entries]) => {
-                            const pairs = entries.filter((e) => e.predicted_sek_kwh != null && e.actual_sek_kwh != null)
-                            if (pairs.length === 0) return null
-                            const mae = pairs.reduce((s, e) => s + Math.abs(e.predicted_sek_kwh - e.actual_sek_kwh), 0) / pairs.length
-                            return (
+                          {Object.entries(retrospective.models)
+                            .map(([model, entries]) => {
+                              const pairs = entries.filter((e) => e.predicted_sek_kwh != null && e.actual_sek_kwh != null)
+                              const mae = pairs.length > 0
+                                ? pairs.reduce((s, e) => s + Math.abs(e.predicted_sek_kwh - e.actual_sek_kwh), 0) / pairs.length
+                                : Infinity
+                              return { model, pairs, mae }
+                            })
+                            .filter(({ pairs }) => pairs.length > 0)
+                            .sort((a, b) => a.mae - b.mae)
+                            .map(({ model, pairs, mae }) => (
                               <div key={model} className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-800">
                                 <span className="text-sm font-medium text-gray-200">
                                   {model === 'same_weekday_avg' ? 'Weekday Avg' : model.toUpperCase()}
@@ -238,8 +244,7 @@ export default function App() {
                                   MAE {mae.toFixed(2)} SEK/kWh · {pairs.length} hrs
                                 </span>
                               </div>
-                            )
-                          })}
+                            ))}
                         </div>
                       </div>
                     )}
@@ -351,8 +356,8 @@ export default function App() {
                   </>
                 )}
 
-                {/* Forecast accuracy card — tomorrow only */}
-                {day === 'tomorrow' && <ForecastAccuracy area={area} />}
+                {/* Forecast accuracy card — today & tomorrow */}
+                {(day === 'today' || day === 'tomorrow') && <ForecastAccuracy area={area} />}
 
                 {/* Appliance scheduler — today only */}
                 {day === 'today' && <CheapHoursWidget date={todayISO()} area={area} />}
