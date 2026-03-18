@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ── Defaults ─────────────────────────────────────────────────
+DAYS=30
+AREA=SE3
+TRIALS=100
+
+# ── Parse flags after subcommand ─────────────────────────────
+parse_flags() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --days)   DAYS="$2";   shift 2 ;;
+            --area)   AREA="$2";   shift 2 ;;
+            --trials) TRIALS="$2"; shift 2 ;;
+            *) echo "Unknown flag: $1" >&2; exit 1 ;;
+        esac
+    done
+}
+
+# ── Subcommands ──────────────────────────────────────────────
+cmd_fetch() {
+    parse_flags "$@"
+    python -m app.tasks.fetch_prices --area "$AREA"
+}
+
+cmd_backfill() {
+    parse_flags "$@"
+    python -m app.tasks.fetch_prices --backfill "$DAYS" --area "$AREA"
+}
+
+cmd_backfill_gen() {
+    parse_flags "$@"
+    python -m app.tasks.fetch_prices --backfill "$DAYS" --generation --area "$AREA"
+}
+
+cmd_backtest() {
+    parse_flags "$@"
+    python -m scripts.run_backtest --days "$DAYS" --area "$AREA"
+}
+
+cmd_tune() {
+    parse_flags "$@"
+    python -m scripts.tune_hyperparams --trials "$TRIALS" --area "$AREA"
+}
+
+cmd_features() {
+    parse_flags "$@"
+    python -m scripts.build_feature_matrix --days "$DAYS" --area "$AREA" --csv
+}
+
+cmd_smoke() {
+    python scripts/fetch_prices_smoke.py
+}
+
+cmd_test() {
+    pytest tests/ -v
+}
+
+cmd_lambda_backfill() {
+    parse_flags "$@"
+    aws lambda invoke --function-name namazu-scheduler \
+        --payload "{\"backfill_days\": $DAYS}" \
+        --cli-binary-format raw-in-base64-out /dev/stdout
+}
+
+cmd_lambda_predict() {
+    aws lambda invoke --function-name namazu-scheduler \
+        --payload '{"predict_only": true}' \
+        --cli-binary-format raw-in-base64-out /dev/stdout
+}
+
+# ── Help ─────────────────────────────────────────────────────
+cmd_help() {
+    cat <<'EOF'
+namazu — Namazu CLI 🐟
+
+Usage: ./namazu <command> [flags]
+
+Data:
+  fetch                         Fetch today + tomorrow spot prices
+  backfill [--days N] [--area]  Backfill spot prices (default: 30 days, SE3)
+  backfill-gen [--days N]       Backfill generation mix
+
+ML:
+  backtest [--days N] [--area]  LightGBM vs baseline comparison
+  tune [--trials N] [--area]    Optuna hyperparameter tuning
+  features [--days N] [--area]  Build feature matrix (CSV to stdout)
+
+Diagnostics:
+  smoke                         ENTSO-E API connectivity check
+  test                          Run pytest suite
+
+Lambda (requires AWS credentials):
+  lambda-backfill [--days N]    Invoke scheduler Lambda for backfill
+  lambda-predict                Prediction-only run
+
+Flags:
+  --days N      Number of days (default: 30)
+  --area CODE   Price area SE1-SE4 (default: SE3)
+  --trials N    Optuna trials (default: 100)
+EOF
+}
+
+# ── Dispatch ─────────────────────────────────────────────────
+command="${1:-help}"
+shift || true
+
+case "$command" in
+    fetch)          cmd_fetch "$@" ;;
+    backfill)       cmd_backfill "$@" ;;
+    backfill-gen)   cmd_backfill_gen "$@" ;;
+    backtest)       cmd_backtest "$@" ;;
+    tune)           cmd_tune "$@" ;;
+    features)       cmd_features "$@" ;;
+    smoke)          cmd_smoke ;;
+    test)           cmd_test ;;
+    lambda-backfill) cmd_lambda_backfill "$@" ;;
+    lambda-predict)  cmd_lambda_predict ;;
+    help|--help|-h)  cmd_help ;;
+    *)
+        echo "Unknown command: $command" >&2
+        echo "Run './namazu help' for usage." >&2
+        exit 1
+        ;;
+esac

@@ -92,6 +92,50 @@ pytest backend/tests/ -v
 
 ---
 
+## Operations
+
+Frequently used batch operations are available via the `namazu` CLI in `backend/`.
+
+```bash
+cd backend
+./namazu help                     # list all available commands
+```
+
+### Data
+
+```bash
+./namazu fetch                              # today + tomorrow spot prices
+./namazu backfill                           # past 30 days (default)
+./namazu backfill --days 90 --area SE1      # custom window / area
+./namazu backfill-gen --days 60             # generation mix backfill
+```
+
+### ML
+
+```bash
+./namazu backtest                           # LightGBM vs baseline (last 30 days)
+./namazu backtest --days 60 --area SE3      # custom window
+./namazu tune                               # Optuna hyperparameter tuning (100 trials)
+./namazu tune --trials 200                  # more trials
+./namazu features --days 90                 # build feature matrix (CSV to stdout)
+```
+
+### Diagnostics
+
+```bash
+./namazu smoke                              # ENTSO-E API connectivity check
+./namazu test                               # pytest
+```
+
+### Lambda (requires AWS credentials)
+
+```bash
+./namazu lambda-backfill --days 7           # invoke scheduler Lambda for backfill
+./namazu lambda-predict                     # prediction-only run (morning cron equivalent)
+```
+
+---
+
 ## Architecture
 
 ```
