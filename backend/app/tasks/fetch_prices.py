@@ -227,7 +227,7 @@ def lambda_handler(event: dict, context) -> dict:
             results = fetch_dates([today, tomorrow], area)
         all_results.extend(results)
 
-    # Fetch balancing (imbalance) prices and generation mix for today/yesterday.
+    # Fetch balancing (imbalance) prices, generation mix, and weather for today/yesterday.
     # Skip during backfill runs (use --generation flag for generation backfill).
     is_daily_run = "backfill_days" not in event and "date" not in event
     if is_daily_run:
@@ -241,6 +241,10 @@ def lambda_handler(event: dict, context) -> dict:
             for gen_date in [yesterday, today]:
                 gen_result = fetch_generation_date(gen_date, area)
                 all_results.append(gen_result)
+
+        # Weather data (SMHI) — once per run (not per area, stations are fixed)
+        weather_result = _fetch_weather()
+        all_results.append(weather_result)
 
     # Generation backfill via Lambda event
     if event.get("backfill_generation"):
@@ -263,6 +267,47 @@ def lambda_handler(event: dict, context) -> dict:
         "statusCode": 200 if not failed else 207,
         "results": all_results,
     }
+
+
+def _fetch_weather() -> dict:
+    """
+    Fetch latest weather data from SMHI and store to DB.
+
+    SMHI only offers 'latest-day' (~24h) or 'latest-months' (~4mo) periods.
+    We fetch 'latest-months' but filter to the last 7 days before storing,
+    so a week of missed runs can be recovered without writing ~3000 rows daily.
+    """
+    db = SessionLocal()
+    try:
+        from datetime import datetime, timezone
+
+        from app.services.smhi_client import fetch_weather_slots, store_weather_slots
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+        last_error = None
+
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                slots = fetch_weather_slots()  # fetches latest-months from SMHI
+                recent = [s for s in slots if s.timestamp_utc >= cutoff]
+                count = store_weather_slots(db, recent)
+                log.info("OK   weather — %d rows stored/updated (attempt %d)", count, attempt)
+                return {"market": "weather", "status": "ok", "rows": count}
+            except Exception as exc:
+                last_error = exc
+                if attempt < MAX_RETRIES:
+                    wait = RETRY_BASE_SECONDS * (2 ** (attempt - 1))
+                    log.warning(
+                        "WARN weather — attempt %d/%d: %s. Retry in %ds…",
+                        attempt, MAX_RETRIES, exc, wait,
+                    )
+                    time.sleep(wait)
+                else:
+                    log.error("FAIL weather — all %d attempts failed: %s", MAX_RETRIES, last_error)
+
+        return {"market": "weather", "status": "error", "error": str(last_error)}
+    finally:
+        db.close()
 
 
 def _record_predictions(areas: list[str]) -> None:

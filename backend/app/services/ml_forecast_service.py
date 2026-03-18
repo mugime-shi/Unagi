@@ -155,33 +155,132 @@ def _build_prediction_features(
 
     Since target_date hasn't happened yet, we:
     - Use (target_date - 1) prices for lag features
-    - Use (target_date - 1) generation data
+    - Use (target_date - 1) generation and weather data
     - Calendar features are deterministic
     """
     import math
+    from collections import defaultdict
 
     prev_day = target_date - timedelta(days=1)
+    prev_2day = target_date - timedelta(days=2)
+    prev_3day = target_date - timedelta(days=3)
     prev_week = target_date - timedelta(days=7)
 
-    # Load historical prices for lag features
-    from app.services.feature_service import _ensure_utc, _load_hourly_generation, _load_hourly_prices
+    # Load historical data for features
+    from app.services.feature_service import (
+        _ensure_utc,
+        _load_hourly_balancing,
+        _load_hourly_generation,
+        _load_hourly_prices,
+        _load_hourly_weather,
+    )
 
-    prices = _load_hourly_prices(db, prev_week, prev_day, area)
+    hist_start = target_date - timedelta(days=14)
+    prices = _load_hourly_prices(db, hist_start, prev_day, area)
     gen = _load_hourly_generation(db, prev_day - timedelta(days=1), prev_day, area)
+    weather = _load_hourly_weather(db, hist_start, prev_day)
+    balancing = _load_hourly_balancing(db, hist_start, prev_day, area)
 
     if not prices:
         return None
 
-    # Daily average of previous day
-    prev_day_prices = [p for (d, h), p in prices.items() if d == prev_day]
-    daily_avg_prev = sum(prev_day_prices) / len(prev_day_prices) if prev_day_prices else None
+    # Daily aggregates
+    daily_prices_map: dict[date, list[float]] = defaultdict(list)
+    for (d, h), p in prices.items():
+        daily_prices_map[d].append(p)
+
+    daily_avg: dict[date, float] = {}
+    daily_max: dict[date, float] = {}
+    daily_min: dict[date, float] = {}
+    for d, vals in daily_prices_map.items():
+        daily_avg[d] = sum(vals) / len(vals)
+        daily_max[d] = max(vals)
+        daily_min[d] = min(vals)
+
+    # Daily average temperature
+    daily_temps: dict[date, list[float]] = defaultdict(list)
+    for (d, h), w in weather.items():
+        if "temperature_c" in w:
+            daily_temps[d].append(w["temperature_c"])
+    daily_avg_temp: dict[date, float] = {
+        d: sum(v) / len(v) for d, v in daily_temps.items()
+    }
+
+    # Monthly average temperature (for deviation)
+    monthly_temps: dict[int, list[float]] = defaultdict(list)
+    for d, avg_t in daily_avg_temp.items():
+        monthly_temps[d.month].append(avg_t)
+    monthly_avg_temp: dict[int, float] = {
+        m: sum(v) / len(v) for m, v in monthly_temps.items()
+    }
+
+    # Daily balancing aggregates
+    daily_bal_up: dict[date, list[float]] = defaultdict(list)
+    daily_bal_down: dict[date, list[float]] = defaultdict(list)
+    for (d, h), bal in balancing.items():
+        if "up" in bal:
+            daily_bal_up[d].append(bal["up"])
+        if "down" in bal:
+            daily_bal_down[d].append(bal["down"])
 
     rows = []
     for hour in range(24):
         gen_prev = gen.get((prev_day, hour), {})
         gen_total = sum(gen_prev.values()) if gen_prev else 0.0
 
+        weather_prev = weather.get((prev_day, hour), {})
+
+        # Rolling 7-day mean/std for this hour
+        hour_prices_7d = [
+            prices[(target_date - timedelta(days=d), hour)]
+            for d in range(1, 8)
+            if (target_date - timedelta(days=d), hour) in prices
+        ]
+        rolling_7d_mean = (
+            sum(hour_prices_7d) / len(hour_prices_7d)
+            if hour_prices_7d else None
+        )
+        rolling_7d_std = None
+        if len(hour_prices_7d) >= 2:
+            mean = rolling_7d_mean
+            rolling_7d_std = (
+                sum((p - mean) ** 2 for p in hour_prices_7d)
+                / len(hour_prices_7d)
+            ) ** 0.5
+
+        # Price momentum
+        p_d1 = prices.get((prev_day, hour))
+        p_d2 = prices.get((prev_2day, hour))
+        price_change_d1_d2 = (
+            round(p_d1 - p_d2, 4) if p_d1 is not None and p_d2 is not None else None
+        )
+
+        # Previous day range
+        prev_max_val = daily_max.get(prev_day)
+        prev_min_val = daily_min.get(prev_day)
+        daily_range = (
+            round(prev_max_val - prev_min_val, 4)
+            if prev_max_val is not None and prev_min_val is not None else None
+        )
+
+        # Temperature deviation
+        prev_day_temp = daily_avg_temp.get(prev_day)
+        temp_dev = None
+        if prev_day_temp is not None and target_date.month in monthly_avg_temp:
+            temp_dev = round(prev_day_temp - monthly_avg_temp[target_date.month], 2)
+
+        # Balancing aggregates
+        bal_up_vals = daily_bal_up.get(prev_day, [])
+        bal_up_avg = sum(bal_up_vals) / len(bal_up_vals) if bal_up_vals else None
+        bal_down_vals = daily_bal_down.get(prev_day, [])
+        bal_down_avg = sum(bal_down_vals) / len(bal_down_vals) if bal_down_vals else None
+        bal_spread = (
+            round(bal_up_avg - bal_down_avg, 4)
+            if bal_up_avg is not None and bal_down_avg is not None else None
+        )
+
         row = {
+            # Calendar
             "hour": hour,
             "weekday": target_date.weekday(),
             "month": target_date.month,
@@ -191,9 +290,32 @@ def _build_prediction_features(
             "weekday_cos": round(math.cos(2 * math.pi * target_date.weekday() / 7), 6),
             "month_sin": round(math.sin(2 * math.pi * (target_date.month - 1) / 12), 6),
             "month_cos": round(math.cos(2 * math.pi * (target_date.month - 1) / 12), 6),
+            "is_weekend": 1 if target_date.weekday() >= 5 else 0,
+            # Lag
             "prev_day_same_hour": prices.get((prev_day, hour)),
+            "prev_2day_same_hour": prices.get((prev_2day, hour)),
+            "prev_3day_same_hour": prices.get((prev_3day, hour)),
             "prev_week_same_hour": prices.get((prev_week, hour)),
-            "daily_avg_prev_day": daily_avg_prev,
+            "daily_avg_prev_day": daily_avg.get(prev_day),
+            "daily_max_prev_day": prev_max_val,
+            "daily_min_prev_day": prev_min_val,
+            "daily_range_prev_day": daily_range,
+            "price_change_d1_d2": price_change_d1_d2,
+            # Rolling
+            "rolling_7d_mean": (
+                round(rolling_7d_mean, 4) if rolling_7d_mean is not None else None
+            ),
+            "rolling_7d_std": (
+                round(rolling_7d_std, 4) if rolling_7d_std is not None else None
+            ),
+            # Weather
+            "temperature_c": weather_prev.get("temperature_c"),
+            "radiation_wm2": weather_prev.get("radiation_wm2"),
+            "daily_avg_temp_prev_day": (
+                round(prev_day_temp, 2) if prev_day_temp is not None else None
+            ),
+            "temp_deviation": temp_dev,
+            # Generation
             "gen_hydro_mw": gen_prev.get("hydro"),
             "gen_wind_mw": gen_prev.get("wind"),
             "gen_nuclear_mw": gen_prev.get("nuclear"),
@@ -210,6 +332,14 @@ def _build_prediction_features(
                 round(gen_prev.get("nuclear", 0) / gen_total, 4)
                 if gen_total > 0 else None
             ),
+            # Balancing
+            "bal_up_avg_prev_day": (
+                round(bal_up_avg, 4) if bal_up_avg is not None else None
+            ),
+            "bal_down_avg_prev_day": (
+                round(bal_down_avg, 4) if bal_down_avg is not None else None
+            ),
+            "bal_spread_prev_day": bal_spread,
         }
         rows.append(row)
 
