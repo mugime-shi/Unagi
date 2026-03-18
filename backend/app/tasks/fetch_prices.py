@@ -204,9 +204,16 @@ def lambda_handler(event: dict, context) -> dict:
     event = {"backfill_generation": N}             → past N days generation mix (A75) for ALL areas
     event = {"backfill_generation": N, "area": "SE3"} → generation backfill for one area
     event = {"date": "YYYY-MM-DD"}                 → single date for ALL areas
+    event = {"predict_only": true}                  → record predictions only (morning cron)
     """
     explicit_area = event.get("area")
     areas = [explicit_area] if explicit_area else ALL_AREAS
+
+    # Morning prediction-only run (06:00 CET) — record forecasts before day-ahead publication
+    if event.get("predict_only"):
+        log.info("predict_only mode — recording tomorrow's predictions for %s", areas)
+        _record_predictions(areas)
+        return {"statusCode": 200, "mode": "predict_only", "areas": areas}
 
     all_results = []
     for area in areas:
@@ -258,33 +265,25 @@ def lambda_handler(event: dict, context) -> dict:
     }
 
 
-def _record_forecasts_and_actuals(areas: list[str]) -> None:
+def _record_predictions(areas: list[str]) -> None:
     """
-    After the daily price fetch:
-    1. Fill yesterday's actuals in forecast_accuracy (so MAE/RMSE can be scored).
-    2. Record tomorrow's predictions for both models (same_weekday_avg + lgbm).
+    Record tomorrow's predictions for both models (same_weekday_avg + lgbm).
+
+    Called by the morning cron (06:00 CET) BEFORE day-ahead prices are published (~13:00 CET),
+    so predictions are genuine forecasts, not post-hoc reconstructions.
+    Also called by the afternoon run as a fallback (idempotent upsert).
     """
     db = SessionLocal()
     try:
-        from app.services.backtest_service import fill_actuals, record_predictions
+        from app.services.backtest_service import record_predictions
         from app.services.ml_forecast_service import build_lgbm_forecast
         from app.services.price_service import build_forecast, get_prices_for_date_range
 
         today = date.today()
-        yesterday = today - timedelta(days=1)
         tomorrow = today + timedelta(days=1)
 
         for area in areas:
-            # 1. Fill yesterday's actuals
-            try:
-                n = fill_actuals(db, yesterday, area)
-                if n:
-                    log.info("Filled %d actuals for %s %s", n, yesterday, area)
-            except Exception as exc:
-                log.warning("fill_actuals failed for %s %s: %s", yesterday, area, exc)
-                db.rollback()
-
-            # 2. Record tomorrow's predictions — same_weekday_avg
+            # same_weekday_avg
             try:
                 hist_start = tomorrow - timedelta(weeks=8)
                 hist_end = today
@@ -297,7 +296,7 @@ def _record_forecasts_and_actuals(areas: list[str]) -> None:
                 log.warning("same_weekday_avg record failed for %s %s: %s", tomorrow, area, exc)
                 db.rollback()
 
-            # 3. Record tomorrow's predictions — lgbm
+            # lgbm
             try:
                 result = build_lgbm_forecast(db, tomorrow, area=area)
                 if result.get("slots") and result["slots"][0].get("avg_sek_kwh") is not None:
@@ -308,6 +307,35 @@ def _record_forecasts_and_actuals(areas: list[str]) -> None:
                 db.rollback()
     finally:
         db.close()
+
+
+def _fill_actuals(areas: list[str]) -> None:
+    """Fill yesterday's actuals in forecast_accuracy (so MAE/RMSE can be scored)."""
+    db = SessionLocal()
+    try:
+        from app.services.backtest_service import fill_actuals
+
+        yesterday = date.today() - timedelta(days=1)
+        for area in areas:
+            try:
+                n = fill_actuals(db, yesterday, area)
+                if n:
+                    log.info("Filled %d actuals for %s %s", n, yesterday, area)
+            except Exception as exc:
+                log.warning("fill_actuals failed for %s %s: %s", yesterday, area, exc)
+                db.rollback()
+    finally:
+        db.close()
+
+
+def _record_forecasts_and_actuals(areas: list[str]) -> None:
+    """
+    After the daily price fetch (13:30 CET):
+    1. Fill yesterday's actuals (answer-check).
+    2. Record predictions as fallback (morning cron should have already recorded them).
+    """
+    _fill_actuals(areas)
+    _record_predictions(areas)
 
 
 def _send_notifications(areas: list[str]) -> None:

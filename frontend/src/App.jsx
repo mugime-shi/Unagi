@@ -12,7 +12,6 @@ import { useBalancing } from './hooks/useBalancing'
 import { useDatePrices } from './hooks/useDatePrices'
 import { useForecast } from './hooks/useForecast'
 import { useGeneration } from './hooks/useGeneration'
-import { useLgbmForecast } from './hooks/useLgbmForecast'
 import { useRetrospective } from './hooks/useRetrospective'
 import { usePrices } from './hooks/usePrices'
 
@@ -46,15 +45,19 @@ export default function App() {
   const [reviewDate, setReviewDate] = useState(yesterdayISO)
   const { data, loading, error } = usePrices(day !== 'review' ? day : 'today', area)
   const { data: forecast } = useForecast(day === 'tomorrow' ? tomorrowISO() : null, area)
-  const { data: lgbmForecast } = useLgbmForecast(day === 'tomorrow' ? tomorrowISO() : null, area)
   // Balancing prices: try today, fall back to yesterday if not yet published
   const { data: balancing, dataDate: balancingDate } = useBalancing(
     day === 'today' ? todayISO() : null, area,
   )
   const { data: generation } = useGeneration(area)
-  const { data: retrospective } = useRetrospective(
-    day === 'today' ? todayISO() : day === 'review' ? reviewDate : null, area,
-  )
+  // Retrospective predictions (pre-recorded in forecast_accuracy table).
+  // Used for: Today (yesterday's predictions), Tomorrow (morning cron predictions), Review (past date).
+  const retroDate = day === 'today' ? todayISO() : day === 'tomorrow' ? tomorrowISO() : day === 'review' ? reviewDate : null
+  const { data: retrospective } = useRetrospective(retroDate, area)
+  // Extract LGBM forecast from pre-recorded predictions for Tomorrow tab
+  const lgbmForecast = day === 'tomorrow' && retrospective?.models?.lgbm
+    ? { slots: retrospective.models.lgbm.map(p => ({ hour: p.hour, avg_sek_kwh: p.predicted_sek_kwh })) }
+    : null
   // Review mode: fetch prices for an arbitrary past date
   const { data: reviewData, loading: reviewLoading, error: reviewError } = useDatePrices(
     day === 'review' ? reviewDate : null, area,
