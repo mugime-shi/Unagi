@@ -325,6 +325,7 @@ export default function App() {
                         retrospective={day === 'today' ? retrospective : null}
                         balancing={day === 'today' ? balancing : null}
                         predToggle={day === 'today'}
+                        predictedAt={day === 'tomorrow' ? retrospective?.predicted_at : null}
                       />
                     </div>
 

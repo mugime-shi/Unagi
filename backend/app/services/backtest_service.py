@@ -8,7 +8,7 @@ Workflow:
 """
 
 from collections import defaultdict
-from datetime import date, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from math import sqrt
 from zoneinfo import ZoneInfo
 
@@ -279,11 +279,18 @@ def get_retrospective(
     )
 
     by_model: dict[str, list[dict]] = defaultdict(list)
+    earliest_created: datetime | None = None
     for r in rows:
         by_model[r.model_name].append({
             "hour": r.hour,
             "predicted_sek_kwh": round(float(r.predicted_sek_kwh), 4),
             "actual_sek_kwh": round(float(r.actual_sek_kwh), 4) if r.actual_sek_kwh is not None else None,
         })
+        if r.created_at is not None:
+            if earliest_created is None or r.created_at < earliest_created:
+                earliest_created = r.created_at
 
-    return dict(by_model)
+    return {
+        "models": dict(by_model),
+        "predicted_at": earliest_created.isoformat() if earliest_created else None,
+    }

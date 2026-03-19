@@ -449,12 +449,13 @@ def get_forecast_retrospective(
         raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
 
     from app.services.backtest_service import get_retrospective
-    models = get_retrospective(db, date, area)
+    result = get_retrospective(db, date, area)
 
     return {
         "area": area,
         "date": date.isoformat(),
-        "models": models,
+        "models": result["models"],
+        "predicted_at": result["predicted_at"],
     }
 
 

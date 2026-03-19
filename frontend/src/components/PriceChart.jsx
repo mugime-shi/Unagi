@@ -103,7 +103,7 @@ function tsKey(iso) {
   return iso.substring(0, 16)  // "2026-03-15T23:00"
 }
 
-export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast = null, retrospective = null, balancing = null, predToggle = false }) {
+export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast = null, retrospective = null, balancing = null, predToggle = false, predictedAt = null }) {
   const [showPred, setShowPred] = useState(true)
   // Tomorrow: always show predictions. Today: respect toggle.
   const predsVisible = predToggle ? showPred : true
@@ -191,9 +191,16 @@ export function PriceChart({ prices, isEstimate, forecast = null, lgbmForecast =
   return (
     <div className="w-full">
       {isEstimate && (
-        <p className="text-xs text-yellow-400 mb-2 text-center">
-          Prices not yet published — showing ML predictions
-        </p>
+        <div className="text-center mb-2">
+          <p className="text-xs text-yellow-400">
+            Prices not yet published — showing ML predictions
+          </p>
+          {predictedAt && (
+            <p className="text-[10px] text-gray-500 mt-0.5">
+              Predicted {new Date(predictedAt).toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' })} {new Date(predictedAt).toLocaleTimeString('sv-SE', { timeZone: 'Europe/Stockholm', hour: '2-digit', minute: '2-digit' })} CET
+            </p>
+          )}
+        </div>
       )}
 
       {/* Legend row */}
