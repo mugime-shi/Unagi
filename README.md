@@ -19,10 +19,6 @@ A real-time dashboard for Swedish electricity spot prices with ML forecasting, b
 - **Notifications** — daily Telegram alerts + browser push (VAPID)
 - **Monitoring** — CloudWatch → SNS → Lambda → Telegram failure alerting
 
-## Why I built this
-
-In Japan I worked on a Solar Power Retails system with government-fixed buyback prices — no optimization needed. Sweden's spot market is the opposite: *when* you consume matters. This project is my way of understanding that market by building something useful for my own apartment in Göteborg.
-
 ## Quick start
 
 ```bash
@@ -35,11 +31,18 @@ Add a free [ENTSO-E API key](https://transparency.entsoe.eu/) to `backend/.env` 
 
 ## Tech stack
 
-**Backend:** Python 3.12 / FastAPI / SQLAlchemy / Mangum (Lambda ASGI)
-**ML:** LightGBM + Optuna (quantile regression, walk-forward CV)
-**Frontend:** React 19 / Tailwind CSS / Recharts
-**Infra:** AWS Lambda (arm64) × 3 / API Gateway / EventBridge / Terraform
-**DB:** Supabase PostgreSQL &nbsp;|&nbsp; **CI/CD:** GitHub Actions &nbsp;|&nbsp; **Hosting:** Vercel
+| Layer | Technology | Why |
+|---|---|---|
+| Backend | Python 3.12, FastAPI | Auto-docs, Pydantic validation, async-ready |
+| Runtime | AWS Lambda (arm64 Docker) | Zero cost at this scale; same image local and prod |
+| ASGI adapter | Mangum | Lambda integration without modifying app code |
+| Database | PostgreSQL on Supabase | Full SQL, free tier with no expiry |
+| ML | LightGBM + Optuna | Tabular-optimized; fits Lambda memory/time constraints |
+| Frontend | React 19, Vite, Tailwind CSS | Fast iteration; Recharts for time-series |
+| Hosting | Vercel | Free, auto-deploy on push |
+| IaC | Terraform | Declarative, reproducible infrastructure |
+| CI/CD | GitHub Actions | pytest → build → deploy → smoke test on every push |
+| Monitoring | CloudWatch → SNS → Lambda → Telegram | Zero-cost automated failure alerting |
 
 ## Documentation
 
