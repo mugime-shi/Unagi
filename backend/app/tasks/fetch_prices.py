@@ -205,9 +205,27 @@ def lambda_handler(event: dict, context) -> dict:
     event = {"backfill_generation": N, "area": "SE3"} → generation backfill for one area
     event = {"date": "YYYY-MM-DD"}                 → single date for ALL areas
     event = {"predict_only": true}                  → record predictions only (morning cron)
+    event = {"midnight_predict": true}              → CET-aligned prediction at midnight
     """
     explicit_area = event.get("area")
     areas = [explicit_area] if explicit_area else ALL_AREAS
+
+    # Midnight prediction run (00:05 CET) — CET-aligned predictions for "tomorrow"
+    if event.get("midnight_predict"):
+        from datetime import datetime as _dt
+        from zoneinfo import ZoneInfo
+
+        cet = ZoneInfo("Europe/Stockholm")
+        cet_today = _dt.now(cet).date()
+        cet_tomorrow = cet_today + timedelta(days=1)
+        log.info("midnight_predict — CET today=%s, predicting for %s, areas=%s",
+                 cet_today, cet_tomorrow, areas)
+        # Fetch weather forecast with CET-aligned issued_date (Lambda runs at 23:05 UTC,
+        # so UTC date.today() may still be the previous day)
+        _store_weather_forecast_with_issued_date(cet_today)
+        _record_predictions(areas, target_date=cet_tomorrow)
+        return {"statusCode": 200, "mode": "midnight_predict",
+                "cet_tomorrow": cet_tomorrow.isoformat(), "areas": areas}
 
     # Morning prediction-only run (06:00 CET) — record forecasts before day-ahead publication
     if event.get("predict_only"):
@@ -344,13 +362,38 @@ def _fetch_weather_forecast() -> dict:
         db.close()
 
 
-def _record_predictions(areas: list[str]) -> None:
+def _store_weather_forecast_with_issued_date(issued: date) -> None:
+    """
+    Re-fetch Open-Meteo forecast and store with an explicit issued_date.
+
+    The midnight cron runs at 23:05 UTC where date.today() is still the previous
+    UTC day, but CET has already rolled over. This ensures the forecast row has
+    issued_date = CET today so that _load_hourly_forecast() finds it when
+    predicting for CET tomorrow (which looks for issued_date = target - 1).
+    """
+    db = SessionLocal()
+    try:
+        from app.services.openmeteo_client import fetch_forecast, store_forecast
+
+        slots = fetch_forecast(forecast_days=3)
+        store_forecast(db, slots, issued_date=issued)
+        log.info("Stored weather forecast with issued_date=%s (%d slots)", issued, len(slots))
+    except Exception as exc:
+        log.warning("Weather forecast re-store failed (issued=%s): %s", issued, exc)
+    finally:
+        db.close()
+
+
+def _record_predictions(areas: list[str], target_date: date | None = None) -> None:
     """
     Record tomorrow's predictions for both models (same_weekday_avg + lgbm).
 
     Called by the morning cron (06:00 CET) BEFORE day-ahead prices are published (~13:00 CET),
     so predictions are genuine forecasts, not post-hoc reconstructions.
     Also called by the afternoon run as a fallback (idempotent upsert).
+
+    target_date: explicit prediction date (used by midnight cron for CET-aligned "tomorrow").
+                 Defaults to UTC today + 1.
     """
     db = SessionLocal()
     try:
@@ -358,14 +401,16 @@ def _record_predictions(areas: list[str]) -> None:
         from app.services.ml_forecast_service import build_lgbm_forecast
         from app.services.price_service import build_forecast, get_prices_for_date_range
 
-        today = date.today()
-        tomorrow = today + timedelta(days=1)
+        if target_date is None:
+            tomorrow = date.today() + timedelta(days=1)
+        else:
+            tomorrow = target_date
 
         for area in areas:
             # same_weekday_avg
             try:
                 hist_start = tomorrow - timedelta(weeks=8)
-                hist_end = today
+                hist_end = tomorrow - timedelta(days=1)
                 rows = get_prices_for_date_range(db, hist_start, hist_end, area=area)
                 result = build_forecast(rows, tomorrow)
                 if result.get("slots"):

@@ -73,6 +73,15 @@ resource "aws_lambda_permission" "eventbridge" {
   source_arn    = aws_cloudwatch_event_rule.daily_fetch.arn
 }
 
+# Allow EventBridge to invoke the Scheduler Lambda (midnight prediction)
+resource "aws_lambda_permission" "eventbridge_midnight" {
+  statement_id  = "AllowEventBridgeMidnightPredict"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.scheduler.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.midnight_predict.arn
+}
+
 # Allow EventBridge to invoke the Scheduler Lambda (morning prediction)
 resource "aws_lambda_permission" "eventbridge_morning" {
   statement_id  = "AllowEventBridgeMorningPredict"
