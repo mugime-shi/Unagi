@@ -152,10 +152,9 @@ cd backend
 │  AWS API Gateway  →  Lambda (arm64 Docker)           │
 │  FastAPI + Mangum   │   22 endpoints, 5 routers      │
 │                                                      │
-│  EventBridge cron (13:30 CET daily)                  │
-│  → Scheduler Lambda → ENTSO-E + eSett + Riksbank     │
-│                    → Telegram + Web Push alerts       │
-│                    → LightGBM prediction recording    │
+│  EventBridge crons (Scheduler Lambda):                │
+│    01:05 CET  Data completion + ML predictions       │
+│    13:30 CET  Price fetch + actuals + notifications   │
 │                                                      │
 │  CloudWatch Alarms → SNS → alarm_handler Lambda      │
 │                           → Telegram failure alert    │
