@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.middleware.api_key import ApiKeyMiddleware
 from app.routers import generation, notify, prices, simulate, solar
 
 app = FastAPI(
@@ -13,6 +14,9 @@ app = FastAPI(
     redoc_url="/redoc" if settings.debug else None,
 )
 
+# Starlette processes middleware in reverse-add order (last added = outermost).
+# CORSMiddleware must be outermost so CORS preflight is handled before auth.
+app.add_middleware(ApiKeyMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -21,8 +25,8 @@ app.add_middleware(
         "https://namazu-el.vercel.app",
     ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "X-Namazu-Key"],
 )
 
 app.include_router(prices.router, prefix="/api/v1")

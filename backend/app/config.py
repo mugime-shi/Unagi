@@ -6,6 +6,7 @@ class Settings(BaseSettings):
 
     app_name: str = "Namazu API"
     debug: bool = False
+    api_key: str = ""  # X-Namazu-Key header value (empty = auth disabled)
 
     database_url: str = "postgresql://namazu:namazu@localhost:5432/namazu"
 
@@ -16,7 +17,7 @@ class Settings(BaseSettings):
 
     # VAPID keys for Web Push notifications (generate with scripts/gen_vapid_keys.py)
     vapid_private_key: str = ""  # base64url-encoded raw 32-byte P-256 private key
-    vapid_public_key: str = ""   # base64url-encoded uncompressed EC point (65 bytes)
+    vapid_public_key: str = ""  # base64url-encoded uncompressed EC point (65 bytes)
     vapid_contact: str = "mailto:namazu@example.com"
 
     # Telegram Bot notifications (single-user; get token from @BotFather, chat_id from /getUpdates)

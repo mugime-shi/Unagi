@@ -22,100 +22,102 @@
  *   6. Service Worker wakes up and shows system notification
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState } from "react";
+import { apiFetch } from "../utils/api";
 
 /** Convert base64url string (no padding) to Uint8Array for applicationServerKey */
 function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
-  const rawData = atob(base64)
-  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)))
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
 }
 
 export function usePushNotification(area) {
-  const [status, setStatus] = useState('loading')
+  const [status, setStatus] = useState("loading");
 
   useEffect(() => {
-    checkStatus().then(setStatus)
-  }, [])
+    checkStatus().then(setStatus);
+  }, []);
 
   async function checkStatus() {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-      return 'unsupported'
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      return "unsupported";
     }
     try {
-      const reg = await navigator.serviceWorker.ready
-      const sub = await reg.pushManager.getSubscription()
-      return sub ? 'subscribed' : 'idle'
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      return sub ? "subscribed" : "idle";
     } catch {
-      return 'idle'
+      return "idle";
     }
   }
 
   async function subscribe() {
-    setStatus('loading')
+    setStatus("loading");
     try {
       // 1. Get VAPID public key from backend
-      const keyRes = await fetch('/api/v1/notify/vapid-public-key')
-      if (!keyRes.ok) throw new Error('Push notifications not configured on server')
-      const { public_key } = await keyRes.json()
+      const keyRes = await apiFetch("/api/v1/notify/vapid-public-key");
+      if (!keyRes.ok)
+        throw new Error("Push notifications not configured on server");
+      const { public_key } = await keyRes.json();
 
       // 2. Request notification permission
-      const permission = await Notification.requestPermission()
-      if (permission !== 'granted') {
-        setStatus('denied')
-        return
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        setStatus("denied");
+        return;
       }
 
       // 3. Subscribe via browser Push API
       //    applicationServerKey identifies our server to the push service
-      const reg = await navigator.serviceWorker.ready
+      const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true, // required: SW must always show a notification
         applicationServerKey: urlBase64ToUint8Array(public_key),
-      })
+      });
 
       // 4. Save subscription to backend
-      const subJson = sub.toJSON()
-      const saveRes = await fetch('/api/v1/notify/subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const subJson = sub.toJSON();
+      const saveRes = await apiFetch("/api/v1/notify/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           endpoint: subJson.endpoint,
           p256dh: subJson.keys.p256dh,
           auth: subJson.keys.auth,
           area,
         }),
-      })
-      if (!saveRes.ok) throw new Error('Failed to save subscription')
+      });
+      if (!saveRes.ok) throw new Error("Failed to save subscription");
 
-      setStatus('subscribed')
+      setStatus("subscribed");
     } catch (err) {
-      console.error('[Namazu] Push subscribe error:', err)
-      setStatus('error')
+      console.error("[Namazu] Push subscribe error:", err);
+      setStatus("error");
     }
   }
 
   async function unsubscribe() {
-    setStatus('loading')
+    setStatus("loading");
     try {
-      const reg = await navigator.serviceWorker.ready
-      const sub = await reg.pushManager.getSubscription()
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
       if (sub) {
         // Remove from backend first, then unsubscribe browser
-        await fetch('/api/v1/notify/subscribe', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
+        await apiFetch("/api/v1/notify/subscribe", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ endpoint: sub.endpoint }),
-        })
-        await sub.unsubscribe()
+        });
+        await sub.unsubscribe();
       }
-      setStatus('idle')
+      setStatus("idle");
     } catch (err) {
-      console.error('[Namazu] Push unsubscribe error:', err)
-      setStatus('error')
+      console.error("[Namazu] Push unsubscribe error:", err);
+      setStatus("error");
     }
   }
 
-  return { status, subscribe, unsubscribe }
+  return { status, subscribe, unsubscribe };
 }

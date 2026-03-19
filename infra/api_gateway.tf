@@ -5,7 +5,7 @@ resource "aws_apigatewayv2_api" "main" {
   cors_configuration {
     allow_origins = ["https://namazu-el.vercel.app", "http://localhost:5173", "http://localhost:3000"]
     allow_methods = ["GET", "POST", "OPTIONS"]
-    allow_headers = ["Content-Type"]
+    allow_headers = ["Content-Type", "X-Namazu-Key"]
     max_age       = 300
   }
 }
@@ -20,8 +20,8 @@ resource "aws_apigatewayv2_stage" "default" {
   # burst_limit: max concurrent requests in a single burst (token bucket capacity)
   # rate_limit:  steady-state requests per second (token refill rate)
   default_route_settings {
-    throttling_burst_limit = 200
-    throttling_rate_limit  = 100
+    throttling_burst_limit = 50
+    throttling_rate_limit  = 30
   }
 }
 

@@ -50,3 +50,8 @@ variable "telegram_chat_id" {
   sensitive   = true
   default     = ""
 }
+
+variable "api_key" {
+  description = "API key for X-Namazu-Key header authentication"
+  sensitive   = true
+}

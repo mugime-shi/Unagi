@@ -18,6 +18,7 @@ resource "aws_lambda_function" "api" {
       VAPID_CONTACT     = var.vapid_contact
       TELEGRAM_BOT_TOKEN = var.telegram_bot_token
       TELEGRAM_CHAT_ID   = var.telegram_chat_id
+      API_KEY            = var.api_key
     }
   }
 

@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState } from "react";
+import { apiFetch } from "../utils/api";
 
 function prevDay(iso) {
-  const d = new Date(iso)
-  d.setDate(d.getDate() - 1)
-  return d.toISOString().split('T')[0]
+  const d = new Date(iso);
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().split("T")[0];
 }
 
 /**
@@ -14,36 +15,44 @@ function prevDay(iso) {
  * Returns { data, dataDate, loading, error }
  * dataDate may differ from dateISO if a fallback was used.
  */
-export function useBalancing(dateISO, area = 'SE3') {
-  const [data, setData]         = useState(null)
-  const [dataDate, setDataDate] = useState(null)
-  const [loading, setLoading]   = useState(false)
-  const [error, setError]       = useState(null)
+export function useBalancing(dateISO, area = "SE3") {
+  const [data, setData] = useState(null);
+  const [dataDate, setDataDate] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (!dateISO) {
-      setData(null)
-      setDataDate(null)
-      return
+      setData(null);
+      setDataDate(null);
+      return;
     }
-    setLoading(true)
-    setError(null)
+    setLoading(true);
+    setError(null);
 
     const tryFetch = (d) =>
-      fetch(`/api/v1/prices/balancing?date=${d}&area=${area}`)
-        .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
+      apiFetch(`/api/v1/prices/balancing?date=${d}&area=${area}`).then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      });
 
     tryFetch(dateISO)
-      .then((d) => { setData(d); setDataDate(dateISO) })
+      .then((d) => {
+        setData(d);
+        setDataDate(dateISO);
+      })
       .catch(() => {
         // Today's data not yet published — try yesterday
-        const yd = prevDay(dateISO)
+        const yd = prevDay(dateISO);
         return tryFetch(yd)
-          .then((d) => { setData(d); setDataDate(yd) })
-          .catch(setError)
+          .then((d) => {
+            setData(d);
+            setDataDate(yd);
+          })
+          .catch(setError);
       })
-      .finally(() => setLoading(false))
-  }, [dateISO, area])
+      .finally(() => setLoading(false));
+  }, [dateISO, area]);
 
-  return { data, dataDate, loading, error }
+  return { data, dataDate, loading, error };
 }
