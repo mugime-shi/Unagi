@@ -16,6 +16,7 @@ CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --
 
 # ─── lambda-base: shared Lambda setup ─────────────────────────────────────────
 FROM public.ecr.aws/lambda/python:3.12 AS lambda-base
+RUN dnf install -y libgomp && dnf clean all
 COPY backend/requirements.txt ${LAMBDA_TASK_ROOT}/
 RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/app ${LAMBDA_TASK_ROOT}/app
