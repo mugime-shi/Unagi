@@ -43,8 +43,8 @@ resource "aws_lambda_function" "scheduler" {
   package_type  = "Image"
   image_uri     = "${aws_ecr_repository.scheduler.repository_url}:${var.image_tag}"
   architectures = ["arm64"]
-  memory_size   = 256
-  timeout       = 300 # backfill can take a few minutes
+  memory_size   = 512  # LightGBM training needs >256 MB
+  timeout       = 300  # backfill can take a few minutes
 
   environment {
     variables = {
