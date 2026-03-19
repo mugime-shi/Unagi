@@ -154,6 +154,7 @@ cd backend
 │                                                      │
 │  EventBridge crons (Scheduler Lambda):                │
 │    01:05 CET  Data completion + ML predictions       │
+│    05:05 CET  Nightly retry (idempotent)             │
 │    13:30 CET  Price fetch + actuals + notifications   │
 │                                                      │
 │  CloudWatch Alarms → SNS → alarm_handler Lambda      │

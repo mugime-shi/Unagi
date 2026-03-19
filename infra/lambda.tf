@@ -81,3 +81,12 @@ resource "aws_lambda_permission" "eventbridge_midnight" {
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.midnight_predict.arn
 }
+
+# Allow EventBridge to invoke the Scheduler Lambda (nightly retry)
+resource "aws_lambda_permission" "eventbridge_nightly_retry" {
+  statement_id  = "AllowEventBridgeNightlyRetry"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.scheduler.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.nightly_retry.arn
+}

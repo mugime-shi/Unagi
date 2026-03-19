@@ -14,6 +14,22 @@ resource "aws_cloudwatch_event_target" "midnight_predict_lambda" {
   input     = jsonencode({ midnight_predict = true })
 }
 
+# Nightly retry — if the 00:05 UTC run failed, retry before users wake up.
+# 04:05 UTC = 05:05 CET (winter) / 06:05 CEST (summer).
+# Same event as midnight — idempotent (upsert), so a no-op if nightly succeeded.
+resource "aws_cloudwatch_event_rule" "nightly_retry" {
+  name                = "${var.project}-nightly-retry"
+  description         = "Retry nightly prediction at 04:05 UTC (05:05 CET) if first run failed"
+  schedule_expression = "cron(5 4 * * ? *)"
+}
+
+resource "aws_cloudwatch_event_target" "nightly_retry_lambda" {
+  rule      = aws_cloudwatch_event_rule.nightly_retry.name
+  target_id = "${var.project}-nightly-retry"
+  arn       = aws_lambda_function.scheduler.arn
+  input     = jsonencode({ midnight_predict = true })
+}
+
 # ENTSO-E publishes next-day prices at ~13:00 CET.
 # 12:30 UTC = 13:30 CET (winter) / 14:30 CEST (summer) — always after publication.
 resource "aws_cloudwatch_event_rule" "daily_fetch" {

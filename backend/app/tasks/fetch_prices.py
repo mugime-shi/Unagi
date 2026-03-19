@@ -434,11 +434,11 @@ def _fill_actuals(areas: list[str]) -> None:
 def _record_forecasts_and_actuals(areas: list[str]) -> None:
     """
     After the daily price fetch (13:30 CET):
-    1. Fill yesterday's actuals (answer-check).
-    2. Record predictions as fallback (morning cron should have already recorded them).
+    Fill yesterday's actuals (answer-check for MAE/RMSE scoring).
+    Predictions are NOT re-recorded here — by 13:30 actual prices are
+    already published, so post-hoc predictions would be meaningless.
     """
     _fill_actuals(areas)
-    _record_predictions(areas)
 
 
 def _send_notifications(areas: list[str]) -> None:
