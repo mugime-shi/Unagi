@@ -25,11 +25,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(prices.router,     prefix="/api/v1")
+app.include_router(prices.router, prefix="/api/v1")
 app.include_router(generation.router, prefix="/api/v1")
-app.include_router(simulate.router,   prefix="/api/v1")
-app.include_router(solar.router,      prefix="/api/v1")
-app.include_router(notify.router,     prefix="/api/v1")
+app.include_router(simulate.router, prefix="/api/v1")
+app.include_router(solar.router, prefix="/api/v1")
+app.include_router(notify.router, prefix="/api/v1")
 
 
 @app.get("/health")
@@ -40,6 +40,7 @@ def health():
 # Lambda handler (Mangum wraps FastAPI for AWS Lambda)
 try:
     from mangum import Mangum
+
     handler = Mangum(app, lifespan="off")
 except ImportError:
     pass
