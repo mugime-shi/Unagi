@@ -1,0 +1,150 @@
+# System Design
+
+## Architecture overview
+
+```
+┌──────────────────────────────────────────────────────┐
+│  React 19 + Tailwind CSS  (Vercel)                   │
+│  Prices │ History │ Simulators (Cost + Solar)         │
+│  10 components  │  16 data hooks                     │
+└──────────────────────┬───────────────────────────────┘
+                       │ /api/*  (Vercel rewrite proxy)
+                       ▼
+┌──────────────────────────────────────────────────────┐
+│  AWS API Gateway  →  Lambda (arm64 Docker)           │
+│  FastAPI + Mangum   │   22 endpoints, 5 routers      │
+│                                                      │
+│  EventBridge crons (Scheduler Lambda):                │
+│    01:05 CET  Data completion + ML predictions       │
+│    05:05 CET  Nightly retry (idempotent)             │
+│    13:30 CET  Price fetch + actuals + notifications   │
+│                                                      │
+│  CloudWatch Alarms → SNS → alarm_handler Lambda      │
+│                           → Telegram failure alert    │
+└───┬──────────┬──────────┬──────────┬─────────────────┘
+    ▼          ▼          ▼          ▼
+ ENTSO-E    SMHI       eSett    Riksbank    PostgreSQL
+ (prices    (solar     (balance  (EUR/SEK)  (Supabase)
+  + gen)    irrad.)    prices)
+```
+
+## Key design decisions
+
+### Lambda + Docker (arm64)
+
+Same Docker image runs locally (`docker compose up`) and in Lambda via Mangum. arm64 cuts cold-start time and cost vs x86. Three separate Lambdas: API handler, scheduler (EventBridge crons), and alarm handler (SNS → Telegram).
+
+### Mangum as ASGI adapter
+
+FastAPI stays framework-standard — no Lambda-specific code in routes or services. Mangum wraps the ASGI app at the handler level only. This means local dev, tests, and production all execute the same code paths.
+
+### Supabase PostgreSQL over DynamoDB
+
+Spot prices are inherently relational (time-series with zone/area dimensions, joins for forecast vs actuals). PostgreSQL's window functions and date arithmetic simplify queries that would require complex GSI designs in DynamoDB. Supabase's free tier has no 12-month expiry unlike AWS RDS.
+
+### EventBridge scheduling strategy
+
+Three cron windows reflect the ENTSO-E publication lifecycle:
+- **13:30 CET** — Day-ahead prices published ~12:45 CET. Fetch + store + trigger notifications.
+- **01:05 CET** — Data completion. Backfill any missing slots, run ML predictions for tomorrow.
+- **05:05 CET** — Idempotent retry. Catches transient failures from the 01:05 run.
+
+All handlers are idempotent — re-running them is safe and expected.
+
+### LightGBM for price forecasting
+
+Gradient boosting on tabular features outperforms deep learning for this data volume (~8,760 hourly samples/year). LightGBM fits Lambda's 512 MB / 30s constraints. Quantile regression (α=0.10/0.90) provides calibrated prediction intervals.
+
+**37 features** across 6 categories: calendar cycles, price lags (multi-day + 7d rolling stats), weather (temperature + solar radiation), generation mix ratios, balancing price spreads, and interaction terms (wind×hour, temp×month).
+
+**Optuna tuning**: 100 trials with 4-fold walk-forward cross-validation. Walk-forward (not random k-fold) prevents future data leakage in time-series.
+
+### Monitoring pipeline
+
+CloudWatch Alarms detect Lambda errors or missing data → SNS topic → dedicated alarm_handler Lambda → Telegram message. This avoids polling and provides sub-minute alerting at zero cost.
+
+## Tech stack
+
+| Layer | Technology | Why |
+|---|---|---|
+| Backend | Python 3.12, FastAPI | Auto-docs, Pydantic validation, async-ready |
+| Runtime | AWS Lambda (arm64 Docker) | Zero cost at this scale; same image local and prod |
+| ASGI adapter | Mangum | Lambda integration without modifying app code |
+| Database | PostgreSQL on Supabase | Full SQL, free tier with no expiry |
+| ML | LightGBM + Optuna | Tabular-optimized; fits Lambda memory/time constraints |
+| Frontend | React 19, Vite, Tailwind CSS | Fast iteration; Recharts for time-series |
+| Hosting | Vercel | Free, auto-deploy on push |
+| IaC | Terraform | Declarative, reproducible infrastructure |
+| CI/CD | GitHub Actions | pytest → build → deploy → smoke test on every push |
+| Monitoring | CloudWatch → SNS → Lambda → Telegram | Zero-cost automated failure alerting |
+
+## Infrastructure (Terraform-managed)
+
+- **Lambda × 3**: API handler, scheduler, alarm handler
+- **API Gateway v2** (HTTP API): routes to API Lambda
+- **EventBridge**: 3 cron rules for data pipeline
+- **ECR × 2**: API image + scheduler image
+- **CloudWatch Alarms × 2**: error rate + missing data detection
+- **SNS**: alarm fan-out topic
+- **IAM**: least-privilege roles per Lambda
+
+## CI/CD pipeline
+
+```
+git push main
+  → pytest (142 tests, SQLite in-memory)
+  → alembic migrate (Supabase)
+  → Docker build --platform linux/arm64
+  → ECR push (API + scheduler images)
+  → Lambda function update
+  → Smoke test (health endpoint)
+```
+
+## Cost analysis
+
+Everything runs on permanent free tiers — no 12-month expiry.
+
+| Resource | Service | Monthly cost |
+|---|---|---|
+| Backend | Lambda (1M req/month free) | 0 SEK |
+| Routing | API Gateway (1M calls/month free) | 0 SEK |
+| Scheduler | EventBridge | 0 SEK |
+| Monitoring | CloudWatch + SNS + alarm Lambda | 0 SEK |
+| Frontend | Vercel | 0 SEK |
+| Database | Supabase (500 MB, no expiry) | 0 SEK |
+| Data | ENTSO-E + SMHI + eSett + Riksbank | 0 SEK |
+
+## ML performance
+
+| Metric | Value |
+|---|---|
+| MAE improvement vs baseline | 46.3% (0.44 → 0.24 SEK/kWh) |
+| Features | 37 (calendar, lags, weather, generation, balancing, interactions) |
+| Training window | 365 days (full seasonal cycle) |
+| Tuning | Optuna 100 trials, 4-fold walk-forward CV |
+| Prediction intervals | Quantile regression (α=0.10/0.90) |
+
+## Project structure
+
+```
+Namazu/
+├── backend/
+│   ├── namazu                          # CLI (./namazu help)
+│   └── app/
+│       ├── main.py                     # FastAPI + Mangum handler
+│       ├── config.py                   # Pydantic settings
+│       ├── routers/                    # 5 routers, 22 endpoints
+│       ├── services/                   # 17 service modules
+│       ├── db/                         # SQLAlchemy models + Alembic migrations
+│       └── tasks/fetch_prices.py       # EventBridge scheduler handler
+├── frontend/
+│   └── src/
+│       ├── components/                 # 10 components
+│       ├── hooks/                      # 16 data hooks
+│       └── utils/formatters.js         # CET/CEST timezone helpers
+├── infra/                              # Terraform (9 .tf files)
+├── docs/                               # Documentation
+├── Dockerfile                          # Multi-stage: dev / lambda / scheduler
+├── docker-compose.yml                  # Local dev: FastAPI + PostgreSQL
+└── .github/workflows/deploy.yml        # CI/CD pipeline
+```
