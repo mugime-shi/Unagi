@@ -47,13 +47,20 @@ export default function App() {
     day !== "review" ? day : "today",
     area,
   );
-  const { data: forecast } = useForecast(
-    day === "tomorrow" ? tomorrowISO() : null,
-    area,
-  );
+  const forecastDate =
+    day === "today"
+      ? todayISO()
+      : day === "tomorrow"
+        ? tomorrowISO()
+        : day === "review"
+          ? reviewDate
+          : null;
+  const { data: forecast } = useForecast(forecastDate, area);
   // Balancing prices: try today, fall back to yesterday if not yet published
+  const balancingDate_ =
+    day === "today" ? todayISO() : day === "review" ? reviewDate : null;
   const { data: balancing, dataDate: balancingDate } = useBalancing(
-    day === "today" ? todayISO() : null,
+    balancingDate_,
     area,
   );
   const { data: generation } = useGeneration(area);
@@ -228,7 +235,9 @@ export default function App() {
                       <PriceChart
                         prices={reviewData.prices}
                         isEstimate={false}
+                        forecast={forecast}
                         retrospective={retrospective}
+                        balancing={balancing}
                       />
                     </div>
 
@@ -360,50 +369,60 @@ export default function App() {
                         </p>
                       )}
 
-                    {/* Price chart */}
-                    <div className="bg-gray-900 rounded-2xl p-4">
-                      <div className="flex items-center justify-between mb-4">
-                        <div>
-                          <h2 className="text-sm font-medium text-gray-300">
-                            Spot price — {data.date} · {data.count} slots
-                          </h2>
-                          {day === "today" && balancing && (
-                            <p className="text-xs text-gray-500 mt-0.5">
-                              + Imbalance prices (eSett EXP14) ·{" "}
-                              {balancing.count} pts
-                              {balancingDate && balancingDate !== data.date && (
-                                <span className="text-gray-600 ml-1">
-                                  · {balancingDate}
-                                </span>
-                              )}
-                            </p>
-                          )}
+                    {/* Price + Generation visual group (tighter spacing) */}
+                    <div className="space-y-2">
+                      <div className="bg-gray-900 rounded-2xl p-4">
+                        <div className="flex items-center justify-between mb-4">
+                          <div>
+                            <h2 className="text-sm font-medium text-gray-300">
+                              Spot price — {data.date} · {data.count} slots
+                            </h2>
+                            {day === "today" && balancing && (
+                              <p className="text-xs text-gray-500 mt-0.5">
+                                + Imbalance prices (eSett EXP14) ·{" "}
+                                {balancing.count} pts
+                                {balancingDate &&
+                                  balancingDate !== data.date && (
+                                    <span className="text-gray-600 ml-1">
+                                      · {balancingDate}
+                                    </span>
+                                  )}
+                              </p>
+                            )}
+                          </div>
+                          <span className="text-xs text-gray-500">SEK/kWh</span>
                         </div>
-                        <span className="text-xs text-gray-500">SEK/kWh</span>
+                        <PriceChart
+                          prices={data.prices}
+                          isEstimate={data.is_estimate}
+                          forecast={forecast}
+                          lgbmForecast={
+                            day === "tomorrow" ? lgbmForecast : null
+                          }
+                          retrospective={day === "today" ? retrospective : null}
+                          balancing={
+                            day === "today" || day === "review"
+                              ? balancing
+                              : null
+                          }
+                          detailDefaultOpen={day === "tomorrow"}
+                          predictedAt={
+                            day === "tomorrow"
+                              ? retrospective?.predicted_at
+                              : null
+                          }
+                        />
                       </div>
-                      <PriceChart
-                        prices={data.prices}
-                        isEstimate={data.is_estimate}
-                        forecast={day === "tomorrow" ? forecast : null}
-                        lgbmForecast={day === "tomorrow" ? lgbmForecast : null}
-                        retrospective={day === "today" ? retrospective : null}
-                        balancing={day === "today" ? balancing : null}
-                        predToggle={day === "today"}
-                        predictedAt={
-                          day === "tomorrow"
-                            ? retrospective?.predicted_at
-                            : null
-                        }
-                      />
-                    </div>
 
-                    {/* Generation mix stacked area chart — today only, directly below price for X-axis alignment */}
-                    {day === "today" && generation?.time_series?.length > 0 && (
-                      <GenerationChart
-                        generation={generation}
-                        prices={data.prices}
-                      />
-                    )}
+                      {/* Generation mix — today only, tight below price for visual proximity */}
+                      {day === "today" &&
+                        generation?.time_series?.length > 0 && (
+                          <GenerationChart
+                            generation={generation}
+                            prices={data.prices}
+                          />
+                        )}
+                    </div>
 
                     {/* Min / Avg (date) / Avg (month) / Max */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">

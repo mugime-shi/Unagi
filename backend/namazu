@@ -50,6 +50,11 @@ cmd_backfill_gas() {
     python -m app.tasks.fetch_prices --backfill "$DAYS" --gas-price
 }
 
+cmd_backfill_bal() {
+    parse_flags "$@"
+    python -m app.tasks.fetch_prices --backfill "$DAYS" --balancing --area "$AREA"
+}
+
 cmd_backtest() {
     parse_flags "$@"
     python -m scripts.run_backtest --days "$DAYS" --area "$AREA"
@@ -123,6 +128,7 @@ Data:
   backfill-load [--days N]      Backfill load forecast (A65)
   backfill-de [--days N]        Backfill DE-LU spot prices (A44)
   backfill-gas [--days N]       Backfill THE gas reference prices
+  backfill-bal [--days N]       Backfill balancing/imbalance prices (eSett)
 
 ML:
   backtest [--days N] [--area]  LightGBM vs baseline comparison
@@ -159,6 +165,7 @@ case "$command" in
     backfill-load)  cmd_backfill_load "$@" ;;
     backfill-de)    cmd_backfill_de "$@" ;;
     backfill-gas)   cmd_backfill_gas "$@" ;;
+    backfill-bal)   cmd_backfill_bal "$@" ;;
     backtest)       cmd_backtest "$@" ;;
     ablation-gas)   cmd_ablation_gas "$@" ;;
     sweep)          cmd_sweep "$@" ;;

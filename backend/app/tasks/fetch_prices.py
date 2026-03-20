@@ -152,6 +152,14 @@ def fetch_balancing_date(target_date: date, area: str = "SE3") -> dict:
         db.close()
 
 
+def backfill_balancing(days: int, area: str = "SE3") -> list[dict]:
+    """Backfill balancing (imbalance) prices for the past N days."""
+    today = date.today()
+    dates = [today - timedelta(days=i) for i in range(days - 1, -1, -1)]
+    log.info("Backfill balancing: fetching %d days (%s → %s) for %s", days, dates[0], dates[-1], area)
+    return [fetch_balancing_date(d, area) for d in dates]
+
+
 # ---------------------------------------------------------------------------
 # Generation mix (ENTSO-E A75) fetch
 # ---------------------------------------------------------------------------
@@ -810,6 +818,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Fetch THE gas reference prices instead of spot prices",
     )
+    parser.add_argument(
+        "--balancing",
+        action="store_true",
+        help="Fetch balancing/imbalance prices (eSett EXP14) instead of spot prices",
+    )
     return parser.parse_args()
 
 
@@ -846,6 +859,14 @@ def main() -> int:
             results = [fetch_de_price_date(args.date)]
         else:
             results = [fetch_de_price_date(date.today())]
+    elif args.balancing:
+        # Balancing/imbalance price mode
+        if args.backfill:
+            results = backfill_balancing(args.backfill, args.area)
+        elif args.date:
+            results = [fetch_balancing_date(args.date, args.area)]
+        else:
+            results = [fetch_balancing_date(date.today(), args.area)]
     elif args.gas_price:
         # Gas price mode
         if args.backfill:
