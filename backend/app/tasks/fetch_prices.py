@@ -756,9 +756,7 @@ def _send_notifications(areas: list[str]) -> None:
             except Exception as exc:
                 log.warning("Web Push error for %s: %s", area, exc)
             try:
-                # Telegram is single-user: only send once (SE3 or first area)
-                if area == areas[0]:
-                    send_telegram_alert(db, area)
+                send_telegram_alert(db, area)
             except Exception as exc:
                 log.warning("Telegram error for %s: %s", area, exc)
     finally:

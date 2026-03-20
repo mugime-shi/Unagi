@@ -14,7 +14,7 @@ Message format example:
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -61,10 +61,10 @@ def _escape(text: str) -> str:
     return text
 
 
-def build_telegram_message(db, area: str) -> str | None:
-    """Build the Telegram message for tomorrow's prices. Returns None if no data."""
-    tomorrow = (datetime.now(tz=_STOCKHOLM) + timedelta(days=1)).date()
-    rows = get_prices_for_date(db, tomorrow, area)
+def build_telegram_message(db, area: str, target_date: date | None = None) -> str | None:
+    """Build the Telegram message for the given date's prices. Defaults to tomorrow."""
+    target = target_date or (datetime.now(tz=_STOCKHOLM) + timedelta(days=1)).date()
+    rows = get_prices_for_date(db, target, area)
     if not rows:
         return None
 
@@ -89,7 +89,7 @@ def build_telegram_message(db, area: str) -> str | None:
     day_avg = sum(prices) / len(prices)
     day_min = min(prices)
     day_max = max(prices)
-    day_label = tomorrow.strftime("%A, %d %b")  # e.g. "Sunday, 16 Mar"
+    day_label = target.strftime("%A, %d %b")  # e.g. "Sunday, 16 Mar"
 
     cheap = _cheapest_window(hourly, 2)
     pricey = _priciest_window(hourly, 2)
@@ -111,17 +111,17 @@ def build_telegram_message(db, area: str) -> str | None:
     return "\n".join(lines)
 
 
-def send_telegram_alert(db, area: str = "SE3") -> dict:
+def send_telegram_alert(db, area: str = "SE3", target_date: date | None = None) -> dict:
     """
-    Send tomorrow's price alert to the configured Telegram chat.
-    Called by the Lambda scheduler after prices are fetched.
+    Send price alert to the configured Telegram chat.
+    Defaults to tomorrow's prices; pass target_date to override.
     Returns a status dict for logging.
     """
     if not settings.telegram_bot_token or not settings.telegram_chat_id:
         log.info("Telegram not configured — skipping (set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID)")
         return {"status": "skipped", "reason": "not_configured"}
 
-    message = build_telegram_message(db, area)
+    message = build_telegram_message(db, area, target_date)
     if message is None:
         log.info("No tomorrow prices for %s — skipping Telegram alert", area)
         return {"status": "skipped", "reason": "no_data"}
