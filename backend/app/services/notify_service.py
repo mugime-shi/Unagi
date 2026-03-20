@@ -42,7 +42,7 @@ def _build_notification(db: Session, area: str) -> dict | None:
     avg = sum(values) / len(values)
     lo = min(values)
     hi = max(values)
-    day_label = tomorrow.strftime("%A, %d %b")  # e.g. "Monday, 16 Mar"
+    day_label = tomorrow.strftime("%Y-%m-%d (%a)")  # e.g. "2024-03-16 (Mon)"
 
     return {
         "title": f"Namazu — {day_label}",
@@ -64,7 +64,7 @@ def _send_push(sub: PushSubscription, payload: dict) -> bool:
         return False
 
     try:
-        from pywebpush import WebPushException, webpush
+        from pywebpush import webpush
 
         webpush(
             subscription_info={

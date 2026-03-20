@@ -14,6 +14,7 @@ import { useForecast } from "./hooks/useForecast";
 import { useGeneration } from "./hooks/useGeneration";
 import { useRetrospective } from "./hooks/useRetrospective";
 import { usePrices } from "./hooks/usePrices";
+import { dateWithWeekday } from "./utils/formatters";
 
 const AREAS = [
   { id: "SE1", label: "SE1", city: "Luleå" },
@@ -219,8 +220,8 @@ export default function App() {
                       <div className="flex items-center justify-between mb-4">
                         <div>
                           <h2 className="text-sm font-medium text-gray-300">
-                            Spot price — {reviewData.date} · {reviewData.count}{" "}
-                            slots
+                            Spot price — {dateWithWeekday(reviewData.date)} ·{" "}
+                            {reviewData.count} slots
                           </h2>
                           {retrospective?.models &&
                             Object.keys(retrospective.models).length > 0 && (
@@ -374,7 +375,8 @@ export default function App() {
                         <div className="flex items-center justify-between mb-4">
                           <div>
                             <h2 className="text-sm font-medium text-gray-300">
-                              Spot price — {data.date} · {data.count} slots
+                              Spot price — {dateWithWeekday(data.date)} ·{" "}
+                              {data.count} slots
                             </h2>
                             {day === "today" && balancing && (
                               <p className="text-xs text-gray-500 mt-0.5">

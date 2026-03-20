@@ -30,6 +30,18 @@ export function currentCETHour() {
 /**
  * Current CET time floored to 15-minute intervals, e.g. "16:15"
  */
+/**
+ * Append short weekday to an ISO date string, e.g. "2024-03-16" → "2024-03-16 (Sat)"
+ */
+export function dateWithWeekday(isoDate) {
+  const d = new Date(isoDate + "T12:00:00Z");
+  const wd = d.toLocaleDateString("en-SE", { weekday: "short" });
+  return `${isoDate} (${wd})`;
+}
+
+/**
+ * Current CET time floored to 15-minute intervals, e.g. "16:15"
+ */
 export function currentCETTime15() {
   const now = new Date();
   const parts = now.toLocaleTimeString("sv-SE", {

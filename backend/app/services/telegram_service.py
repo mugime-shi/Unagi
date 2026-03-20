@@ -89,7 +89,7 @@ def build_telegram_message(db, area: str, target_date: date | None = None) -> st
     day_avg = sum(prices) / len(prices)
     day_min = min(prices)
     day_max = max(prices)
-    day_label = target.strftime("%A, %d %b")  # e.g. "Sunday, 16 Mar"
+    day_label = target.strftime("%Y-%m-%d (%a)")  # e.g. "2024-03-16 (Sun)"
 
     cheap = _cheapest_window(hourly, 2)
     pricey = _priciest_window(hourly, 2)

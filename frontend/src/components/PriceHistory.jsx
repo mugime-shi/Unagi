@@ -10,6 +10,7 @@ import {
   YAxis,
 } from "recharts";
 import { ZoneComparison } from "./ZoneComparison";
+import { dateWithWeekday } from "../utils/formatters";
 import { useHistory } from "../hooks/useHistory";
 
 function CustomTooltip({ active, payload, label }) {
@@ -17,7 +18,7 @@ function CustomTooltip({ active, payload, label }) {
   const d = payload[0].payload;
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs">
-      <p className="text-gray-400 mb-1">{label}</p>
+      <p className="text-gray-400 mb-1">{dateWithWeekday(label)}</p>
       <p className="text-white font-semibold">
         avg {d.avg_sek_kwh?.toFixed(3)} SEK/kWh
       </p>
@@ -108,11 +109,7 @@ export function PriceHistory({ area = "SE3" }) {
     .filter((_, i) => i % step === 0 || i === points.length - 1)
     .map((d) => d.date);
 
-  // Format date as "Mar 1"
-  const fmt = (iso) => {
-    const d = new Date(iso + "T12:00:00Z");
-    return d.toLocaleDateString("en-SE", { month: "short", day: "numeric" });
-  };
+  const fmt = (iso) => iso;
 
   return (
     <div className="space-y-3">

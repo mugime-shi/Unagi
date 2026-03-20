@@ -102,10 +102,7 @@ python -m app.tasks.fetch_prices --backfill 90 --area SE4`}
     .filter((_, i) => i % step === 0 || i === points.length - 1)
     .map((d) => d.date);
 
-  const fmt = (iso) => {
-    const d = new Date(iso + "T12:00:00Z");
-    return d.toLocaleDateString("en-SE", { month: "short", day: "numeric" });
-  };
+  const fmt = (iso) => iso;
 
   // Overall avg per zone (for summary cards)
   const summaries = Object.keys(ZONE_COLORS).map((area) => {

@@ -279,6 +279,12 @@ export function PriceChart({
               {new Date(predictedAt).toLocaleDateString("sv-SE", {
                 timeZone: "Europe/Stockholm",
               })}{" "}
+              (
+              {new Date(predictedAt).toLocaleDateString("en-SE", {
+                timeZone: "Europe/Stockholm",
+                weekday: "short",
+              })}
+              ){" "}
               {new Date(predictedAt).toLocaleTimeString("sv-SE", {
                 timeZone: "Europe/Stockholm",
                 hour: "2-digit",
