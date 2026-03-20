@@ -45,7 +45,7 @@ resource "aws_lambda_function" "scheduler" {
   image_uri     = "${aws_ecr_repository.scheduler.repository_url}:${var.image_tag}"
   architectures = ["arm64"]
   memory_size   = 512  # LightGBM training needs >256 MB
-  timeout       = 300  # backfill can take a few minutes
+  timeout       = 600  # data collection + ML training can take several minutes
 
   environment {
     variables = {
@@ -74,8 +74,17 @@ resource "aws_lambda_permission" "eventbridge" {
   source_arn    = aws_cloudwatch_event_rule.daily_fetch.arn
 }
 
+# Allow EventBridge to invoke the Scheduler Lambda (nightly data collection)
+resource "aws_lambda_permission" "eventbridge_midnight_collect" {
+  statement_id  = "AllowEventBridgeMidnightCollect"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.scheduler.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.midnight_collect.arn
+}
+
 # Allow EventBridge to invoke the Scheduler Lambda (nightly prediction)
-resource "aws_lambda_permission" "eventbridge_midnight" {
+resource "aws_lambda_permission" "eventbridge_midnight_predict" {
   statement_id  = "AllowEventBridgeMidnightPredict"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.scheduler.function_name
@@ -83,11 +92,20 @@ resource "aws_lambda_permission" "eventbridge_midnight" {
   source_arn    = aws_cloudwatch_event_rule.midnight_predict.arn
 }
 
-# Allow EventBridge to invoke the Scheduler Lambda (nightly retry)
-resource "aws_lambda_permission" "eventbridge_nightly_retry" {
-  statement_id  = "AllowEventBridgeNightlyRetry"
+# Allow EventBridge to invoke the Scheduler Lambda (retry data collection)
+resource "aws_lambda_permission" "eventbridge_retry_collect" {
+  statement_id  = "AllowEventBridgeRetryCollect"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.scheduler.function_name
   principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.nightly_retry.arn
+  source_arn    = aws_cloudwatch_event_rule.retry_collect.arn
+}
+
+# Allow EventBridge to invoke the Scheduler Lambda (retry prediction)
+resource "aws_lambda_permission" "eventbridge_retry_predict" {
+  statement_id  = "AllowEventBridgeRetryPredict"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.scheduler.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.retry_predict.arn
 }

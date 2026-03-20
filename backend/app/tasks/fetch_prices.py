@@ -379,48 +379,48 @@ def lambda_handler(event: dict, context) -> dict:
     explicit_area = event.get("area")
     areas = [explicit_area] if explicit_area else ALL_AREAS
 
-    # Nightly prediction run (00:05 UTC = 01:05 CET / 02:05 CEST).
+    # Nightly data collection (00:05 UTC = 01:05 CET / 02:05 CEST).
     # By this time, yesterday's generation + balancing data is fully settled.
-    # Re-fetch those, grab fresh weather forecast, then record ML predictions.
-    if event.get("midnight_predict"):
+    # Predictions run separately at 00:20 UTC via predict_only.
+    if event.get("midnight_collect"):
         yesterday = date.today() - timedelta(days=1)
         tomorrow = date.today() + timedelta(days=1)
-        log.info("midnight_predict — completing %s data, predicting %s, areas=%s", yesterday, tomorrow, areas)
+        log.info("midnight_collect — fetching %s data for areas=%s", yesterday, areas)
 
         results = []
-        # Re-fetch yesterday's generation + balancing (full 24h now available)
-        # Fetch tomorrow's load forecast (A65, needed for ML features)
         for area in areas:
             results.append(fetch_generation_date(yesterday, area))
             results.append(fetch_balancing_date(yesterday, area))
             results.append(fetch_load_forecast_date(tomorrow, area))
 
-        # Weather forecast (issued_date = today, used by LightGBM for tomorrow)
         results.append(_fetch_weather_forecast())
-
-        # Gas prices (THE settlement) — needed for ML gas_price features
         results.append(_fetch_gas_prices())
 
-        # Record ML predictions for tomorrow
-        _record_predictions(areas)
-
         failed = [r for r in results if r["status"] == "error"]
+        if failed:
+            _send_pipeline_alert("midnight_collect", results)
+
         return {
             "statusCode": 200 if not failed else 207,
-            "mode": "midnight_predict",
-            "tomorrow": tomorrow.isoformat(),
+            "mode": "midnight_collect",
             "areas": areas,
             "results": results,
         }
 
-    # Prediction-only run (manual invocation, no scheduled cron)
+    # Prediction-only run (00:20 UTC scheduled, or manual invocation).
     # Accepts optional "target_date" (YYYY-MM-DD) to predict a specific date instead of tomorrow.
     if event.get("predict_only"):
         target_date = date.fromisoformat(event["target_date"]) if event.get("target_date") else None
         label = target_date.isoformat() if target_date else "tomorrow"
         log.info("predict_only mode — recording %s predictions for %s", label, areas)
-        _record_predictions(areas, target_date=target_date)
-        return {"statusCode": 200, "mode": "predict_only", "target_date": label, "areas": areas}
+        failures = _record_predictions(areas, target_date=target_date)
+        return {
+            "statusCode": 200 if not failures else 207,
+            "mode": "predict_only",
+            "target_date": label,
+            "areas": areas,
+            "failures": [f["error"] for f in failures],
+        }
 
     all_results = []
     for area in areas:
@@ -607,15 +607,27 @@ def _fetch_gas_prices() -> dict:
         db.close()
 
 
-def _record_predictions(areas: list[str], target_date: date | None = None) -> None:
+def _send_pipeline_alert(step_name: str, results: list[dict]) -> None:
+    """Send Telegram alert when a pipeline step has failures."""
+    try:
+        from app.services.telegram_service import send_pipeline_alert
+
+        send_pipeline_alert(step_name, results)
+    except Exception as exc:
+        log.warning("Pipeline alert send failed for %s: %s", step_name, exc)
+
+
+def _record_predictions(areas: list[str], target_date: date | None = None) -> list[dict]:
     """
     Record predictions for both models (same_weekday_avg + lgbm).
 
-    Called by the nightly cron (01:05 CET) with full previous-day data,
-    and by the afternoon run as a fallback (idempotent upsert).
+    Called by the nightly predict_only cron (00:20 UTC) or manual invocation.
     If target_date is None, defaults to tomorrow.
+    Returns a list of failure dicts (empty on full success).
     """
     db = SessionLocal()
+    failures = []
+    results = []
     try:
         from app.services.backtest_service import record_predictions
         from app.services.ml_forecast_service import build_lgbm_forecast
@@ -633,8 +645,12 @@ def _record_predictions(areas: list[str], target_date: date | None = None) -> No
                 if result.get("slots"):
                     n = record_predictions(db, target, area, "same_weekday_avg", result["slots"])
                     log.info("Recorded %d same_weekday_avg predictions for %s %s", n, target, area)
+                    results.append({"market": f"same_weekday_avg {area}", "status": "ok"})
+                else:
+                    failures.append({"market": f"same_weekday_avg {area}", "status": "error", "error": "no slots"})
             except Exception as exc:
                 log.warning("same_weekday_avg record failed for %s %s: %s", target, area, exc)
+                failures.append({"market": f"same_weekday_avg {area}", "status": "error", "error": str(exc)})
                 db.rollback()
 
             # lgbm
@@ -643,11 +659,19 @@ def _record_predictions(areas: list[str], target_date: date | None = None) -> No
                 if result.get("slots") and result["slots"][0].get("avg_sek_kwh") is not None:
                     n = record_predictions(db, target, area, "lgbm", result["slots"])
                     log.info("Recorded %d lgbm predictions for %s %s", n, target, area)
+                    results.append({"market": f"lgbm {area}", "status": "ok"})
+                else:
+                    failures.append({"market": f"lgbm {area}", "status": "error", "error": "no slots"})
             except Exception as exc:
                 log.warning("lgbm record failed for %s %s: %s", target, area, exc)
+                failures.append({"market": f"lgbm {area}", "status": "error", "error": str(exc)})
                 db.rollback()
+
+        if failures:
+            _send_pipeline_alert("predict", results + failures)
     finally:
         db.close()
+    return failures
 
 
 def _fill_actuals(areas: list[str]) -> None:

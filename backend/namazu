@@ -90,6 +90,12 @@ cmd_lambda_backfill() {
         --cli-binary-format raw-in-base64-out /dev/stdout
 }
 
+cmd_lambda_collect() {
+    aws lambda invoke --function-name namazu-scheduler \
+        --payload '{"midnight_collect": true}' \
+        --cli-binary-format raw-in-base64-out /dev/stdout
+}
+
 cmd_lambda_predict() {
     parse_flags "$@"
     if [[ -n "${TARGET_DATE:-}" ]]; then
@@ -131,6 +137,7 @@ Diagnostics:
 
 Lambda (requires AWS credentials):
   lambda-backfill [--days N]    Invoke scheduler Lambda for backfill
+  lambda-collect                Data collection only (generation, balancing, etc.)
   lambda-predict [--date D]     Prediction-only run (default: tomorrow)
 
 Flags:
@@ -160,7 +167,8 @@ case "$command" in
     smoke)          cmd_smoke ;;
     test)           cmd_test ;;
     lambda-backfill) cmd_lambda_backfill "$@" ;;
-    lambda-predict)  cmd_lambda_predict ;;
+    lambda-collect)  cmd_lambda_collect ;;
+    lambda-predict)  cmd_lambda_predict "$@" ;;
     help|--help|-h)  cmd_help ;;
     *)
         echo "Unknown command: $command" >&2

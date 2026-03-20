@@ -169,6 +169,56 @@ def build_degradation_message(area: str, alert_data: dict) -> str:
     )
 
 
+def send_pipeline_alert(step_name: str, results: list[dict]) -> dict:
+    """
+    Send pipeline step failure alert to Telegram.
+
+    Each result dict has {"status": str} plus optional "market", "date", "error" keys.
+    Only sends when there are failures — caller should pre-check.
+    """
+    if not settings.telegram_bot_token or not settings.telegram_chat_id:
+        log.info("Telegram not configured — skipping pipeline alert")
+        return {"status": "skipped", "reason": "not_configured"}
+
+    failed = [r for r in results if r["status"] == "error"]
+    ok = [r for r in results if r["status"] in ("ok", "cached")]
+
+    def _label(r: dict) -> str:
+        parts = []
+        if "market" in r:
+            parts.append(r["market"])
+        if "date" in r:
+            parts.append(r["date"])
+        return " ".join(parts) or "unknown"
+
+    failed_str = ", ".join(_label(r) for r in failed)
+    message = "\n".join(
+        [
+            f"🔴 *{_escape(f'Namazu — {step_name}')}*",
+            f"Failed: {_escape(failed_str)}",
+            f"OK: {_escape(f'{len(ok)} tasks succeeded')}",
+        ]
+    )
+
+    url = _TELEGRAM_API.format(token=settings.telegram_bot_token)
+    try:
+        with httpx.Client(timeout=10) as client:
+            resp = client.post(
+                url,
+                json={
+                    "chat_id": settings.telegram_chat_id,
+                    "text": message,
+                    "parse_mode": "MarkdownV2",
+                },
+            )
+        resp.raise_for_status()
+        log.info("Pipeline alert sent for %s (%d failed)", step_name, len(failed))
+        return {"status": "ok", "step": step_name, "failed_count": len(failed)}
+    except Exception as exc:
+        log.error("Pipeline alert send failed: %s", exc)
+        return {"status": "error", "reason": str(exc)}
+
+
 def send_degradation_alert(area: str, alert_data: dict) -> dict:
     """
     Send model degradation alert to the configured Telegram chat.
