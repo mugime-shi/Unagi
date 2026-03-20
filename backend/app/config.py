@@ -10,6 +10,10 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql://namazu:namazu@localhost:5432/namazu"
 
+    @property
+    def is_local_db(self) -> bool:
+        return "localhost" in self.database_url or "db:5432" in self.database_url
+
     entsoe_api_key: str = ""
     eur_to_sek_rate: float = 11.0  # fallback fixed rate; replace with Riksbank API later
 

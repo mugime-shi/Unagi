@@ -707,6 +707,12 @@ def _parse_args() -> argparse.Namespace:
 def main() -> int:
     args = _parse_args()
 
+    if not settings.is_local_db:
+        log.warning("DATABASE_URL is not local: %s...", settings.database_url[:40])
+        if input("Write to remote DB? [y/N] ").strip().lower() != "y":
+            log.info("Aborted.")
+            return 1
+
     if args.generation:
         # Generation mix mode
         if args.backfill:
