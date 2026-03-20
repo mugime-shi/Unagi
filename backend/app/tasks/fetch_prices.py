@@ -46,6 +46,7 @@ RETRY_BASE_SECONDS = 10  # doubles each attempt: 10 → 20 → 40
 # Core fetch logic (single date, with retry)
 # ---------------------------------------------------------------------------
 
+
 def fetch_date(target_date: date, area: str = "SE3") -> dict:
     """
     Fetch and store prices for target_date. Returns a result dict.
@@ -71,7 +72,11 @@ def fetch_date(target_date: date, area: str = "SE3") -> dict:
                     wait = RETRY_BASE_SECONDS * (2 ** (attempt - 1))
                     log.warning(
                         "WARN %s — attempt %d/%d failed: %s. Retrying in %ds…",
-                        target_date, attempt, MAX_RETRIES, e, wait,
+                        target_date,
+                        attempt,
+                        MAX_RETRIES,
+                        e,
+                        wait,
                     )
                     time.sleep(wait)
                 else:
@@ -85,6 +90,7 @@ def fetch_date(target_date: date, area: str = "SE3") -> dict:
 # ---------------------------------------------------------------------------
 # Batch helpers
 # ---------------------------------------------------------------------------
+
 
 def fetch_dates(dates: list[date], area: str = "SE3") -> list[dict]:
     results = [fetch_date(d, area) for d in dates]
@@ -104,6 +110,7 @@ def backfill(days: int, area: str = "SE3") -> list[dict]:
 # ---------------------------------------------------------------------------
 # Balancing (imbalance) price fetch — ENTSO-E A85
 # ---------------------------------------------------------------------------
+
 
 def fetch_balancing_date(target_date: date, area: str = "SE3") -> dict:
     """
@@ -130,7 +137,11 @@ def fetch_balancing_date(target_date: date, area: str = "SE3") -> dict:
                     wait = RETRY_BASE_SECONDS * (2 ** (attempt - 1))
                     log.warning(
                         "WARN balancing %s — attempt %d/%d: %s. Retry in %ds…",
-                        target_date, attempt, MAX_RETRIES, e, wait,
+                        target_date,
+                        attempt,
+                        MAX_RETRIES,
+                        e,
+                        wait,
                     )
                     time.sleep(wait)
                 else:
@@ -144,6 +155,7 @@ def fetch_balancing_date(target_date: date, area: str = "SE3") -> dict:
 # ---------------------------------------------------------------------------
 # Generation mix (ENTSO-E A75) fetch
 # ---------------------------------------------------------------------------
+
 
 def fetch_generation_date(target_date: date, area: str = "SE3") -> dict:
     """
@@ -168,7 +180,12 @@ def fetch_generation_date(target_date: date, area: str = "SE3") -> dict:
                     wait = RETRY_BASE_SECONDS * (2 ** (attempt - 1))
                     log.warning(
                         "WARN generation %s %s — attempt %d/%d: %s. Retry in %ds…",
-                        target_date, area, attempt, MAX_RETRIES, e, wait,
+                        target_date,
+                        area,
+                        attempt,
+                        MAX_RETRIES,
+                        e,
+                        wait,
                     )
                     time.sleep(wait)
                 else:
@@ -185,6 +202,158 @@ def backfill_generation(days: int, area: str = "SE3") -> list[dict]:
     dates = [today - timedelta(days=i) for i in range(days - 1, -1, -1)]
     log.info("Backfill generation: fetching %d days (%s → %s) for %s", days, dates[0], dates[-1], area)
     return [fetch_generation_date(d, area) for d in dates]
+
+
+# ---------------------------------------------------------------------------
+# Load forecast (ENTSO-E A65) fetch
+# ---------------------------------------------------------------------------
+
+
+def fetch_load_forecast_date(target_date: date, area: str = "SE3") -> dict:
+    """
+    Fetch and store load forecast for target_date. Returns a result dict.
+    """
+    from app.services.load_forecast_service import fetch_and_store_load_forecast, get_load_forecast_for_date
+
+    db = SessionLocal()
+    try:
+        existing = get_load_forecast_for_date(db, target_date, area)
+        if existing:
+            log.info("SKIP load_forecast %s %s — %d rows already in DB", target_date, area, len(existing))
+            return {
+                "date": target_date.isoformat(),
+                "market": "load_forecast",
+                "status": "cached",
+                "rows": len(existing),
+            }
+
+        last_error = None
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                rows = fetch_and_store_load_forecast(db, target_date, area)
+                log.info("OK   load_forecast %s %s — %d rows saved (attempt %d)", target_date, area, len(rows), attempt)
+                return {"date": target_date.isoformat(), "market": "load_forecast", "status": "ok", "rows": len(rows)}
+            except EntsoEError as e:
+                last_error = e
+                if attempt < MAX_RETRIES:
+                    wait = RETRY_BASE_SECONDS * (2 ** (attempt - 1))
+                    log.warning(
+                        "WARN load_forecast %s %s — attempt %d/%d: %s. Retry in %ds…",
+                        target_date,
+                        area,
+                        attempt,
+                        MAX_RETRIES,
+                        e,
+                        wait,
+                    )
+                    time.sleep(wait)
+                else:
+                    log.error(
+                        "FAIL load_forecast %s %s — all %d attempts failed: %s", target_date, area, MAX_RETRIES, e
+                    )
+
+        return {"date": target_date.isoformat(), "market": "load_forecast", "status": "error", "error": str(last_error)}
+    finally:
+        db.close()
+
+
+def backfill_load_forecast(days: int, area: str = "SE3") -> list[dict]:
+    """Backfill load forecast data for the past N days."""
+    today = date.today()
+    dates = [today - timedelta(days=i) for i in range(days - 1, -1, -1)]
+    log.info("Backfill load_forecast: fetching %d days (%s → %s) for %s", days, dates[0], dates[-1], area)
+    return [fetch_load_forecast_date(d, area) for d in dates]
+
+
+# ---------------------------------------------------------------------------
+# DE-LU spot price (ENTSO-E A44) fetch
+# ---------------------------------------------------------------------------
+
+
+def fetch_de_price_date(target_date: date) -> dict:
+    """Fetch and store DE-LU day-ahead spot prices for target_date."""
+    from app.services.de_price_service import fetch_and_store_de_prices, get_de_prices_for_date
+
+    db = SessionLocal()
+    try:
+        existing = get_de_prices_for_date(db, target_date)
+        if existing:
+            log.info("SKIP de_price %s — %d rows already in DB", target_date, len(existing))
+            return {"date": target_date.isoformat(), "market": "de_price", "status": "cached", "rows": len(existing)}
+
+        last_error = None
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                rows = fetch_and_store_de_prices(db, target_date)
+                log.info("OK   de_price %s — %d rows saved (attempt %d)", target_date, len(rows), attempt)
+                return {"date": target_date.isoformat(), "market": "de_price", "status": "ok", "rows": len(rows)}
+            except EntsoEError as e:
+                last_error = e
+                if attempt < MAX_RETRIES:
+                    wait = RETRY_BASE_SECONDS * (2 ** (attempt - 1))
+                    log.warning(
+                        "WARN de_price %s — attempt %d/%d: %s. Retry in %ds…",
+                        target_date,
+                        attempt,
+                        MAX_RETRIES,
+                        e,
+                        wait,
+                    )
+                    time.sleep(wait)
+                else:
+                    log.error("FAIL de_price %s — all %d attempts failed: %s", target_date, MAX_RETRIES, e)
+
+        return {"date": target_date.isoformat(), "market": "de_price", "status": "error", "error": str(last_error)}
+    finally:
+        db.close()
+
+
+def backfill_de_prices(days: int) -> list[dict]:
+    """Backfill DE-LU spot prices for the past N days."""
+    today = date.today()
+    dates = [today - timedelta(days=i) for i in range(days - 1, -1, -1)]
+    log.info("Backfill de_price: fetching %d days (%s → %s)", days, dates[0], dates[-1])
+    return [fetch_de_price_date(d) for d in dates]
+
+
+# ---------------------------------------------------------------------------
+# Gas price (Bundesnetzagentur/THE) fetch
+# ---------------------------------------------------------------------------
+
+
+def fetch_gas_prices_range(start_date: date, end_date: date) -> dict:
+    """Fetch and store THE gas prices for [start_date, end_date]."""
+    from app.services.bundesnetzagentur_client import GasPriceError
+    from app.services.gas_price_service import fetch_and_store_gas_prices
+
+    db = SessionLocal()
+    try:
+        last_error = None
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                count = fetch_and_store_gas_prices(db, start_date, end_date)
+                log.info("OK   gas_price %s → %s — %d rows saved (attempt %d)", start_date, end_date, count, attempt)
+                return {"market": "gas_price", "status": "ok", "rows": count}
+            except GasPriceError as e:
+                last_error = e
+                if attempt < MAX_RETRIES:
+                    wait = RETRY_BASE_SECONDS * (2 ** (attempt - 1))
+                    log.warning("WARN gas_price — attempt %d/%d: %s. Retry in %ds…", attempt, MAX_RETRIES, e, wait)
+                    time.sleep(wait)
+                else:
+                    log.error("FAIL gas_price — all %d attempts failed: %s", MAX_RETRIES, e)
+
+        return {"market": "gas_price", "status": "error", "error": str(last_error)}
+    finally:
+        db.close()
+
+
+def backfill_gas_prices(days: int) -> list[dict]:
+    """Backfill gas prices for the past N days."""
+    today = date.today()
+    start = today - timedelta(days=days - 1)
+    log.info("Backfill gas_price: fetching %d days (%s → %s)", days, start, today)
+    return [fetch_gas_prices_range(start, today)]
 
 
 # ---------------------------------------------------------------------------
@@ -216,14 +385,15 @@ def lambda_handler(event: dict, context) -> dict:
     if event.get("midnight_predict"):
         yesterday = date.today() - timedelta(days=1)
         tomorrow = date.today() + timedelta(days=1)
-        log.info("midnight_predict — completing %s data, predicting %s, areas=%s",
-                 yesterday, tomorrow, areas)
+        log.info("midnight_predict — completing %s data, predicting %s, areas=%s", yesterday, tomorrow, areas)
 
         results = []
         # Re-fetch yesterday's generation + balancing (full 24h now available)
+        # Fetch tomorrow's load forecast (A65, needed for ML features)
         for area in areas:
             results.append(fetch_generation_date(yesterday, area))
             results.append(fetch_balancing_date(yesterday, area))
+            results.append(fetch_load_forecast_date(tomorrow, area))
 
         # Weather forecast (issued_date = today, used by LightGBM for tomorrow)
         results.append(_fetch_weather_forecast())
@@ -232,8 +402,13 @@ def lambda_handler(event: dict, context) -> dict:
         _record_predictions(areas)
 
         failed = [r for r in results if r["status"] == "error"]
-        return {"statusCode": 200 if not failed else 207, "mode": "midnight_predict",
-                "tomorrow": tomorrow.isoformat(), "areas": areas, "results": results}
+        return {
+            "statusCode": 200 if not failed else 207,
+            "mode": "midnight_predict",
+            "tomorrow": tomorrow.isoformat(),
+            "areas": areas,
+            "results": results,
+        }
 
     # Prediction-only run (manual invocation, no scheduled cron)
     if event.get("predict_only"):
@@ -267,6 +442,10 @@ def lambda_handler(event: dict, context) -> dict:
             for gen_date in [yesterday, today]:
                 gen_result = fetch_generation_date(gen_date, area)
                 all_results.append(gen_result)
+            # Load forecast (A65) — today + tomorrow for ML features
+            for lf_date in [today, tomorrow]:
+                lf_result = fetch_load_forecast_date(lf_date, area)
+                all_results.append(lf_result)
 
         # Weather data (SMHI) — once per run (not per area, stations are fixed)
         weather_result = _fetch_weather()
@@ -282,6 +461,13 @@ def lambda_handler(event: dict, context) -> dict:
         for area in areas:
             gen_results = backfill_generation(gen_days, area)
             all_results.extend(gen_results)
+
+    # Load forecast backfill via Lambda event
+    if event.get("backfill_load_forecast"):
+        lf_days = int(event["backfill_load_forecast"])
+        for area in areas:
+            lf_results = backfill_load_forecast(lf_days, area)
+            all_results.extend(lf_results)
 
     failed = [r for r in all_results if r["status"] == "error"]
 
@@ -329,7 +515,10 @@ def _fetch_weather() -> dict:
                     wait = RETRY_BASE_SECONDS * (2 ** (attempt - 1))
                     log.warning(
                         "WARN weather — attempt %d/%d: %s. Retry in %ds…",
-                        attempt, MAX_RETRIES, exc, wait,
+                        attempt,
+                        MAX_RETRIES,
+                        exc,
+                        wait,
                     )
                     time.sleep(wait)
                 else:
@@ -358,12 +547,14 @@ def _fetch_weather_forecast() -> dict:
                     wait = RETRY_BASE_SECONDS * (2 ** (attempt - 1))
                     log.warning(
                         "WARN weather forecast — attempt %d/%d: %s. Retry in %ds…",
-                        attempt, MAX_RETRIES, exc, wait,
+                        attempt,
+                        MAX_RETRIES,
+                        exc,
+                        wait,
                     )
                     time.sleep(wait)
                 else:
-                    log.error("FAIL weather forecast — all %d attempts failed: %s",
-                              MAX_RETRIES, last_error)
+                    log.error("FAIL weather forecast — all %d attempts failed: %s", MAX_RETRIES, last_error)
 
         return {"market": "weather_forecast", "status": "error", "error": str(last_error)}
     finally:
@@ -447,6 +638,7 @@ def _send_notifications(areas: list[str]) -> None:
     try:
         from app.services.notify_service import notify_subscribers
         from app.services.telegram_service import send_telegram_alert
+
         for area in areas:
             try:
                 notify_subscribers(db, area)
@@ -466,26 +658,48 @@ def _send_notifications(areas: list[str]) -> None:
 # CLI entry point
 # ---------------------------------------------------------------------------
 
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Fetch SE3 day-ahead prices from ENTSO-E and save to DB.",
     )
     group = parser.add_mutually_exclusive_group()
     group.add_argument(
-        "--date", type=date.fromisoformat, metavar="YYYY-MM-DD",
+        "--date",
+        type=date.fromisoformat,
+        metavar="YYYY-MM-DD",
         help="Fetch prices for a specific date (default: today + tomorrow)",
     )
     group.add_argument(
-        "--backfill", type=int, metavar="N",
+        "--backfill",
+        type=int,
+        metavar="N",
         help="Fetch prices for the past N days",
     )
     parser.add_argument(
-        "--area", default=settings.default_area,
+        "--area",
+        default=settings.default_area,
         help=f"Price area code (default: {settings.default_area})",
     )
     parser.add_argument(
-        "--generation", action="store_true",
+        "--generation",
+        action="store_true",
         help="Fetch generation mix (ENTSO-E A75) instead of spot prices",
+    )
+    parser.add_argument(
+        "--load-forecast",
+        action="store_true",
+        help="Fetch load forecast (ENTSO-E A65) instead of spot prices",
+    )
+    parser.add_argument(
+        "--de-price",
+        action="store_true",
+        help="Fetch DE-LU day-ahead prices (ENTSO-E A44) instead of SE spot prices",
+    )
+    parser.add_argument(
+        "--gas-price",
+        action="store_true",
+        help="Fetch THE gas reference prices instead of spot prices",
     )
     return parser.parse_args()
 
@@ -501,6 +715,30 @@ def main() -> int:
             results = [fetch_generation_date(args.date, args.area)]
         else:
             results = [fetch_generation_date(date.today(), args.area)]
+    elif args.load_forecast:
+        # Load forecast mode
+        if args.backfill:
+            results = backfill_load_forecast(args.backfill, args.area)
+        elif args.date:
+            results = [fetch_load_forecast_date(args.date, args.area)]
+        else:
+            results = [fetch_load_forecast_date(date.today(), args.area)]
+    elif args.de_price:
+        # DE-LU spot price mode
+        if args.backfill:
+            results = backfill_de_prices(args.backfill)
+        elif args.date:
+            results = [fetch_de_price_date(args.date)]
+        else:
+            results = [fetch_de_price_date(date.today())]
+    elif args.gas_price:
+        # Gas price mode
+        if args.backfill:
+            results = backfill_gas_prices(args.backfill)
+        else:
+            today = date.today()
+            start = today - timedelta(days=7)
+            results = [fetch_gas_prices_range(start, today)]
     else:
         # Spot prices mode (default)
         if args.backfill:

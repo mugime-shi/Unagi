@@ -5,7 +5,6 @@ Uses in-memory SQLite. Inserts synthetic prices and generation data,
 then verifies features are computed correctly including DST boundaries.
 """
 
-import math
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
@@ -14,7 +13,10 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db.database import Base
+from app.models.de_spot_price import DeSpotPrice  # noqa: F401 — register model for create_all
+from app.models.gas_price import GasPrice  # noqa: F401 — register model for create_all
 from app.models.generation_mix import GenerationMix
+from app.models.load_forecast import LoadForecast  # noqa: F401 — register model for create_all
 from app.models.spot_price import SpotPrice
 from app.services.feature_service import (
     FEATURE_COLS,
@@ -50,39 +52,47 @@ def _insert_prices(db, target_date, area="SE3", base_price=0.50):
     """Insert 24 hourly prices for a CET day."""
     # CET midnight = UTC 23:00 previous day
     start_utc = datetime(
-        target_date.year, target_date.month, target_date.day,
+        target_date.year,
+        target_date.month,
+        target_date.day,
         tzinfo=timezone.utc,
     ) - timedelta(hours=1)
     for h in range(24):
         ts = start_utc + timedelta(hours=h)
         price = base_price + 0.01 * h  # slight variation by hour
-        db.add(SpotPrice(
-            area=area,
-            timestamp_utc=ts,
-            price_eur_mwh=price * 100,  # rough EUR conversion
-            price_sek_kwh=price,
-            resolution="PT60M",
-        ))
+        db.add(
+            SpotPrice(
+                area=area,
+                timestamp_utc=ts,
+                price_eur_mwh=price * 100,  # rough EUR conversion
+                price_sek_kwh=price,
+                resolution="PT60M",
+            )
+        )
     db.commit()
 
 
 def _insert_generation(db, target_date, area="SE3"):
     """Insert generation mix for a CET day (one 15-min slot per hour)."""
     start_utc = datetime(
-        target_date.year, target_date.month, target_date.day,
+        target_date.year,
+        target_date.month,
+        target_date.day,
         tzinfo=timezone.utc,
     ) - timedelta(hours=1)
     psr_values = {"B12": 1500.0, "B14": 4000.0, "B19": 800.0, "B20": 200.0}
     for h in range(24):
         ts = start_utc + timedelta(hours=h)
         for psr, mw in psr_values.items():
-            db.add(GenerationMix(
-                area=area,
-                timestamp_utc=ts,
-                psr_type=psr,
-                value_mw=mw,
-                resolution="PT15M",
-            ))
+            db.add(
+                GenerationMix(
+                    area=area,
+                    timestamp_utc=ts,
+                    psr_type=psr,
+                    value_mw=mw,
+                    resolution="PT15M",
+                )
+            )
     db.commit()
 
 
@@ -223,3 +233,285 @@ def test_feature_cols_match_output(db):
 
     for col in FEATURE_COLS:
         assert col in rows[0], f"Missing feature column: {col}"
+
+
+def test_feature_cols_count(db):
+    """FEATURE_COLS has exactly 59 features (41 original + 6 Phase A + 6 Phase B + 6 Phase C)."""
+    assert len(FEATURE_COLS) == 59
+
+
+def test_holiday_features_normal_weekday(db):
+    """Non-holiday weekday has is_holiday_se=0, holiday_score=0."""
+    d = date(2026, 3, 10)  # Tuesday, no holiday
+    _insert_prices(db, d)
+    _insert_prices(db, d - timedelta(days=1))
+
+    rows = build_feature_matrix(db, d, d)
+    h0 = rows[0]
+    assert h0["is_holiday_se"] == 0
+    assert h0["holiday_score"] == 0.0
+    assert h0["is_bridge_day"] == 0
+
+
+def test_holiday_features_christmas(db):
+    """Christmas Day is a holiday in SE, NO, and DE (score=1.0)."""
+    d = date(2025, 12, 25)  # Thursday, Christmas
+    _insert_prices(db, d)
+    _insert_prices(db, d - timedelta(days=1))
+
+    rows = build_feature_matrix(db, d, d)
+    h0 = rows[0]
+    assert h0["is_holiday_se"] == 1
+    assert h0["holiday_score"] == pytest.approx(1.0, abs=0.01)
+
+
+def test_bridge_day(db):
+    """A weekday between a holiday and a weekend is a bridge day."""
+    # 2025-12-26 is Friday (Annandag Jul in SE), 2025-12-27 is Saturday
+    # 2025-12-24 is Wednesday (Julafton not a public holiday in holidays lib)
+    # Let's check 2026-01-02: Friday between Jan 1 (holiday) and weekend (Sat)
+    d = date(2026, 1, 2)  # Friday
+    _insert_prices(db, d)
+    _insert_prices(db, d - timedelta(days=1))
+
+    rows = build_feature_matrix(db, d, d)
+    h0 = rows[0]
+    # Jan 1 (Thu) = holiday, Jan 3 (Sat) = weekend → Jan 2 is bridge day
+    assert h0["is_bridge_day"] == 1
+
+
+def test_solar_features_noon_summer(db):
+    """Sun elevation is positive at noon in summer Stockholm."""
+    d = date(2026, 6, 21)  # Summer solstice
+    _insert_prices(db, d)
+    _insert_prices(db, d - timedelta(days=1))
+
+    rows = build_feature_matrix(db, d, d)
+    h12 = next(r for r in rows if r["hour"] == 12)
+    assert h12["sun_elevation"] > 40  # high noon in midsummer
+    assert h12["daylight_hours"] > 18  # ~18.5h daylight
+
+
+def test_solar_features_midnight_winter(db):
+    """Sun elevation is negative at midnight in winter Stockholm."""
+    d = date(2025, 12, 21)  # Winter solstice
+    _insert_prices(db, d)
+    _insert_prices(db, d - timedelta(days=1))
+
+    rows = build_feature_matrix(db, d, d)
+    h0 = next(r for r in rows if r["hour"] == 0)
+    assert h0["sun_elevation"] < 0  # below horizon at midnight
+    assert h0["daylight_hours"] < 7  # ~6.1h daylight
+
+
+def test_solar_features_all_hours_have_values(db):
+    """All 24 hours have sun_elevation, sun_azimuth, daylight_hours."""
+    d = date(2026, 3, 10)
+    _insert_prices(db, d)
+    _insert_prices(db, d - timedelta(days=1))
+
+    rows = build_feature_matrix(db, d, d)
+    for r in rows:
+        assert r["sun_elevation"] is not None
+        assert r["sun_azimuth"] is not None
+        assert r["daylight_hours"] is not None
+
+
+# ---------------------------------------------------------------------------
+# Load forecast feature tests (Phase B)
+# ---------------------------------------------------------------------------
+
+
+def _insert_load_forecast(db, target_date, area="SE3", base_load=12000.0):
+    """Insert 24 hourly load forecast values for a CET day."""
+
+    start_utc = datetime(
+        target_date.year,
+        target_date.month,
+        target_date.day,
+        tzinfo=timezone.utc,
+    ) - timedelta(hours=1)
+    for h in range(24):
+        ts = start_utc + timedelta(hours=h)
+        # Simulate load curve: higher during day, lower at night
+        load = base_load + 2000 * (1 if 8 <= h <= 20 else 0) + 100 * h
+        db.add(
+            LoadForecast(
+                area=area,
+                timestamp_utc=ts,
+                load_mw=load,
+                resolution="PT60M",
+            )
+        )
+    db.commit()
+
+
+def test_load_forecast_features_present(db):
+    """Load forecast features are populated when data exists."""
+    d = date(2026, 3, 10)
+    _insert_prices(db, d)
+    _insert_prices(db, d - timedelta(days=1))
+    _insert_load_forecast(db, d)
+
+    rows = build_feature_matrix(db, d, d)
+    h12 = next(r for r in rows if r["hour"] == 12)
+    assert h12["load_forecast_hour"] is not None
+    assert h12["load_forecast_max"] is not None
+    assert h12["load_forecast_min"] is not None
+    assert h12["load_forecast_range"] is not None
+
+
+def test_load_forecast_features_none_without_data(db):
+    """Load forecast features are None when no data exists."""
+    d = date(2026, 3, 10)
+    _insert_prices(db, d)
+    _insert_prices(db, d - timedelta(days=1))
+
+    rows = build_feature_matrix(db, d, d)
+    h0 = rows[0]
+    assert h0["load_forecast_hour"] is None
+    assert h0["load_forecast_max"] is None
+    assert h0["load_x_hour"] is None
+
+
+def test_load_forecast_range_correct(db):
+    """load_forecast_range = max - min of the day."""
+    d = date(2026, 3, 10)
+    _insert_prices(db, d)
+    _insert_prices(db, d - timedelta(days=1))
+    _insert_load_forecast(db, d, base_load=10000.0)
+
+    rows = build_feature_matrix(db, d, d)
+    h0 = rows[0]
+    assert h0["load_forecast_range"] is not None
+    assert h0["load_forecast_range"] == pytest.approx(h0["load_forecast_max"] - h0["load_forecast_min"], abs=1.0)
+
+
+def test_load_forecast_vs_avg(db):
+    """load_forecast_vs_avg uses 7-day rolling max average."""
+    d = date(2026, 3, 10)
+    _insert_prices(db, d)
+    _insert_prices(db, d - timedelta(days=1))
+    _insert_load_forecast(db, d, base_load=12000.0)
+    # Insert 7 days of history for rolling average
+    for offset in range(1, 8):
+        _insert_load_forecast(db, d - timedelta(days=offset), base_load=10000.0)
+
+    rows = build_feature_matrix(db, d, d)
+    h0 = rows[0]
+    # Today's max is higher than the 7-day avg, so ratio > 1.0
+    assert h0["load_forecast_vs_avg"] is not None
+    assert h0["load_forecast_vs_avg"] > 1.0
+
+
+# ---------------------------------------------------------------------------
+# Phase C: Gas price + DE-LU price helpers + tests
+# ---------------------------------------------------------------------------
+
+
+def _insert_gas_prices(db, target_date, price=35.0, days_back=7):
+    """Insert gas prices for target_date and several days before it."""
+
+    for i in range(days_back):
+        d = target_date - timedelta(days=i)
+        # Skip weekends (no trading)
+        if d.weekday() >= 5:
+            continue
+        db.add(
+            GasPrice(
+                trade_date=d,
+                price_eur_mwh=price + i * 0.5,
+                source="the_reference",
+            )
+        )
+    db.commit()
+
+
+def _insert_de_prices(db, target_date, base_price=80.0):
+    """Insert 24 hourly DE-LU spot prices for a CET day."""
+
+    start_utc = datetime(
+        target_date.year,
+        target_date.month,
+        target_date.day,
+        tzinfo=timezone.utc,
+    ) - timedelta(hours=1)
+    for h in range(24):
+        ts = start_utc + timedelta(hours=h)
+        price = base_price + 5.0 * (1 if 8 <= h <= 20 else 0) + 0.5 * h
+        db.add(
+            DeSpotPrice(
+                timestamp_utc=ts,
+                price_eur_mwh=price,
+                resolution="PT60M",
+            )
+        )
+    db.commit()
+
+
+def test_gas_price_features_present(db):
+    """Gas price features are populated when data exists."""
+    d = date(2026, 3, 10)
+    _insert_prices(db, d)
+    _insert_prices(db, d - timedelta(days=1))
+    _insert_gas_prices(db, d)
+
+    rows = build_feature_matrix(db, d, d)
+    h0 = rows[0]
+    assert h0["gas_price_eur_mwh"] is not None
+    assert h0["gas_price_7d_avg"] is not None
+    assert h0["gas_price_change"] is not None
+
+
+def test_gas_price_features_none_without_data(db):
+    """Gas price features are None when no data exists."""
+    d = date(2026, 3, 10)
+    _insert_prices(db, d)
+    _insert_prices(db, d - timedelta(days=1))
+
+    rows = build_feature_matrix(db, d, d)
+    h0 = rows[0]
+    assert h0["gas_price_eur_mwh"] is None
+    assert h0["gas_price_7d_avg"] is None
+
+
+def test_de_price_features_present(db):
+    """DE-LU price features are populated when previous day data exists."""
+    d = date(2026, 3, 10)
+    prev = d - timedelta(days=1)
+    _insert_prices(db, d)
+    _insert_prices(db, prev)
+    _insert_de_prices(db, prev)  # previous day DE prices
+
+    rows = build_feature_matrix(db, d, d)
+    h12 = next(r for r in rows if r["hour"] == 12)
+    assert h12["de_price_prev_day"] is not None
+    assert h12["de_se3_spread_prev_day"] is not None
+    assert h12["de_price_same_hour_prev_day"] is not None
+
+
+def test_de_price_features_none_without_data(db):
+    """DE-LU price features are None when no previous day data exists."""
+    d = date(2026, 3, 10)
+    _insert_prices(db, d)
+    _insert_prices(db, d - timedelta(days=1))
+
+    rows = build_feature_matrix(db, d, d)
+    h0 = rows[0]
+    assert h0["de_price_prev_day"] is None
+    assert h0["de_se3_spread_prev_day"] is None
+    assert h0["de_price_same_hour_prev_day"] is None
+
+
+def test_de_se3_spread_sign(db):
+    """de_se3_spread > 0 when DE price > SE3 price (export pressure)."""
+    d = date(2026, 3, 10)
+    prev = d - timedelta(days=1)
+    _insert_prices(db, d, base_price=0.5)  # SE3: ~0.5 SEK/kWh ≈ 50 EUR/MWh
+    _insert_prices(db, prev, base_price=0.5)
+    _insert_de_prices(db, prev, base_price=200.0)  # DE: 200 EUR/MWh >> SE3
+
+    rows = build_feature_matrix(db, d, d)
+    h0 = rows[0]
+    assert h0["de_se3_spread_prev_day"] is not None
+    assert h0["de_se3_spread_prev_day"] > 0  # DE much higher → positive spread

@@ -17,6 +17,7 @@ from app.config import settings
 
 ENTSOE_BASE = "https://web-api.tp.entsoe.eu/api"
 SE3_AREA = "10Y1001A1001A46L"
+DE_LU_AREA = "10Y1001A1001A82H"
 
 # Friendly name → EIC code (bidding zone domain)
 _AREA_TO_EIC: dict[str, str] = {
@@ -24,6 +25,7 @@ _AREA_TO_EIC: dict[str, str] = {
     "SE2": "10Y1001A1001A45N",
     "SE3": "10Y1001A1001A46L",
     "SE4": "10Y1001A1001A47J",
+    "DE-LU": "10Y1001A1001A82H",
 }
 
 # XML namespace for A44 price documents
@@ -34,17 +36,17 @@ NS_GEN = {"ns": "urn:iec62325.351:tc57wg16:451-6:generationloaddocument:3:0"}
 
 # PSR type → human-readable group (ENTSO-E codes)
 PSR_GROUP: dict[str, str] = {
-    "B04": "fossil",   # Fossil Gas
-    "B05": "fossil",   # Fossil Hard coal
-    "B06": "fossil",   # Fossil Oil
-    "B11": "hydro",    # Hydro Run-of-river
-    "B12": "hydro",    # Hydro Water Reservoir
+    "B04": "fossil",  # Fossil Gas
+    "B05": "fossil",  # Fossil Hard coal
+    "B06": "fossil",  # Fossil Oil
+    "B11": "hydro",  # Hydro Run-of-river
+    "B12": "hydro",  # Hydro Water Reservoir
     "B14": "nuclear",  # Nuclear
-    "B16": "solar",    # Solar
-    "B17": "other",    # Waste
-    "B18": "wind",     # Wind Offshore
-    "B19": "wind",     # Wind Onshore
-    "B20": "other",    # Other
+    "B16": "solar",  # Solar
+    "B17": "other",  # Waste
+    "B18": "wind",  # Wind Offshore
+    "B19": "wind",  # Wind Onshore
+    "B20": "other",  # Other
 }
 RENEWABLE_PSR = {"B11", "B12", "B16", "B18", "B19"}
 
@@ -162,6 +164,7 @@ def fetch_day_ahead_prices(
         rate = eur_to_sek
     else:
         from app.services.riksbank_client import get_eur_sek_rate
+
         rate = get_eur_sek_rate()
 
     # ENTSO-E day-ahead prices are published for CET day (UTC-1 in winter, UTC-2 in summer).
@@ -185,25 +188,23 @@ def fetch_day_ahead_prices(
         raise EntsoEError(f"Network error contacting ENTSO-E: {exc}") from exc
 
     if response.status_code != 200:
-        raise EntsoEError(
-            f"ENTSO-E returned HTTP {response.status_code}: {response.text[:200]}"
-        )
+        raise EntsoEError(f"ENTSO-E returned HTTP {response.status_code}: {response.text[:200]}")
 
     all_points = _parse_xml(response.text, rate)
 
     # Filter to only slots that fall within the requested calendar date (UTC+1 CET proxy)
     # We keep slots where the CET date matches target_date.
     # Simple approach: filter by UTC hour 23:00 previous day to 23:00 same day.
-    day_start_utc = datetime(target_date.year, target_date.month, target_date.day,
-                             0, 0, tzinfo=timezone.utc) - timedelta(hours=1)  # 23:00 UTC prev day = 00:00 CET
+    day_start_utc = datetime(
+        target_date.year, target_date.month, target_date.day, 0, 0, tzinfo=timezone.utc
+    ) - timedelta(hours=1)  # 23:00 UTC prev day = 00:00 CET
     day_end_utc = day_start_utc + timedelta(hours=24)
 
     filtered = [p for p in all_points if day_start_utc <= p.timestamp_utc < day_end_utc]
 
     if not filtered:
         raise EntsoEError(
-            f"No price data found for {target_date} in SE3. "
-            "Tomorrow's prices are published after ~13:00 CET."
+            f"No price data found for {target_date} in SE3. Tomorrow's prices are published after ~13:00 CET."
         )
 
     return filtered
@@ -213,12 +214,13 @@ def fetch_day_ahead_prices(
 # A75: Actual Generation Per Production Type
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class GenerationPoint:
     timestamp_utc: datetime
-    psr_type: str       # e.g. "B12" (Hydro), "B14" (Nuclear), "B16" (Solar)
+    psr_type: str  # e.g. "B12" (Hydro), "B14" (Nuclear), "B16" (Solar)
     value_mw: float
-    resolution: str     # "PT15M"
+    resolution: str  # "PT15M"
 
 
 def _parse_generation_xml(xml_text: str) -> list[GenerationPoint]:
@@ -234,9 +236,7 @@ def _parse_generation_xml(xml_text: str) -> list[GenerationPoint]:
     reason = root.find(".//ns:Reason/ns:code", NS_GEN)
     if reason is not None and reason.text != "999":
         text_el = root.find(".//ns:Reason/ns:text", NS_GEN)
-        raise EntsoEError(
-            f"ENTSO-E A75 error {reason.text}: {text_el.text if text_el is not None else ''}"
-        )
+        raise EntsoEError(f"ENTSO-E A75 error {reason.text}: {text_el.text if text_el is not None else ''}")
 
     points: list[GenerationPoint] = []
 
@@ -251,8 +251,8 @@ def _parse_generation_xml(xml_text: str) -> list[GenerationPoint]:
             continue
 
         start_el = period.find("ns:timeInterval/ns:start", NS_GEN)
-        end_el   = period.find("ns:timeInterval/ns:end",   NS_GEN)
-        res_el   = period.find("ns:resolution", NS_GEN)
+        end_el = period.find("ns:timeInterval/ns:end", NS_GEN)
+        res_el = period.find("ns:resolution", NS_GEN)
         if start_el is None or res_el is None:
             continue
 
@@ -271,7 +271,7 @@ def _parse_generation_xml(xml_text: str) -> list[GenerationPoint]:
         raw: list[tuple[int, float]] = []
         for point_el in period.findall("ns:Point", NS_GEN):
             pos_el = point_el.find("ns:position", NS_GEN)
-            qty_el = point_el.find("ns:quantity",  NS_GEN)
+            qty_el = point_el.find("ns:quantity", NS_GEN)
             if pos_el is None or qty_el is None:
                 continue
             raw.append((int(pos_el.text), float(qty_el.text)))
@@ -281,14 +281,197 @@ def _parse_generation_xml(xml_text: str) -> list[GenerationPoint]:
             next_pos = raw[i + 1][0] if i + 1 < len(raw) else total_slots + 1
             for slot in range(pos, next_pos):
                 timestamp = period_start + slot_duration * (slot - 1)  # 1-based → offset
-                points.append(GenerationPoint(
-                    timestamp_utc=timestamp,
-                    psr_type=psr_type,
-                    value_mw=qty,
-                    resolution=resolution_str,
-                ))
+                points.append(
+                    GenerationPoint(
+                        timestamp_utc=timestamp,
+                        psr_type=psr_type,
+                        value_mw=qty,
+                        resolution=resolution_str,
+                    )
+                )
 
     return sorted(points, key=lambda p: (p.timestamp_utc, p.psr_type))
+
+
+# ---------------------------------------------------------------------------
+# A65: Day-Ahead Total Load Forecast
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class LoadForecastPoint:
+    timestamp_utc: datetime
+    load_mw: float
+    resolution: str  # "PT60M"
+
+
+def _parse_load_forecast_xml(xml_text: str) -> list[LoadForecastPoint]:
+    """
+    Parse ENTSO-E A65 GL_MarketDocument XML into LoadForecastPoint list.
+
+    A65 documents contain a single TimeSeries per period with quantity values
+    (MW) at each position. Uses the same step-function encoding as A75.
+    """
+    root = ET.fromstring(xml_text)
+
+    reason = root.find(".//ns:Reason/ns:code", NS_GEN)
+    if reason is not None and reason.text != "999":
+        text_el = root.find(".//ns:Reason/ns:text", NS_GEN)
+        raise EntsoEError(f"ENTSO-E A65 error {reason.text}: {text_el.text if text_el is not None else ''}")
+
+    points: list[LoadForecastPoint] = []
+
+    for ts in root.findall(".//ns:TimeSeries", NS_GEN):
+        period = ts.find("ns:Period", NS_GEN)
+        if period is None:
+            continue
+
+        start_el = period.find("ns:timeInterval/ns:start", NS_GEN)
+        res_el = period.find("ns:resolution", NS_GEN)
+        if start_el is None or res_el is None:
+            continue
+
+        period_start = datetime.fromisoformat(start_el.text.replace("Z", "+00:00"))
+        slot_duration = _parse_resolution(res_el.text)
+        resolution_str = res_el.text
+
+        for point_el in period.findall("ns:Point", NS_GEN):
+            pos_el = point_el.find("ns:position", NS_GEN)
+            qty_el = point_el.find("ns:quantity", NS_GEN)
+            if pos_el is None or qty_el is None:
+                continue
+
+            position = int(pos_el.text) - 1
+            timestamp = period_start + slot_duration * position
+
+            points.append(
+                LoadForecastPoint(
+                    timestamp_utc=timestamp,
+                    load_mw=float(qty_el.text),
+                    resolution=resolution_str,
+                )
+            )
+
+    return sorted(points, key=lambda p: p.timestamp_utc)
+
+
+def fetch_load_forecast(
+    target_date: date,
+    area: str = SE3_AREA,
+    api_key: Optional[str] = None,
+) -> list[LoadForecastPoint]:
+    """
+    Fetch day-ahead total load forecast (A65/A01) for target_date.
+
+    Returns LoadForecastPoint list (one row per hour) filtered to the CET
+    calendar day, sorted by timestamp_utc. Raises EntsoEError on failure.
+    """
+    key = api_key or settings.entsoe_api_key
+    if not key:
+        raise EntsoEError("ENTSOE_API_KEY is not set. Add it to backend/.env")
+
+    period_start = target_date - timedelta(days=1)
+    period_end = target_date + timedelta(days=1)
+
+    params = {
+        "securityToken": key,
+        "documentType": "A65",
+        "processType": "A01",
+        "outBiddingZone_Domain": area,
+        "periodStart": _period_param(period_start),
+        "periodEnd": _period_param(period_end),
+    }
+
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            response = client.get(ENTSOE_BASE, params=params)
+    except httpx.RequestError as exc:
+        raise EntsoEError(f"Network error contacting ENTSO-E: {exc}") from exc
+
+    if response.status_code != 200:
+        raise EntsoEError(f"ENTSO-E A65 returned HTTP {response.status_code}: {response.text[:200]}")
+
+    all_points = _parse_load_forecast_xml(response.text)
+
+    # Filter to CET calendar day
+    day_start_utc = datetime(target_date.year, target_date.month, target_date.day, tzinfo=timezone.utc) - timedelta(
+        hours=1
+    )
+    day_end_utc = day_start_utc + timedelta(hours=24)
+
+    filtered = [p for p in all_points if day_start_utc <= p.timestamp_utc < day_end_utc]
+
+    if not filtered:
+        raise EntsoEError(
+            f"No load forecast data found for {target_date} in {area}. A65 data may not yet be available."
+        )
+
+    return filtered
+
+
+@dataclass
+class DePricePoint:
+    timestamp_utc: datetime
+    price_eur_mwh: float
+    resolution: str
+
+
+def fetch_de_day_ahead_prices(
+    target_date: date,
+    api_key: Optional[str] = None,
+) -> list[DePricePoint]:
+    """
+    Fetch DE-LU day-ahead spot prices (A44) for target_date from ENTSO-E.
+    Returns EUR/MWh only (no SEK conversion).
+    """
+    key = api_key or settings.entsoe_api_key
+    if not key:
+        raise EntsoEError("ENTSOE_API_KEY is not set. Add it to backend/.env")
+
+    period_start = target_date - timedelta(days=1)
+    period_end = target_date + timedelta(days=1)
+
+    params = {
+        "securityToken": key,
+        "documentType": "A44",
+        "in_Domain": DE_LU_AREA,
+        "out_Domain": DE_LU_AREA,
+        "periodStart": _period_param(period_start),
+        "periodEnd": _period_param(period_end),
+    }
+
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            response = client.get(ENTSOE_BASE, params=params)
+    except httpx.RequestError as exc:
+        raise EntsoEError(f"Network error contacting ENTSO-E: {exc}") from exc
+
+    if response.status_code != 200:
+        raise EntsoEError(f"ENTSO-E A44 DE-LU returned HTTP {response.status_code}: {response.text[:200]}")
+
+    # Reuse existing XML parser with dummy rate — we only use price_eur_mwh
+    all_points = _parse_xml(response.text, eur_to_sek=1.0)
+
+    # Filter to CET calendar day
+    day_start_utc = datetime(target_date.year, target_date.month, target_date.day, tzinfo=timezone.utc) - timedelta(
+        hours=1
+    )
+    day_end_utc = day_start_utc + timedelta(hours=24)
+
+    filtered = [
+        DePricePoint(
+            timestamp_utc=p.timestamp_utc,
+            price_eur_mwh=p.price_eur_mwh,
+            resolution=p.resolution,
+        )
+        for p in all_points
+        if day_start_utc <= p.timestamp_utc < day_end_utc
+    ]
+
+    if not filtered:
+        raise EntsoEError(f"No DE-LU price data found for {target_date}.")
+
+    return filtered
 
 
 def fetch_generation_mix(
@@ -308,15 +491,15 @@ def fetch_generation_mix(
         raise EntsoEError("ENTSOE_API_KEY is not set. Add it to backend/.env")
 
     period_start = target_date - timedelta(days=1)
-    period_end   = target_date + timedelta(days=1)
+    period_end = target_date + timedelta(days=1)
 
     params = {
         "securityToken": key,
-        "documentType":  "A75",
-        "processType":   "A16",
-        "in_Domain":     area,
-        "periodStart":   _period_param(period_start),
-        "periodEnd":     _period_param(period_end),
+        "documentType": "A75",
+        "processType": "A16",
+        "in_Domain": area,
+        "periodStart": _period_param(period_start),
+        "periodEnd": _period_param(period_end),
     }
 
     try:
@@ -326,16 +509,13 @@ def fetch_generation_mix(
         raise EntsoEError(f"Network error contacting ENTSO-E: {exc}") from exc
 
     if response.status_code != 200:
-        raise EntsoEError(
-            f"ENTSO-E A75 returned HTTP {response.status_code}: {response.text[:200]}"
-        )
+        raise EntsoEError(f"ENTSO-E A75 returned HTTP {response.status_code}: {response.text[:200]}")
 
     all_points = _parse_generation_xml(response.text)
 
     # Filter to CET calendar day (same window as day-ahead prices)
-    day_start_utc = (
-        datetime(target_date.year, target_date.month, target_date.day, tzinfo=timezone.utc)
-        - timedelta(hours=1)
+    day_start_utc = datetime(target_date.year, target_date.month, target_date.day, tzinfo=timezone.utc) - timedelta(
+        hours=1
     )
     day_end_utc = day_start_utc + timedelta(hours=24)
 
@@ -343,8 +523,7 @@ def fetch_generation_mix(
 
     if not filtered:
         raise EntsoEError(
-            f"No generation data found for {target_date} in {area}. "
-            "A75 data lags ~15-30 min behind real time."
+            f"No generation data found for {target_date} in {area}. A75 data lags ~15-30 min behind real time."
         )
 
     return filtered

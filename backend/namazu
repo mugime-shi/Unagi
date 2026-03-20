@@ -34,6 +34,21 @@ cmd_backfill_gen() {
     python -m app.tasks.fetch_prices --backfill "$DAYS" --generation --area "$AREA"
 }
 
+cmd_backfill_load() {
+    parse_flags "$@"
+    python -m app.tasks.fetch_prices --backfill "$DAYS" --load-forecast --area "$AREA"
+}
+
+cmd_backfill_de() {
+    parse_flags "$@"
+    python -m app.tasks.fetch_prices --backfill "$DAYS" --de-price
+}
+
+cmd_backfill_gas() {
+    parse_flags "$@"
+    python -m app.tasks.fetch_prices --backfill "$DAYS" --gas-price
+}
+
 cmd_backtest() {
     parse_flags "$@"
     python -m scripts.run_backtest --days "$DAYS" --area "$AREA"
@@ -42,6 +57,11 @@ cmd_backtest() {
 cmd_tune() {
     parse_flags "$@"
     python -m scripts.tune_hyperparams --trials "$TRIALS" --area "$AREA"
+}
+
+cmd_sweep() {
+    parse_flags "$@"
+    python -m scripts.sweep_train_window --test-days "$DAYS" --area "$AREA"
 }
 
 cmd_features() {
@@ -81,9 +101,13 @@ Data:
   fetch                         Fetch today + tomorrow spot prices
   backfill [--days N] [--area]  Backfill spot prices (default: 30 days, SE3)
   backfill-gen [--days N]       Backfill generation mix
+  backfill-load [--days N]      Backfill load forecast (A65)
+  backfill-de [--days N]        Backfill DE-LU spot prices (A44)
+  backfill-gas [--days N]       Backfill THE gas reference prices
 
 ML:
   backtest [--days N] [--area]  LightGBM vs baseline comparison
+  sweep [--days N] [--area]     Training window size optimization
   tune [--trials N] [--area]    Optuna hyperparameter tuning
   features [--days N] [--area]  Build feature matrix (CSV to stdout)
 
@@ -110,7 +134,11 @@ case "$command" in
     fetch)          cmd_fetch "$@" ;;
     backfill)       cmd_backfill "$@" ;;
     backfill-gen)   cmd_backfill_gen "$@" ;;
+    backfill-load)  cmd_backfill_load "$@" ;;
+    backfill-de)    cmd_backfill_de "$@" ;;
+    backfill-gas)   cmd_backfill_gas "$@" ;;
     backtest)       cmd_backtest "$@" ;;
+    sweep)          cmd_sweep "$@" ;;
     tune)           cmd_tune "$@" ;;
     features)       cmd_features "$@" ;;
     smoke)          cmd_smoke ;;

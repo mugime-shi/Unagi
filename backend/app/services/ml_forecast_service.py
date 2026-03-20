@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _CACHE_DIR = Path(os.environ.get("LGBM_CACHE_DIR", "/tmp/namazu_lgbm"))
-_TRAIN_DAYS = 365      # days of history for training (full seasonal cycle)
-_TEST_DAYS = 7         # held-out test set (last N days of training window)
+_TRAIN_DAYS = int(os.environ.get("LGBM_TRAIN_DAYS", "365"))
+_TEST_DAYS = 7  # held-out test set (last N days of training window)
 _MIN_TRAIN_ROWS = 200  # minimum rows to attempt training
 
 
@@ -34,9 +34,10 @@ _MIN_TRAIN_ROWS = 200  # minimum rows to attempt training
 # Model cache (warm Lambda reuse)
 # ---------------------------------------------------------------------------
 
+
 def _cache_key(area: str, target_date: date) -> str:
-    """Deterministic key from area + target_date."""
-    raw = f"{area}:{target_date.isoformat()}"
+    """Deterministic key from area + target_date + train_days."""
+    raw = f"{area}:{target_date.isoformat()}:{_TRAIN_DAYS}:v6-59feat"
     return hashlib.md5(raw.encode()).hexdigest()[:12]
 
 
@@ -71,6 +72,7 @@ def _save_cache(area: str, target_date: date, model):
 # Training
 # ---------------------------------------------------------------------------
 
+
 def _train_model(db: Session, target_date: date, area: str):
     """
     Train LightGBM models on historical data.
@@ -90,16 +92,11 @@ def _train_model(db: Session, target_date: date, area: str):
 
     rows = build_feature_matrix(db, train_start, train_end, area=area)
     if len(rows) < _MIN_TRAIN_ROWS:
-        logger.warning(
-            "Insufficient training data: %d rows (need %d)", len(rows), _MIN_TRAIN_ROWS
-        )
+        logger.warning("Insufficient training data: %d rows (need %d)", len(rows), _MIN_TRAIN_ROWS)
         return None
 
     # Convert to numpy arrays
-    X = np.array([
-        [r.get(col) for col in FEATURE_COLS]
-        for r in rows
-    ], dtype=np.float64)
+    X = np.array([[r.get(col) for col in FEATURE_COLS] for r in rows], dtype=np.float64)
     y = np.array([r[TARGET_COL] for r in rows], dtype=np.float64)
 
     # Replace None with NaN (LightGBM handles NaN natively)
@@ -114,6 +111,7 @@ def _train_model(db: Session, target_date: date, area: str):
     X_val, y_val = X[split_idx:], y[split_idx:]
 
     # Tuned via Optuna (100 trials, 4-fold walk-forward CV, 2026-03-18)
+    # Re-validated with 53 features (2026-03-19): still optimal on walk-forward sweep
     base_params = {
         "verbose": -1,
         "num_leaves": 117,
@@ -133,14 +131,12 @@ def _train_model(db: Session, target_date: date, area: str):
         if len(X_val) > 0:
             val_set = lgb.Dataset(X_val, label=y_val, feature_name=FEATURE_COLS, reference=train_set)
             callbacks.append(lgb.early_stopping(stopping_rounds=20, verbose=False))
-            return lgb.train(params, train_set, num_boost_round=500,
-                             valid_sets=[val_set], callbacks=callbacks)
+            return lgb.train(params, train_set, num_boost_round=500, valid_sets=[val_set], callbacks=callbacks)
         return lgb.train(params, train_set, num_boost_round=200, callbacks=callbacks)
 
-    # Point forecast (MAE)
-    point_model = _fit({**base_params, "objective": "regression", "metric": "mae"})
-    logger.info("LightGBM point model: %d rounds, %d features",
-                point_model.best_iteration, len(FEATURE_COLS))
+    # Point forecast (Huber loss — reduces spike influence while keeping calm precision)
+    point_model = _fit({**base_params, "objective": "huber", "huber_delta": 0.5, "metric": "mae"})
+    logger.info("LightGBM point model: %d rounds, %d features", point_model.best_iteration, len(FEATURE_COLS))
 
     # Quantile models for prediction intervals
     low_model = _fit({**base_params, "objective": "quantile", "alpha": 0.10, "metric": "quantile"})
@@ -153,8 +149,11 @@ def _train_model(db: Session, target_date: date, area: str):
 # Prediction
 # ---------------------------------------------------------------------------
 
+
 def _build_prediction_features(
-    db: Session, target_date: date, area: str,
+    db: Session,
+    target_date: date,
+    area: str,
 ) -> list[dict] | None:
     """
     Build feature rows for predicting target_date (24 hours).
@@ -163,7 +162,11 @@ def _build_prediction_features(
     training and prediction features are always in sync.
     """
     rows = build_feature_matrix(
-        db, target_date, target_date, area=area, include_target=False,
+        db,
+        target_date,
+        target_date,
+        area=area,
+        include_target=False,
     )
     return rows if rows else None
 
@@ -182,10 +185,7 @@ def build_lgbm_forecast(db: Session, target_date: date, area: str = "SE3") -> di
     prediction intervals instead of the naive ±1σ approach.
     """
     _null_response = {
-        "slots": [
-            {"hour": h, "avg_sek_kwh": None, "low_sek_kwh": None, "high_sek_kwh": None}
-            for h in range(24)
-        ],
+        "slots": [{"hour": h, "avg_sek_kwh": None, "low_sek_kwh": None, "high_sek_kwh": None} for h in range(24)],
         "summary": {
             "predicted_avg_sek_kwh": None,
             "predicted_low_sek_kwh": None,
@@ -216,10 +216,7 @@ def build_lgbm_forecast(db: Session, target_date: date, area: str = "SE3") -> di
     if pred_rows is None:
         return _null_response
 
-    X_pred = np.array([
-        [r.get(col) for col in FEATURE_COLS]
-        for r in pred_rows
-    ], dtype=object)
+    X_pred = np.array([[r.get(col) for col in FEATURE_COLS] for r in pred_rows], dtype=object)
     X_pred = np.where(X_pred == None, np.nan, X_pred).astype(np.float64)  # noqa: E711
 
     predictions = point_model.predict(X_pred)
@@ -238,12 +235,14 @@ def build_lgbm_forecast(db: Session, target_date: date, area: str = "SE3") -> di
         pred_val = round(float(pred), 4)
         low_val = round(max(0.0, float(low_preds[i])), 4)
         high_val = round(float(high_preds[i]), 4)
-        slots.append({
-            "hour": i,
-            "avg_sek_kwh": pred_val,
-            "low_sek_kwh": low_val,
-            "high_sek_kwh": high_val,
-        })
+        slots.append(
+            {
+                "hour": i,
+                "avg_sek_kwh": pred_val,
+                "low_sek_kwh": low_val,
+                "high_sek_kwh": high_val,
+            }
+        )
 
     valid = [(s["low_sek_kwh"], s["avg_sek_kwh"], s["high_sek_kwh"]) for s in slots]
     return {
