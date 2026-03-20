@@ -398,6 +398,9 @@ def lambda_handler(event: dict, context) -> dict:
         # Weather forecast (issued_date = today, used by LightGBM for tomorrow)
         results.append(_fetch_weather_forecast())
 
+        # Gas prices (THE settlement) — needed for ML gas_price features
+        results.append(_fetch_gas_prices())
+
         # Record ML predictions for tomorrow
         _record_predictions(areas)
 
@@ -411,10 +414,13 @@ def lambda_handler(event: dict, context) -> dict:
         }
 
     # Prediction-only run (manual invocation, no scheduled cron)
+    # Accepts optional "target_date" (YYYY-MM-DD) to predict a specific date instead of tomorrow.
     if event.get("predict_only"):
-        log.info("predict_only mode — recording tomorrow's predictions for %s", areas)
-        _record_predictions(areas)
-        return {"statusCode": 200, "mode": "predict_only", "areas": areas}
+        target_date = date.fromisoformat(event["target_date"]) if event.get("target_date") else None
+        label = target_date.isoformat() if target_date else "tomorrow"
+        log.info("predict_only mode — recording %s predictions for %s", label, areas)
+        _record_predictions(areas, target_date=target_date)
+        return {"statusCode": 200, "mode": "predict_only", "target_date": label, "areas": areas}
 
     all_results = []
     for area in areas:
@@ -454,6 +460,10 @@ def lambda_handler(event: dict, context) -> dict:
         # Weather forecast (Open-Meteo) — wind/temp/radiation for ML features
         forecast_result = _fetch_weather_forecast()
         all_results.append(forecast_result)
+
+        # Gas prices (THE settlement) — once per run (not per area, EU-wide price)
+        gas_result = _fetch_gas_prices()
+        all_results.append(gas_result)
 
     # Generation backfill via Lambda event
     if event.get("backfill_generation"):
@@ -561,12 +571,49 @@ def _fetch_weather_forecast() -> dict:
         db.close()
 
 
-def _record_predictions(areas: list[str]) -> None:
+def _fetch_gas_prices() -> dict:
     """
-    Record tomorrow's predictions for both models (same_weekday_avg + lgbm).
+    Fetch THE gas settlement prices and store to DB.
+
+    Uses the Preismonitor JSON API (returns current gas-day only).
+    Accumulated daily to build up the gas price time series for ML features.
+    Non-critical: pipeline continues even if this fails.
+    """
+    db = SessionLocal()
+    try:
+        from app.services.bundesnetzagentur_client import GasPriceError
+        from app.services.gas_price_service import fetch_and_store_gas_prices
+
+        today = date.today()
+        start = today - timedelta(days=7)
+        last_error = None
+
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                count = fetch_and_store_gas_prices(db, start, today)
+                log.info("OK   gas_price — %d rows stored (attempt %d)", count, attempt)
+                return {"market": "gas_price", "status": "ok", "rows": count}
+            except GasPriceError as exc:
+                last_error = exc
+                if attempt < MAX_RETRIES:
+                    wait = RETRY_BASE_SECONDS * (2 ** (attempt - 1))
+                    log.warning("WARN gas_price — attempt %d/%d: %s. Retry in %ds…", attempt, MAX_RETRIES, exc, wait)
+                    time.sleep(wait)
+                else:
+                    log.error("FAIL gas_price — all %d attempts failed: %s", MAX_RETRIES, last_error)
+
+        return {"market": "gas_price", "status": "error", "error": str(last_error)}
+    finally:
+        db.close()
+
+
+def _record_predictions(areas: list[str], target_date: date | None = None) -> None:
+    """
+    Record predictions for both models (same_weekday_avg + lgbm).
 
     Called by the nightly cron (01:05 CET) with full previous-day data,
     and by the afternoon run as a fallback (idempotent upsert).
+    If target_date is None, defaults to tomorrow.
     """
     db = SessionLocal()
     try:
@@ -574,30 +621,30 @@ def _record_predictions(areas: list[str]) -> None:
         from app.services.ml_forecast_service import build_lgbm_forecast
         from app.services.price_service import build_forecast, get_prices_for_date_range
 
-        tomorrow = date.today() + timedelta(days=1)
+        target = target_date or (date.today() + timedelta(days=1))
 
         for area in areas:
             # same_weekday_avg
             try:
-                hist_start = tomorrow - timedelta(weeks=8)
-                hist_end = tomorrow - timedelta(days=1)
+                hist_start = target - timedelta(weeks=8)
+                hist_end = target - timedelta(days=1)
                 rows = get_prices_for_date_range(db, hist_start, hist_end, area=area)
-                result = build_forecast(rows, tomorrow)
+                result = build_forecast(rows, target)
                 if result.get("slots"):
-                    n = record_predictions(db, tomorrow, area, "same_weekday_avg", result["slots"])
-                    log.info("Recorded %d same_weekday_avg predictions for %s %s", n, tomorrow, area)
+                    n = record_predictions(db, target, area, "same_weekday_avg", result["slots"])
+                    log.info("Recorded %d same_weekday_avg predictions for %s %s", n, target, area)
             except Exception as exc:
-                log.warning("same_weekday_avg record failed for %s %s: %s", tomorrow, area, exc)
+                log.warning("same_weekday_avg record failed for %s %s: %s", target, area, exc)
                 db.rollback()
 
             # lgbm
             try:
-                result = build_lgbm_forecast(db, tomorrow, area=area)
+                result = build_lgbm_forecast(db, target, area=area)
                 if result.get("slots") and result["slots"][0].get("avg_sek_kwh") is not None:
-                    n = record_predictions(db, tomorrow, area, "lgbm", result["slots"])
-                    log.info("Recorded %d lgbm predictions for %s %s", n, tomorrow, area)
+                    n = record_predictions(db, target, area, "lgbm", result["slots"])
+                    log.info("Recorded %d lgbm predictions for %s %s", n, target, area)
             except Exception as exc:
-                log.warning("lgbm record failed for %s %s: %s", tomorrow, area, exc)
+                log.warning("lgbm record failed for %s %s: %s", target, area, exc)
                 db.rollback()
     finally:
         db.close()
@@ -622,14 +669,54 @@ def _fill_actuals(areas: list[str]) -> None:
         db.close()
 
 
+def _check_model_degradation(areas: list[str]) -> None:
+    """
+    Check if the LGBM model has degraded (7d MAE > 1.5× 30d MAE).
+    Sends a Telegram alert if degradation is detected.
+    Called after fill_actuals so that the latest data is scored.
+    """
+    db = SessionLocal()
+    try:
+        from app.services.backtest_service import check_model_degradation
+        from app.services.telegram_service import send_degradation_alert
+
+        for area in areas:
+            try:
+                result = check_model_degradation(db, area=area)
+                if result is None:
+                    continue
+                if result["degraded"]:
+                    log.warning(
+                        "Model degradation detected for %s: 7d MAE=%.4f, 30d MAE=%.4f, ratio=%.2f",
+                        area,
+                        result["mae_7d"],
+                        result["mae_30d"],
+                        result["ratio"],
+                    )
+                    send_degradation_alert(area, result)
+                else:
+                    log.info(
+                        "Model health OK for %s: ratio=%.2f (threshold=%.1f)",
+                        area,
+                        result["ratio"],
+                        result["threshold"],
+                    )
+            except Exception as exc:
+                log.warning("Degradation check failed for %s: %s", area, exc)
+    finally:
+        db.close()
+
+
 def _record_forecasts_and_actuals(areas: list[str]) -> None:
     """
     After the daily price fetch (13:30 CET):
-    Fill yesterday's actuals (answer-check for MAE/RMSE scoring).
+    Fill yesterday's actuals (answer-check for MAE/RMSE scoring),
+    then check for model degradation.
     Predictions are NOT re-recorded here — by 13:30 actual prices are
     already published, so post-hoc predictions would be meaningless.
     """
     _fill_actuals(areas)
+    _check_model_degradation(areas)
 
 
 def _send_notifications(areas: list[str]) -> None:

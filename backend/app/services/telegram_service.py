@@ -1,4 +1,4 @@
-"""
+r"""
 Telegram Bot notification service.
 
 Single-user design: sends price alerts to a fixed chat_id.
@@ -34,7 +34,7 @@ def _cheapest_window(slots: list[tuple[str, float]], hours: int) -> tuple[str, s
         return None
     best = None
     for i in range(len(slots) - hours + 1):
-        window = slots[i:i + hours]
+        window = slots[i : i + hours]
         avg = sum(p for _, p in window) / hours
         if best is None or avg < best[2]:
             best = (slots[i][0], slots[i + hours - 1][0], avg)
@@ -47,7 +47,7 @@ def _priciest_window(slots: list[tuple[str, float]], hours: int) -> tuple[str, s
         return None
     worst = None
     for i in range(len(slots) - hours + 1):
-        window = slots[i:i + hours]
+        window = slots[i : i + hours]
         avg = sum(p for _, p in window) / hours
         if worst is None or avg > worst[2]:
             worst = (slots[i][0], slots[i + hours - 1][0], avg)
@@ -70,6 +70,7 @@ def build_telegram_message(db, area: str) -> str | None:
 
     # Aggregate to hourly slots (average over 15-min slots within each hour)
     from collections import defaultdict
+
     hour_prices: dict[int, list[float]] = defaultdict(list)
     for r in rows:
         ts = r.timestamp_utc
@@ -128,11 +129,14 @@ def send_telegram_alert(db, area: str = "SE3") -> dict:
     url = _TELEGRAM_API.format(token=settings.telegram_bot_token)
     try:
         with httpx.Client(timeout=10) as client:
-            resp = client.post(url, json={
-                "chat_id": settings.telegram_chat_id,
-                "text": message,
-                "parse_mode": "MarkdownV2",
-            })
+            resp = client.post(
+                url,
+                json={
+                    "chat_id": settings.telegram_chat_id,
+                    "text": message,
+                    "parse_mode": "MarkdownV2",
+                },
+            )
         resp.raise_for_status()
         log.info("Telegram alert sent for %s", area)
         return {"status": "ok", "area": area}
@@ -141,4 +145,57 @@ def send_telegram_alert(db, area: str = "SE3") -> dict:
         return {"status": "error", "reason": str(exc)}
     except Exception as exc:
         log.error("Telegram send failed: %s", exc)
+        return {"status": "error", "reason": str(exc)}
+
+
+def build_degradation_message(area: str, alert_data: dict) -> str:
+    """
+    Build Telegram MarkdownV2 message for model degradation alert.
+
+    alert_data: {mae_7d, mae_30d, ratio, threshold, degraded}
+    """
+    ratio_str = _escape(f"{alert_data['ratio']:.2f}")
+    mae_7d_str = _escape(f"{alert_data['mae_7d']:.4f}")
+    mae_30d_str = _escape(f"{alert_data['mae_30d']:.4f}")
+    threshold_str = _escape(f"{alert_data['threshold']:.1f}")
+
+    return "\n".join(
+        [
+            f"⚠️ *{_escape('Model Degradation Alert')}*",
+            f"🇸🇪 *{area}* LGBM",
+            f"7d MAE: *{mae_7d_str}* · 30d MAE: *{mae_30d_str}* SEK/kWh",
+            f"Ratio: *{ratio_str}×* \\(threshold: {threshold_str}×\\)",
+        ]
+    )
+
+
+def send_degradation_alert(area: str, alert_data: dict) -> dict:
+    """
+    Send model degradation alert to the configured Telegram chat.
+    Called by the daily pipeline when 7d MAE exceeds threshold × 30d MAE.
+    """
+    if not settings.telegram_bot_token or not settings.telegram_chat_id:
+        log.info("Telegram not configured — skipping degradation alert")
+        return {"status": "skipped", "reason": "not_configured"}
+
+    message = build_degradation_message(area, alert_data)
+    url = _TELEGRAM_API.format(token=settings.telegram_bot_token)
+    try:
+        with httpx.Client(timeout=10) as client:
+            resp = client.post(
+                url,
+                json={
+                    "chat_id": settings.telegram_chat_id,
+                    "text": message,
+                    "parse_mode": "MarkdownV2",
+                },
+            )
+        resp.raise_for_status()
+        log.info("Degradation alert sent for %s (ratio=%.2f)", area, alert_data["ratio"])
+        return {"status": "ok", "area": area, "ratio": alert_data["ratio"]}
+    except httpx.HTTPStatusError as exc:
+        log.error("Telegram degradation alert error %s: %s", exc.response.status_code, exc.response.text)
+        return {"status": "error", "reason": str(exc)}
+    except Exception as exc:
+        log.error("Telegram degradation alert failed: %s", exc)
         return {"status": "error", "reason": str(exc)}

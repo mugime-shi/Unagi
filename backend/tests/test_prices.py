@@ -17,6 +17,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.db.database import Base, get_db
 from app.main import app
+from app.models.forecast_accuracy import ForecastAccuracy  # noqa: F401 — register with Base for create_all
 from app.services.entsoe_client import EntsoEError, PricePoint
 from app.services.price_service import (
     _generate_fallback_prices,
@@ -44,6 +45,7 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 def setup_db():
     # Clear module-level in-memory caches so tests don't leak state
     from app.routers import prices as _prices_mod
+
     _prices_mod._cheapest_cache.clear()
 
     Base.metadata.create_all(engine)
@@ -78,6 +80,7 @@ def client(db):
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_point(hour: int, price_eur: float = 50.0) -> PricePoint:
     ts = datetime(2026, 3, 11, hour, 0, tzinfo=timezone.utc)
     return PricePoint(
@@ -91,6 +94,7 @@ def _make_point(hour: int, price_eur: float = 50.0) -> PricePoint:
 # ---------------------------------------------------------------------------
 # price_service unit tests
 # ---------------------------------------------------------------------------
+
 
 def test_upsert_prices_inserts_rows(db):
     points = [_make_point(h) for h in range(3)]
@@ -145,6 +149,7 @@ def test_get_or_fetch_prices_returns_db_data(db):
 # API endpoint tests
 # ---------------------------------------------------------------------------
 
+
 def test_get_today_prices_returns_200(client):
     response = client.get("/api/v1/prices/today")
     assert response.status_code == 200
@@ -195,6 +200,7 @@ def test_tomorrow_has_published_field(client):
 # range endpoint
 # ---------------------------------------------------------------------------
 
+
 def test_range_returns_200(client, db):
     upsert_prices(db, [_make_point(h) for h in range(24)], "SE3")
     resp = client.get("/api/v1/prices/range?start=2026-03-11&end=2026-03-11")
@@ -228,6 +234,7 @@ def test_range_empty_db_returns_empty_prices(client):
 # cheapest-hours endpoint
 # ---------------------------------------------------------------------------
 
+
 def test_cheapest_hours_returns_200(client):
     resp = client.get("/api/v1/prices/cheapest-hours?date=2026-03-11&duration=2")
     assert resp.status_code == 200
@@ -248,17 +255,20 @@ def test_cheapest_hours_finds_correct_window(client):
     # Use find_cheapest_window directly via the mock-data path (no ENTSO-E, no DB)
     # Mock prices: first 2 hours are cheap (0.11), rest expensive (1.10)
     from datetime import timedelta
+
     cheap_prices = []
     base = datetime(2026, 3, 10, 23, 0, tzinfo=timezone.utc)
     for h in range(24):
         price = 0.11 if h < 2 else 1.10
-        cheap_prices.append({
-            "timestamp_utc": (base + timedelta(hours=h)).isoformat(),
-            "price_sek_kwh": price,
-            "price_eur_mwh": round(price / 11 * 1000, 2),
-            "resolution": "PT60M",
-            "is_estimate": True,
-        })
+        cheap_prices.append(
+            {
+                "timestamp_utc": (base + timedelta(hours=h)).isoformat(),
+                "price_sek_kwh": price,
+                "price_eur_mwh": round(price / 11 * 1000, 2),
+                "resolution": "PT60M",
+                "is_estimate": True,
+            }
+        )
 
     with patch("app.routers.prices.get_or_fetch_prices", return_value=(cheap_prices, True)):
         data = client.get("/api/v1/prices/cheapest-hours?date=2026-03-11&duration=2").json()
@@ -270,6 +280,7 @@ def test_cheapest_hours_finds_correct_window(client):
 # ---------------------------------------------------------------------------
 # find_cheapest_window unit tests
 # ---------------------------------------------------------------------------
+
 
 def test_find_cheapest_window_returns_none_for_empty():
     assert find_cheapest_window([], 2) is None
@@ -289,12 +300,14 @@ def test_find_cheapest_window_picks_minimum():
 # CET/CEST timezone bucketing tests
 # ---------------------------------------------------------------------------
 
+
 def test_stockholm_timezone_cest_boundary():
     """
     22:00 UTC in summer (CEST = UTC+2) is midnight Stockholm → next calendar day.
     This verifies the fix over the old UTC+1 hardcoded offset.
     """
     from app.routers.prices import _to_stockholm_date
+
     # 2025-07-01 22:00 UTC = 2025-07-02 00:00 CEST  → 2025-07-02
     dt = datetime(2025, 7, 1, 22, 0, tzinfo=timezone.utc)
     assert _to_stockholm_date(dt) == date(2025, 7, 2)
@@ -309,6 +322,7 @@ def test_stockholm_timezone_cet_boundary():
     23:00 UTC in winter (CET = UTC+1) is midnight Stockholm → next calendar day.
     """
     from app.routers.prices import _to_stockholm_date
+
     # 2026-01-05 23:00 UTC = 2026-01-06 00:00 CET  → 2026-01-06
     dt = datetime(2026, 1, 5, 23, 0, tzinfo=timezone.utc)
     assert _to_stockholm_date(dt) == date(2026, 1, 6)
@@ -326,11 +340,15 @@ def test_history_cest_bucketing_via_endpoint(client, db):
     points = [
         PricePoint(
             timestamp_utc=datetime(2025, 7, 1, 21, 0, tzinfo=timezone.utc),
-            price_eur_mwh=50.0, price_sek_kwh=0.55, resolution="PT60M",
+            price_eur_mwh=50.0,
+            price_sek_kwh=0.55,
+            resolution="PT60M",
         ),
         PricePoint(
             timestamp_utc=datetime(2025, 7, 1, 22, 0, tzinfo=timezone.utc),
-            price_eur_mwh=60.0, price_sek_kwh=0.66, resolution="PT60M",
+            price_eur_mwh=60.0,
+            price_sek_kwh=0.66,
+            resolution="PT60M",
         ),
     ]
     upsert_prices(db, points)
@@ -352,6 +370,7 @@ def test_history_cest_bucketing_via_endpoint(client, db):
 #   Spring forward: 2025-03-30  (last Sunday in March)  — 01:00 UTC → 02:00 CET becomes 03:00 CEST
 #   Fall back:      2025-10-26  (last Sunday in October) — 01:00 UTC → 03:00 CEST becomes 02:00 CET
 # ---------------------------------------------------------------------------
+
 
 def test_dst_spring_forward_skips_nonexistent_hour():
     """
@@ -416,11 +435,7 @@ def test_dst_spring_forward_day_has_23_hourly_slots(client, db):
 
     response = client.get("/api/v1/prices/history?days=365")
     assert response.status_code == 200
-    by_date = {
-        d["date"]: d
-        for d in response.json()["daily"]
-        if d.get("avg_sek_kwh") is not None
-    }
+    by_date = {d["date"]: d for d in response.json()["daily"] if d.get("avg_sek_kwh") is not None}
 
     # Spring-forward day: only 23 of the 24 slots fall on Mar 30
     assert "2025-03-30" in by_date, "Spring-forward day must appear in history"
@@ -455,11 +470,7 @@ def test_dst_fall_back_day_has_25_hourly_slots(client, db):
 
     response = client.get("/api/v1/prices/history?days=365")
     assert response.status_code == 200
-    by_date = {
-        d["date"]: d
-        for d in response.json()["daily"]
-        if d.get("avg_sek_kwh") is not None
-    }
+    by_date = {d["date"]: d for d in response.json()["daily"] if d.get("avg_sek_kwh") is not None}
 
     # Fall-back day: 25 of the 26 slots fall on Oct 26 (23:00 UTC = midnight CET → Oct 27)
     assert "2025-10-26" in by_date, "Fall-back day must appear in history"
@@ -472,11 +483,12 @@ def test_dst_fall_back_day_has_25_hourly_slots(client, db):
 # /multi-zone tests
 # ---------------------------------------------------------------------------
 
+
 def _make_point_area(hour: int, area: str, price_sek: float) -> PricePoint:
     """Helper: PricePoint for a specific area and price, on 2026-03-11."""
     ts = datetime(2026, 3, 10, 23 + hour % 24, 0, tzinfo=timezone.utc)  # CET date = 2026-03-11
     return PricePoint(
-        timestamp_utc=datetime(2026, 3, 10, 23, 0, tzinfo=timezone.utc) + __import__('datetime').timedelta(hours=hour),
+        timestamp_utc=datetime(2026, 3, 10, 23, 0, tzinfo=timezone.utc) + __import__("datetime").timedelta(hours=hour),
         price_eur_mwh=price_sek * 1000 / 11,
         price_sek_kwh=price_sek,
         resolution="PT60M",
@@ -497,19 +509,27 @@ def test_multi_zone_structure(client, db):
 
 def test_multi_zone_data_per_area(client, db):
     """Multi-zone endpoint returns correct daily averages for each area independently."""
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timezone
 
     today = datetime.now(timezone.utc).date()
     # Insert 1 price for today in SE1 (price 0.20) and SE4 (price 0.80)
     # Use 08:00 UTC = 09:00 CET (within today's Stockholm calendar day)
     ts = datetime(today.year, today.month, today.day, 8, 0, tzinfo=timezone.utc)
 
-    upsert_prices(db, [
-        PricePoint(timestamp_utc=ts, price_eur_mwh=18.18, price_sek_kwh=0.20, resolution="PT60M"),
-    ], area="SE1")
-    upsert_prices(db, [
-        PricePoint(timestamp_utc=ts, price_eur_mwh=72.72, price_sek_kwh=0.80, resolution="PT60M"),
-    ], area="SE4")
+    upsert_prices(
+        db,
+        [
+            PricePoint(timestamp_utc=ts, price_eur_mwh=18.18, price_sek_kwh=0.20, resolution="PT60M"),
+        ],
+        area="SE1",
+    )
+    upsert_prices(
+        db,
+        [
+            PricePoint(timestamp_utc=ts, price_eur_mwh=72.72, price_sek_kwh=0.80, resolution="PT60M"),
+        ],
+        area="SE4",
+    )
 
     response = client.get("/api/v1/prices/multi-zone?days=7")
     assert response.status_code == 200
@@ -537,9 +557,10 @@ def test_multi_zone_days_validation(client):
 # 6.5 Forecast endpoint & build_forecast()
 # ---------------------------------------------------------------------------
 
+
 def test_forecast_structure(client):
     """GET /forecast returns expected shape with 24 hourly slots."""
-    tomorrow = (datetime.now(timezone.utc).date() + __import__('datetime').timedelta(days=1)).isoformat()
+    tomorrow = (datetime.now(timezone.utc).date() + __import__("datetime").timedelta(days=1)).isoformat()
     response = client.get(f"/api/v1/prices/forecast?date={tomorrow}")
     assert response.status_code == 200
     body = response.json()
@@ -563,9 +584,13 @@ def test_forecast_with_historical_data(client, db):
         # Insert hourly data for hour 10 Stockholm time (= UTC 9:00 in CET)
         ts = datetime(past_date.year, past_date.month, past_date.day, 9, 0, tzinfo=timezone.utc)
         price = 0.30 + weeks_ago * 0.10  # 0.40, 0.50
-        upsert_prices(db, [
-            PricePoint(timestamp_utc=ts, price_eur_mwh=price * 100, price_sek_kwh=price, resolution="PT60M"),
-        ], area="SE3")
+        upsert_prices(
+            db,
+            [
+                PricePoint(timestamp_utc=ts, price_eur_mwh=price * 100, price_sek_kwh=price, resolution="PT60M"),
+            ],
+            area="SE3",
+        )
 
     response = client.get(f"/api/v1/prices/forecast?date={tomorrow.isoformat()}&area=SE3")
     assert response.status_code == 200
@@ -579,7 +604,7 @@ def test_forecast_with_historical_data(client, db):
 
 def test_forecast_no_data_returns_nulls(client):
     """When no historical data exists, all slots return null."""
-    tomorrow = (datetime.now(timezone.utc).date() + __import__('datetime').timedelta(days=1)).isoformat()
+    tomorrow = (datetime.now(timezone.utc).date() + __import__("datetime").timedelta(days=1)).isoformat()
     response = client.get(f"/api/v1/prices/forecast?date={tomorrow}&area=SE1")
     assert response.status_code == 200
     body = response.json()
@@ -589,7 +614,7 @@ def test_forecast_no_data_returns_nulls(client):
 
 def test_forecast_weeks_validation(client):
     """weeks parameter must be between 2 and 16."""
-    tomorrow = (datetime.now(timezone.utc).date() + __import__('datetime').timedelta(days=1)).isoformat()
+    tomorrow = (datetime.now(timezone.utc).date() + __import__("datetime").timedelta(days=1)).isoformat()
     assert client.get(f"/api/v1/prices/forecast?date={tomorrow}&weeks=1").status_code == 422
     assert client.get(f"/api/v1/prices/forecast?date={tomorrow}&weeks=17").status_code == 422
     assert client.get(f"/api/v1/prices/forecast?date={tomorrow}&weeks=4").status_code == 200
@@ -603,9 +628,13 @@ def test_build_forecast_band_ordering(db):
     for weeks_ago in range(1, 5):
         past = tomorrow - timedelta(weeks=weeks_ago)
         ts = datetime(past.year, past.month, past.day, 8, 0, tzinfo=timezone.utc)
-        upsert_prices(db, [
-            PricePoint(timestamp_utc=ts, price_eur_mwh=50.0, price_sek_kwh=0.1 * weeks_ago, resolution="PT60M"),
-        ], area="SE3")
+        upsert_prices(
+            db,
+            [
+                PricePoint(timestamp_utc=ts, price_eur_mwh=50.0, price_sek_kwh=0.1 * weeks_ago, resolution="PT60M"),
+            ],
+            area="SE3",
+        )
 
     rows = get_prices_for_date_range(db, tomorrow - timedelta(weeks=8), tomorrow - timedelta(days=1), area="SE3")
     result = build_forecast(rows, tomorrow)
@@ -613,3 +642,251 @@ def test_build_forecast_band_ordering(db):
         if s["avg_sek_kwh"] is not None:
             assert s["low_sek_kwh"] <= s["avg_sek_kwh"]
             assert s["avg_sek_kwh"] <= s["high_sek_kwh"]
+
+
+# ---------------------------------------------------------------------------
+# Coverage rate tests
+# ---------------------------------------------------------------------------
+
+
+def _insert_forecast_row(db, target_date, hour, predicted, actual, low=None, high=None, model="lgbm"):
+    """Helper: insert a forecast_accuracy row with optional interval bounds."""
+    from sqlalchemy import text
+
+    db.execute(
+        text("""
+        INSERT INTO forecast_accuracy
+            (target_date, area, model_name, hour, predicted_sek_kwh,
+             predicted_low_sek_kwh, predicted_high_sek_kwh, actual_sek_kwh)
+        VALUES (:date, 'SE3', :model, :hour, :predicted, :low, :high, :actual)
+        ON CONFLICT (target_date, area, model_name, hour)
+        DO UPDATE SET
+            predicted_sek_kwh = EXCLUDED.predicted_sek_kwh,
+            predicted_low_sek_kwh = EXCLUDED.predicted_low_sek_kwh,
+            predicted_high_sek_kwh = EXCLUDED.predicted_high_sek_kwh,
+            actual_sek_kwh = EXCLUDED.actual_sek_kwh
+        """),
+        {
+            "date": target_date,
+            "model": model,
+            "hour": hour,
+            "predicted": predicted,
+            "low": low,
+            "high": high,
+            "actual": actual,
+        },
+    )
+    db.commit()
+
+
+class TestCoverageRate:
+    def test_coverage_perfect(self, db):
+        """All actuals within [low, high] → 100% coverage."""
+        from app.services.backtest_service import get_coverage_rate
+
+        today = date.today()
+        for h in range(24):
+            _insert_forecast_row(db, today, h, predicted=0.50, actual=0.50, low=0.30, high=0.70)
+
+        result = get_coverage_rate(db, area="SE3", days=7)
+        assert result["coverage_pct"] == 100.0
+        assert result["n_samples"] == 24
+
+    def test_coverage_zero(self, db):
+        """All actuals outside [low, high] → 0% coverage."""
+        from app.services.backtest_service import get_coverage_rate
+
+        today = date.today()
+        for h in range(24):
+            _insert_forecast_row(db, today, h, predicted=0.50, actual=1.00, low=0.30, high=0.70)
+
+        result = get_coverage_rate(db, area="SE3", days=7)
+        assert result["coverage_pct"] == 0.0
+        assert result["n_samples"] == 24
+
+    def test_coverage_partial(self, db):
+        """Half actuals inside → 50% coverage."""
+        from app.services.backtest_service import get_coverage_rate
+
+        today = date.today()
+        for h in range(12):
+            _insert_forecast_row(db, today, h, predicted=0.50, actual=0.50, low=0.30, high=0.70)
+        for h in range(12, 24):
+            _insert_forecast_row(db, today, h, predicted=0.50, actual=1.00, low=0.30, high=0.70)
+
+        result = get_coverage_rate(db, area="SE3", days=7)
+        assert result["coverage_pct"] == 50.0
+        assert result["n_samples"] == 24
+        assert result["calibration_error"] == -30.0
+
+    def test_coverage_null_intervals_excluded(self, db):
+        """Rows without low/high are excluded from coverage calculation."""
+        from app.services.backtest_service import get_coverage_rate
+
+        today = date.today()
+        # With interval
+        _insert_forecast_row(db, today, 0, predicted=0.50, actual=0.50, low=0.30, high=0.70)
+        # Without interval (same_weekday_avg pattern)
+        _insert_forecast_row(db, today, 1, predicted=0.50, actual=0.50, low=None, high=None)
+
+        result = get_coverage_rate(db, area="SE3", days=7)
+        assert result["n_samples"] == 1
+        assert result["coverage_pct"] == 100.0
+
+    def test_coverage_empty_db(self, db):
+        """No data → n_samples=0, coverage_pct=None."""
+        from app.services.backtest_service import get_coverage_rate
+
+        result = get_coverage_rate(db, area="SE3", days=7)
+        assert result["n_samples"] == 0
+        assert result["coverage_pct"] is None
+
+    def test_coverage_api_endpoint(self, client, db):
+        """GET /prices/forecast/accuracy/coverage returns correct format."""
+        today = date.today()
+        for h in range(24):
+            _insert_forecast_row(db, today, h, predicted=0.50, actual=0.50, low=0.30, high=0.70)
+
+        resp = client.get("/api/v1/prices/forecast/accuracy/coverage?area=SE3&days=7")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["area"] == "SE3"
+        assert data["coverage_pct"] == 100.0
+        assert data["expected_pct"] == 80.0
+        assert "n_samples" in data
+
+    def test_record_predictions_with_intervals(self, db):
+        """record_predictions saves low/high when present in slots."""
+        from app.services.backtest_service import record_predictions
+
+        slots = [
+            {"hour": 0, "avg_sek_kwh": 0.50, "low_sek_kwh": 0.30, "high_sek_kwh": 0.70},
+            {"hour": 1, "avg_sek_kwh": 0.60, "low_sek_kwh": 0.40, "high_sek_kwh": 0.80},
+        ]
+        n = record_predictions(db, date.today(), "SE3", "lgbm", slots)
+        assert n == 2
+
+        rows = db.query(ForecastAccuracy).all()
+        assert len(rows) == 2
+        assert float(rows[0].predicted_low_sek_kwh) == 0.30
+        assert float(rows[0].predicted_high_sek_kwh) == 0.70
+
+    def test_record_predictions_without_intervals(self, db):
+        """record_predictions handles missing low/high (same_weekday_avg)."""
+        from app.services.backtest_service import record_predictions
+
+        slots = [{"hour": 0, "avg_sek_kwh": 0.50}]
+        n = record_predictions(db, date.today(), "SE3", "same_weekday_avg", slots)
+        assert n == 1
+
+        row = db.query(ForecastAccuracy).first()
+        assert row.predicted_low_sek_kwh is None
+        assert row.predicted_high_sek_kwh is None
+
+
+# ---------------------------------------------------------------------------
+# Model degradation tests
+# ---------------------------------------------------------------------------
+
+
+class TestModelDegradation:
+    def _fill_accuracy_data(self, db, days, mae_per_hour):
+        """Helper: fill forecast_accuracy with controlled MAE data."""
+        from datetime import timedelta
+
+        today = date.today()
+        for d in range(days):
+            target = today - timedelta(days=d)
+            for h in range(24):
+                _insert_forecast_row(
+                    db,
+                    target,
+                    h,
+                    predicted=0.50,
+                    actual=0.50 + mae_per_hour,
+                    low=0.30,
+                    high=0.70,
+                )
+
+    def test_degradation_no_data(self, db):
+        """No forecast data → None."""
+        from app.services.backtest_service import check_model_degradation
+
+        result = check_model_degradation(db, area="SE3")
+        assert result is None
+
+    def test_degradation_healthy(self, db):
+        """Stable MAE across 7d and 30d → degraded=False."""
+        from app.services.backtest_service import check_model_degradation
+
+        self._fill_accuracy_data(db, 30, mae_per_hour=0.10)
+        result = check_model_degradation(db, area="SE3")
+        assert result is not None
+        assert result["degraded"] is False
+        assert result["ratio"] <= 1.5
+
+    def test_degradation_detected(self, db):
+        """7d MAE >> 30d MAE → degraded=True."""
+        from datetime import timedelta
+
+        from app.services.backtest_service import check_model_degradation
+
+        today = date.today()
+        # 30 days of low MAE
+        for d in range(30):
+            target = today - timedelta(days=d)
+            for h in range(24):
+                actual = 0.55 if d < 7 else 0.52
+                _insert_forecast_row(db, target, h, predicted=0.50, actual=actual, low=0.30, high=0.70)
+
+        result = check_model_degradation(db, area="SE3")
+        assert result is not None
+        # 7d MAE (0.05) vs 30d MAE (~0.025) → ratio ~2.0
+        assert result["degraded"] is True
+        assert result["ratio"] > 1.5
+
+    def test_degradation_threshold_boundary(self, db):
+        """Exactly at threshold → degraded=False (strict >)."""
+        from app.services.backtest_service import check_model_degradation
+
+        # Same MAE everywhere → ratio 1.0
+        self._fill_accuracy_data(db, 30, mae_per_hour=0.10)
+        result = check_model_degradation(db, area="SE3")
+        assert result is not None
+        assert result["degraded"] is False
+
+    def test_degradation_minimum_samples(self, db):
+        """Less than 48 samples in 7d → None (insufficient data)."""
+        from datetime import timedelta
+
+        from app.services.backtest_service import check_model_degradation
+
+        today = date.today()
+        # Only 1 day of data (24 samples < 48 minimum)
+        for h in range(24):
+            _insert_forecast_row(db, today, h, predicted=0.50, actual=0.60, low=0.30, high=0.70)
+        # Add some old data for 30d
+        for d in range(8, 30):
+            target = today - timedelta(days=d)
+            for h in range(24):
+                _insert_forecast_row(db, target, h, predicted=0.50, actual=0.55, low=0.30, high=0.70)
+
+        result = check_model_degradation(db, area="SE3")
+        assert result is None
+
+    def test_degradation_alert_message_format(self):
+        """Telegram degradation message contains expected fields."""
+        from app.services.telegram_service import build_degradation_message
+
+        alert_data = {
+            "mae_7d": 0.3500,
+            "mae_30d": 0.2000,
+            "ratio": 1.75,
+            "threshold": 1.5,
+            "degraded": True,
+        }
+        msg = build_degradation_message("SE3", alert_data)
+        assert "Model Degradation Alert" in msg
+        assert "SE3" in msg
+        assert "LGBM" in msg
+        assert "1\\.75" in msg  # escaped for MarkdownV2

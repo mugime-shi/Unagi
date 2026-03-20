@@ -10,9 +10,10 @@ TRIALS=100
 parse_flags() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --days)   DAYS="$2";   shift 2 ;;
-            --area)   AREA="$2";   shift 2 ;;
-            --trials) TRIALS="$2"; shift 2 ;;
+            --days)   DAYS="$2";        shift 2 ;;
+            --area)   AREA="$2";        shift 2 ;;
+            --trials) TRIALS="$2";      shift 2 ;;
+            --date)   TARGET_DATE="$2"; shift 2 ;;
             *) echo "Unknown flag: $1" >&2; exit 1 ;;
         esac
     done
@@ -69,6 +70,11 @@ cmd_features() {
     python -m scripts.build_feature_matrix --days "$DAYS" --area "$AREA" --csv
 }
 
+cmd_ablation_gas() {
+    parse_flags "$@"
+    python -m scripts.ablation_gas --days "$DAYS" --area "$AREA"
+}
+
 cmd_smoke() {
     python scripts/fetch_prices_smoke.py
 }
@@ -85,9 +91,16 @@ cmd_lambda_backfill() {
 }
 
 cmd_lambda_predict() {
-    aws lambda invoke --function-name namazu-scheduler \
-        --payload '{"predict_only": true}' \
-        --cli-binary-format raw-in-base64-out /dev/stdout
+    parse_flags "$@"
+    if [[ -n "${TARGET_DATE:-}" ]]; then
+        aws lambda invoke --function-name namazu-scheduler \
+            --payload "{\"predict_only\": true, \"target_date\": \"$TARGET_DATE\"}" \
+            --cli-binary-format raw-in-base64-out /dev/stdout
+    else
+        aws lambda invoke --function-name namazu-scheduler \
+            --payload '{"predict_only": true}' \
+            --cli-binary-format raw-in-base64-out /dev/stdout
+    fi
 }
 
 # ── Help ─────────────────────────────────────────────────────
@@ -107,6 +120,7 @@ Data:
 
 ML:
   backtest [--days N] [--area]  LightGBM vs baseline comparison
+  ablation-gas [--days N]       Gas feature ON/OFF comparison (A/B test)
   sweep [--days N] [--area]     Training window size optimization
   tune [--trials N] [--area]    Optuna hyperparameter tuning
   features [--days N] [--area]  Build feature matrix (CSV to stdout)
@@ -117,12 +131,13 @@ Diagnostics:
 
 Lambda (requires AWS credentials):
   lambda-backfill [--days N]    Invoke scheduler Lambda for backfill
-  lambda-predict                Prediction-only run
+  lambda-predict [--date D]     Prediction-only run (default: tomorrow)
 
 Flags:
   --days N      Number of days (default: 30)
   --area CODE   Price area SE1-SE4 (default: SE3)
   --trials N    Optuna trials (default: 100)
+  --date D      Target date YYYY-MM-DD (lambda-predict only)
 EOF
 }
 
@@ -138,6 +153,7 @@ case "$command" in
     backfill-de)    cmd_backfill_de "$@" ;;
     backfill-gas)   cmd_backfill_gas "$@" ;;
     backtest)       cmd_backtest "$@" ;;
+    ablation-gas)   cmd_ablation_gas "$@" ;;
     sweep)          cmd_sweep "$@" ;;
     tune)           cmd_tune "$@" ;;
     features)       cmd_features "$@" ;;

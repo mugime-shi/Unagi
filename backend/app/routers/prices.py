@@ -15,6 +15,7 @@ def _to_stockholm_date(dt_utc: datetime) -> date:
         dt_utc = dt_utc.replace(tzinfo=timezone.utc)
     return dt_utc.astimezone(_STOCKHOLM).date()
 
+
 from app.db.database import get_db
 from app.services.balancing_service import fetch_and_store_balancing, get_balancing_for_date
 from app.services.esett_client import BalancingError
@@ -143,31 +144,36 @@ def get_price_range(
 
     # Group rows by Stockholm local date (CET in winter, CEST in summer)
     from collections import defaultdict
+
     by_date: dict[date, list[dict]] = defaultdict(list)
     for r in rows:
         cet_date = _to_stockholm_date(r.timestamp_utc)
-        by_date[cet_date].append({
-            "timestamp_utc": r.timestamp_utc.isoformat(),
-            "price_eur_mwh": float(r.price_eur_mwh),
-            "price_sek_kwh": float(r.price_sek_kwh),
-            "resolution": r.resolution,
-        })
+        by_date[cet_date].append(
+            {
+                "timestamp_utc": r.timestamp_utc.isoformat(),
+                "price_eur_mwh": float(r.price_eur_mwh),
+                "price_sek_kwh": float(r.price_sek_kwh),
+                "resolution": r.resolution,
+            }
+        )
 
     dates_out = []
     cur = start
     while cur <= end:
         day_prices = by_date.get(cur, [])
         sek_values = [p["price_sek_kwh"] for p in day_prices]
-        dates_out.append({
-            "date": cur.isoformat(),
-            "count": len(day_prices),
-            "summary": {
-                "min_sek_kwh": round(min(sek_values), 4) if sek_values else None,
-                "max_sek_kwh": round(max(sek_values), 4) if sek_values else None,
-                "avg_sek_kwh": round(sum(sek_values) / len(sek_values), 4) if sek_values else None,
-            },
-            "prices": day_prices,
-        })
+        dates_out.append(
+            {
+                "date": cur.isoformat(),
+                "count": len(day_prices),
+                "summary": {
+                    "min_sek_kwh": round(min(sek_values), 4) if sek_values else None,
+                    "max_sek_kwh": round(max(sek_values), 4) if sek_values else None,
+                    "avg_sek_kwh": round(sum(sek_values) / len(sek_values), 4) if sek_values else None,
+                },
+                "prices": day_prices,
+            }
+        )
         cur += timedelta(days=1)
 
     return {
@@ -196,6 +202,7 @@ def get_price_history(
     rows = get_prices_for_date_range(db, start, today, area=area)
 
     from collections import defaultdict
+
     by_date: dict[date, list[float]] = defaultdict(list)
     for r in rows:
         cet_date = _to_stockholm_date(r.timestamp_utc)
@@ -205,12 +212,14 @@ def get_price_history(
     cur = start
     while cur <= today:
         vals = by_date.get(cur)
-        daily.append({
-            "date": cur.isoformat(),
-            "avg_sek_kwh": round(sum(vals) / len(vals), 4) if vals else None,
-            "min_sek_kwh": round(min(vals), 4) if vals else None,
-            "max_sek_kwh": round(max(vals), 4) if vals else None,
-        })
+        daily.append(
+            {
+                "date": cur.isoformat(),
+                "avg_sek_kwh": round(sum(vals) / len(vals), 4) if vals else None,
+                "min_sek_kwh": round(min(vals), 4) if vals else None,
+                "max_sek_kwh": round(max(vals), 4) if vals else None,
+            }
+        )
         cur += timedelta(days=1)
 
     return {
@@ -251,10 +260,12 @@ def get_multi_zone_history(
         cur = start
         while cur <= today:
             vals = by_date.get(cur)
-            daily.append({
-                "date": cur.isoformat(),
-                "avg_sek_kwh": round(sum(vals) / len(vals), 4) if vals else None,
-            })
+            daily.append(
+                {
+                    "date": cur.isoformat(),
+                    "avg_sek_kwh": round(sum(vals) / len(vals), 4) if vals else None,
+                }
+            )
             cur += timedelta(days=1)
         zones[area] = daily
 
@@ -345,6 +356,7 @@ def get_price_forecast(
 
     if model_name == "lgbm":
         from app.services.ml_forecast_service import build_lgbm_forecast
+
         result = build_lgbm_forecast(db, date, area=area)
         extra = {}
     else:
@@ -367,6 +379,7 @@ def get_price_forecast(
     # Optionally record predictions for backtest accuracy scoring
     if record and result.get("slots"):
         from app.services.backtest_service import record_predictions
+
         record_predictions(db, date, area, model_name, result["slots"])
 
     return {
@@ -396,6 +409,7 @@ def get_forecast_accuracy(
         raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
 
     from app.services.backtest_service import get_accuracy
+
     results = get_accuracy(db, area, model_name=model, days=days)
 
     return {
@@ -423,6 +437,7 @@ def get_forecast_accuracy_breakdown(
         raise HTTPException(status_code=422, detail="'by' must be 'hour' or 'weekday'")
 
     from app.services.backtest_service import get_accuracy_breakdown
+
     results = get_accuracy_breakdown(db, area, days=days, by=by)
 
     return {
@@ -430,6 +445,36 @@ def get_forecast_accuracy_breakdown(
         "days": days,
         "by": by,
         "models": results,
+    }
+
+
+@router.get("/forecast/accuracy/coverage")
+def get_forecast_coverage(
+    db: DbDep,
+    area: AreaDep = "SE3",
+    days: int = Query(30, ge=1, le=365, description="Look-back window in days"),
+):
+    """
+    Prediction interval coverage rate for the LGBM model.
+
+    Measures what percentage of actual prices fall within the predicted
+    80% confidence interval (p10-p90 quantile bounds). A well-calibrated
+    model should achieve ~80% coverage.
+
+    Requires prediction intervals to have been recorded via record_predictions().
+    Returns n_samples=0 if no interval data is available yet.
+    """
+    if area not in VALID_AREAS:
+        raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
+
+    from app.services.backtest_service import get_coverage_rate
+
+    result = get_coverage_rate(db, area=area, days=days)
+
+    return {
+        "area": area,
+        "days": days,
+        **result,
     }
 
 
@@ -449,6 +494,7 @@ def get_forecast_retrospective(
         raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
 
     from app.services.backtest_service import get_retrospective
+
     result = get_retrospective(db, date, area)
 
     return {
@@ -503,15 +549,15 @@ def get_balancing_prices(
                     detail=f"No balancing price data for {date}: {exc}",
                 )
 
-    long_prices  = []
+    long_prices = []
     short_prices = []
     for r in rows:
         entry = {
             "timestamp_utc": r.timestamp_utc.isoformat(),
             "price_eur_mwh": float(r.price_eur_mwh),
             "price_sek_kwh": float(r.price_sek_kwh),
-            "resolution":    r.resolution,
-            "category":      r.category,
+            "resolution": r.resolution,
+            "category": r.category,
         }
         if r.category == "A04":
             long_prices.append(entry)
@@ -519,13 +565,13 @@ def get_balancing_prices(
             short_prices.append(entry)
 
     all_prices = long_prices + short_prices
-    sek_vals   = [p["price_sek_kwh"] for p in all_prices]
+    sek_vals = [p["price_sek_kwh"] for p in all_prices]
 
     return {
-        "area":     area,
-        "date":     date.isoformat(),
+        "area": area,
+        "date": date.isoformat(),
         "currency": "SEK/kWh",
-        "source":   "eSett EXP14",
+        "source": "eSett EXP14",
         "note": (
             "Long (A04) = down-regulation price, typically ≤ day-ahead. "
             "Short (A05) = up-regulation price, can spike far above day-ahead."
@@ -536,7 +582,7 @@ def get_balancing_prices(
             "max_sek_kwh": round(max(sek_vals), 4) if sek_vals else None,
             "avg_sek_kwh": round(sum(sek_vals) / len(sek_vals), 4) if sek_vals else None,
         },
-        "long":  long_prices,
+        "long": long_prices,
         "short": short_prices,
     }
 
@@ -550,6 +596,7 @@ def get_exchange_rate():
     Falls back to 11.0 on API failure.
     """
     from app.services.riksbank_client import fetch_eur_sek_rate
+
     rate, pub_date = fetch_eur_sek_rate()
     return {
         "pair": "EUR/SEK",

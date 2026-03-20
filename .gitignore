@@ -50,3 +50,9 @@ IDEAS.md
 
 # Environment helpers
 .envrc
+
+# Claude Code
+.claude/
+
+# Original brief
+PROJECT_BRIEF_ORIGINAL.md

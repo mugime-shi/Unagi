@@ -23,6 +23,8 @@ class ForecastAccuracy(Base):
     model_name: Mapped[str] = mapped_column(String(30), nullable=False)
     hour: Mapped[int] = mapped_column(Integer, nullable=False)  # 0-23 Stockholm hour
     predicted_sek_kwh: Mapped[float] = mapped_column(Numeric(10, 4), nullable=False)
+    predicted_low_sek_kwh: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
+    predicted_high_sek_kwh: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
     actual_sek_kwh: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -32,7 +34,10 @@ class ForecastAccuracy(Base):
 
     __table_args__ = (
         UniqueConstraint(
-            "target_date", "area", "model_name", "hour",
+            "target_date",
+            "area",
+            "model_name",
+            "hour",
             name="uq_forecast_accuracy",
         ),
         Index("idx_forecast_accuracy_date_area", "target_date", "area"),
