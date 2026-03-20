@@ -96,30 +96,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
-      <header className="border-b border-gray-800 px-4 sm:px-6 py-4 flex items-center gap-3 flex-wrap">
+      <header className="border-b border-gray-800 px-4 sm:px-6 py-4 flex items-center gap-3">
         <span className="text-xl font-bold tracking-tight">Namazu</span>
-        <span className="text-gray-500 text-sm">
-          {area} · {areaCity}
-        </span>
-
-        {/* Area selector */}
-        <div className="flex gap-1">
-          {AREAS.map(({ id, label }) => (
-            <button
-              key={id}
-              onClick={() => setArea(id)}
-              className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                area === id
-                  ? "bg-indigo-600 text-white"
-                  : "text-gray-500 hover:text-gray-300 border border-gray-700"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <NotificationBell area={area} />
 
         {/* Layer selector */}
         <nav className="ml-auto flex gap-1">
@@ -141,9 +119,30 @@ export default function App() {
             </button>
           ))}
         </nav>
+
+        <NotificationBell area={area} />
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-6 space-y-4">
+        {/* Area selector — global, visible on all layers */}
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1">
+            {AREAS.map(({ id, label }) => (
+              <button
+                key={id}
+                onClick={() => setArea(id)}
+                className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                  area === id
+                    ? "bg-sky-600 text-white"
+                    : "text-gray-500 hover:text-gray-300 border border-gray-700"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <span className="text-gray-500 text-sm">· {areaCity}</span>
+        </div>
         {/* ── Layer 1: Prices ── */}
         {layer === "prices" && (
           <>
@@ -155,7 +154,7 @@ export default function App() {
                   onClick={() => setDay(d)}
                   className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
                     day === d
-                      ? "bg-blue-600 text-white"
+                      ? "bg-sky-600 text-white"
                       : "bg-gray-800 text-gray-400 hover:bg-gray-700"
                   }`}
                 >

@@ -18,7 +18,7 @@ import { useIsMobile } from "../hooks/useIsMobile";
 const NOW_HOUR = currentCETHour();
 
 // Unified prediction colors
-const PRED_WEEKDAY_COLOR = "#a78bfa"; // violet-400
+const PRED_WEEKDAY_COLOR = "#9ca3af"; // gray-400
 const PRED_LGBM_COLOR = "#fbbf24"; // amber-400 — complementary to blue DA
 
 function priceColor(sek) {
@@ -27,19 +27,43 @@ function priceColor(sek) {
   return "#ef4444"; // red — expensive
 }
 
-function CustomDot({ cx, cy, payload }) {
-  const hour = parseInt(toLocalHour(payload.timestamp_utc).split(":")[0], 10);
-  if (hour !== NOW_HOUR) return null;
+function NowPriceLabel({ viewBox, value }) {
+  if (!viewBox) return null;
+  const { x, y } = viewBox;
+  const text = value.toFixed(2);
+  const w = text.length * 7 + 8;
+  const h = 18;
+  const offsetY = 14;
   return (
-    <circle
-      cx={cx}
-      cy={cy}
-      r={6}
-      fill="#60a5fa"
-      stroke="#1e40af"
-      strokeWidth={2}
-    />
+    <g>
+      <rect
+        x={x - w / 2}
+        y={y - h - offsetY}
+        width={w}
+        height={h}
+        rx={4}
+        fill="#1e293b"
+        fillOpacity={0.9}
+        stroke="#475569"
+        strokeWidth={0.5}
+      />
+      <text
+        x={x}
+        y={y - h - offsetY + h / 2 + 1}
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fill="#cbd5e1"
+        fontSize={11}
+        fontWeight={600}
+      >
+        {text}
+      </text>
+    </g>
   );
+}
+
+function CustomDot() {
+  return null;
 }
 
 function CustomTooltip({ active, payload, label, showDetail }) {
@@ -75,7 +99,7 @@ function CustomTooltip({ active, payload, label, showDetail }) {
         </p>
       )}
       {showDetail && p.forecast_low != null && (
-        <p className="text-indigo-400 text-xs mt-1">
+        <p className="text-gray-400 text-xs mt-1">
           Weekday Avg {p.forecast_low.toFixed(2)}–
           {(p.forecast_low + p.forecast_band).toFixed(2)}
         </p>
@@ -90,9 +114,9 @@ function CustomTooltip({ active, payload, label, showDetail }) {
         <div className="mt-1 pt-1 border-t border-gray-700 text-xs">
           <p className="text-gray-500">Prediction:</p>
           {showDetail && p.forecast_avg != null && p.price_sek_kwh > 0 && (
-            <p className="text-violet-400">
+            <p className="text-gray-400">
               Weekday Avg {p.forecast_avg.toFixed(2)}
-              <span className="ml-1 text-violet-500">
+              <span className="ml-1 text-gray-500">
                 (err {((p.forecast_avg - p.price_sek_kwh) * 100).toFixed(1)}{" "}
                 öre)
               </span>
@@ -233,12 +257,12 @@ export function PriceChart({
     if (hasBalancing) domainKeys.push("imb_short", "imb_long");
     if (forecast) domainKeys.push("forecast_top");
   }
-  const { domain, spikes } = computeClippedDomain(chartData, domainKeys);
+  const { domain } = computeClippedDomain(chartData, domainKeys);
 
-  // Only show the single highest spike annotation to avoid label overlap
-  const maxSpike = spikes
-    .filter((s) => s.key === "price_sek_kwh")
-    .sort((a, b) => b.value - a.value)[0];
+  // Current hour data point for price annotation
+  const nowEntry = chartData.find(
+    (d) => parseInt(d.hour.split(":")[0], 10) === NOW_HOUR,
+  );
 
   const chartHeight = isMobile ? 300 : 350;
 
@@ -296,7 +320,7 @@ export function PriceChart({
             )}
             {showDetail && forecast && (
               <span className="flex items-center gap-1.5">
-                <span className="inline-block w-5 border-t-2 border-dashed border-violet-400" />
+                <span className="inline-block w-5 border-t-2 border-dashed border-gray-400" />
                 Weekday Avg
               </span>
             )}
@@ -306,7 +330,7 @@ export function PriceChart({
               onClick={() => setShowDetail((v) => !v)}
               className={`text-xs px-2.5 py-0.5 rounded-full border transition-colors ${
                 showDetail
-                  ? "border-indigo-600 text-indigo-400 bg-indigo-900/20"
+                  ? "border-sky-600 text-sky-400 bg-sky-900/20"
                   : "border-gray-700 text-gray-500 hover:text-gray-400"
               }`}
             >
@@ -319,7 +343,7 @@ export function PriceChart({
       <ResponsiveContainer width="100%" height={chartHeight}>
         <ComposedChart
           data={chartData}
-          margin={{ top: 8, right: 16, left: 0, bottom: 24 }}
+          margin={{ top: 20, right: 16, left: 0, bottom: 24 }}
         >
           <CartesianGrid
             strokeDasharray="3 3"
@@ -461,20 +485,20 @@ export function PriceChart({
             />
           )}
 
-          {/* Single spike annotation for the highest clipped value */}
-          {maxSpike && (
+          {/* Current price annotation with background for readability */}
+          {nowEntry && (
             <ReferenceDot
-              x={maxSpike.hour}
-              y={domain[1]}
+              x={nowEntry.hour}
+              y={nowEntry.price_sek_kwh}
               yAxisId="price"
               r={0}
               isFront
-              label={{
-                value: `▲${maxSpike.value.toFixed(2)}`,
-                position: "top",
-                fill: "#ef4444",
-                fontSize: 10,
-              }}
+              label={
+                <NowPriceLabel
+                  value={nowEntry.price_sek_kwh}
+                  viewBox={undefined}
+                />
+              }
             />
           )}
         </ComposedChart>
