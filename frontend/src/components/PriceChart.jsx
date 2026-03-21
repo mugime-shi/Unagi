@@ -33,12 +33,16 @@ function NowPriceLabel({ viewBox, value }) {
   const text = value.toFixed(2);
   const w = text.length * 7 + 8;
   const h = 18;
-  const offsetY = 14;
+  const dotR = 5;
+  const gap = 8;
+  // Place label below the dot when there's not enough space above
+  const placeBelow = y - dotR - gap < h;
+  const rectY = placeBelow ? y + dotR + gap : y - dotR - gap - h;
   return (
     <g>
       <rect
         x={x - w / 2}
-        y={y - h - offsetY}
+        y={rectY}
         width={w}
         height={h}
         rx={4}
@@ -49,7 +53,7 @@ function NowPriceLabel({ viewBox, value }) {
       />
       <text
         x={x}
-        y={y - h - offsetY + h / 2 + 1}
+        y={rectY + h / 2 + 1}
         textAnchor="middle"
         dominantBaseline="middle"
         fill="#cbd5e1"
