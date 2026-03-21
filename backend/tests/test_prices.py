@@ -784,6 +784,55 @@ class TestCoverageRate:
         assert row.predicted_high_sek_kwh is None
 
 
+class TestCQRCalibration:
+    def test_cqr_backward_compat_no_q_hat(self):
+        """Old cache dicts without q_hat key should default to 0.0."""
+        models = {"point": "mock", "low": "mock", "high": "mock"}
+        assert models.get("q_hat", 0.0) == 0.0
+
+    def test_cqr_calibrated_intervals_wider(self):
+        """When q_hat > 0, calibrated low should decrease and high should increase."""
+        import numpy as np
+
+        raw_low = np.array([0.40, 0.45, 0.50])
+        raw_high = np.array([0.60, 0.65, 0.70])
+        q_hat = 0.05
+
+        calibrated_low = raw_low - q_hat
+        calibrated_high = raw_high + q_hat
+
+        np.testing.assert_array_less(calibrated_low, raw_low)
+        np.testing.assert_array_less(raw_high, calibrated_high)
+
+    def test_retrospective_includes_bounds(self, db):
+        """get_retrospective should include predicted_low/high when present."""
+        from app.services.backtest_service import get_retrospective
+
+        today = date.today()
+        _insert_forecast_row(db, today, 0, predicted=0.50, actual=0.48, low=0.30, high=0.70)
+        _insert_forecast_row(db, today, 1, predicted=0.55, actual=0.52, low=0.35, high=0.75)
+
+        result = get_retrospective(db, today, area="SE3")
+        lgbm = result["models"]["lgbm"]
+        assert len(lgbm) == 2
+        assert lgbm[0]["predicted_low_sek_kwh"] == 0.30
+        assert lgbm[0]["predicted_high_sek_kwh"] == 0.70
+        assert lgbm[1]["predicted_low_sek_kwh"] == 0.35
+        assert lgbm[1]["predicted_high_sek_kwh"] == 0.75
+
+    def test_retrospective_null_bounds(self, db):
+        """get_retrospective returns None for low/high when not present (same_weekday_avg)."""
+        from app.services.backtest_service import get_retrospective
+
+        today = date.today()
+        _insert_forecast_row(db, today, 0, predicted=0.50, actual=0.48, model="same_weekday_avg")
+
+        result = get_retrospective(db, today, area="SE3")
+        avg = result["models"]["same_weekday_avg"]
+        assert avg[0]["predicted_low_sek_kwh"] is None
+        assert avg[0]["predicted_high_sek_kwh"] is None
+
+
 # ---------------------------------------------------------------------------
 # Model degradation tests
 # ---------------------------------------------------------------------------

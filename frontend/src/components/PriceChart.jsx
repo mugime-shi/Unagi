@@ -107,6 +107,11 @@ function CustomTooltip({ active, payload, label, showDetail }) {
       {p.lgbm_forecast != null && (
         <p className="text-amber-400 text-xs mt-1">
           LGBM {p.lgbm_forecast.toFixed(2)}
+          {p.lgbm_low != null && p.lgbm_band != null && (
+            <span className="text-amber-500/70 ml-1">
+              [{p.lgbm_low.toFixed(2)}–{(p.lgbm_low + p.lgbm_band).toFixed(2)}]
+            </span>
+          )}
         </p>
       )}
       {/* Retrospective LGBM + forecast avg error */}
@@ -184,7 +189,11 @@ export function PriceChart({
   if (lgbmForecast?.slots) {
     lgbmForecast.slots.forEach((s) => {
       if (s.avg_sek_kwh != null) {
-        lgbmByHour[s.hour] = s.avg_sek_kwh;
+        lgbmByHour[s.hour] = {
+          avg: s.avg_sek_kwh,
+          low: s.low_sek_kwh ?? null,
+          high: s.high_sek_kwh ?? null,
+        };
       }
     });
   }
@@ -225,7 +234,13 @@ export function PriceChart({
       forecast_band: fh?.band ?? null,
       forecast_avg: fh?.avg ?? null,
       forecast_top: fh ? fh.low + fh.band : null,
-      lgbm_forecast: lgbmByHour[hour] ?? null,
+      lgbm_forecast: lgbmByHour[hour]?.avg ?? null,
+      lgbm_low: lgbmByHour[hour]?.low ?? null,
+      lgbm_band:
+        lgbmByHour[hour]?.low != null && lgbmByHour[hour]?.high != null
+          ? lgbmByHour[hour].high - lgbmByHour[hour].low
+          : null,
+      lgbm_top: lgbmByHour[hour]?.high ?? null,
       imb_short: imbShortByTs[key] ?? null,
       imb_long: imbLongByTs[key] ?? null,
       retro_lgbm: retroByModel["lgbm"]?.[hour] ?? null,
@@ -252,7 +267,7 @@ export function PriceChart({
 
   // Y-axis domain: compute from all visible series
   const domainKeys = ["price_sek_kwh"];
-  if (lgbmForecast) domainKeys.push("lgbm_forecast");
+  if (lgbmForecast) domainKeys.push("lgbm_forecast", "lgbm_top");
   if (hasRetroLgbm) domainKeys.push("retro_lgbm");
   if (showDetail) {
     if (hasBalancing) domainKeys.push("imb_short", "imb_long");
@@ -446,6 +461,36 @@ export function PriceChart({
           )}
 
           {/* ── Always-visible series ── */}
+
+          {/* LightGBM prediction band (80% CI) */}
+          {lgbmForecast && (
+            <>
+              <Area
+                yAxisId="price"
+                type="monotone"
+                dataKey="lgbm_low"
+                stackId="lgbm"
+                fill="transparent"
+                stroke="none"
+                legendType="none"
+                connectNulls={false}
+                isAnimationActive={false}
+              />
+              <Area
+                yAxisId="price"
+                type="monotone"
+                dataKey="lgbm_band"
+                stackId="lgbm"
+                fill={PRED_LGBM_COLOR + "26"}
+                stroke={PRED_LGBM_COLOR + "66"}
+                strokeWidth={1}
+                strokeDasharray="4 4"
+                legendType="none"
+                connectNulls={false}
+                isAnimationActive={false}
+              />
+            </>
+          )}
 
           {/* LightGBM forward forecast (tomorrow) */}
           {lgbmForecast && (

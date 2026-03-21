@@ -83,6 +83,8 @@ export default function App() {
           slots: retrospective.models.lgbm.map((p) => ({
             hour: p.hour,
             avg_sek_kwh: p.predicted_sek_kwh,
+            low_sek_kwh: p.predicted_low_sek_kwh ?? null,
+            high_sek_kwh: p.predicted_high_sek_kwh ?? null,
           })),
         }
       : null;

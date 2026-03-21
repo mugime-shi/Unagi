@@ -311,6 +311,12 @@ def get_retrospective(
             {
                 "hour": r.hour,
                 "predicted_sek_kwh": round(float(r.predicted_sek_kwh), 4),
+                "predicted_low_sek_kwh": round(float(r.predicted_low_sek_kwh), 4)
+                if r.predicted_low_sek_kwh is not None
+                else None,
+                "predicted_high_sek_kwh": round(float(r.predicted_high_sek_kwh), 4)
+                if r.predicted_high_sek_kwh is not None
+                else None,
                 "actual_sek_kwh": round(float(r.actual_sek_kwh), 4) if r.actual_sek_kwh is not None else None,
             }
         )

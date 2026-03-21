@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 _CACHE_DIR = Path(os.environ.get("LGBM_CACHE_DIR", "/tmp/namazu_lgbm"))
 _TRAIN_DAYS = int(os.environ.get("LGBM_TRAIN_DAYS", "365"))
-_TEST_DAYS = 7  # held-out test set (last N days of training window)
+_TEST_DAYS = 30  # held-out set for early stopping + CQR calibration
 _MIN_TRAIN_ROWS = 200  # minimum rows to attempt training
 
 
@@ -37,7 +37,7 @@ _MIN_TRAIN_ROWS = 200  # minimum rows to attempt training
 
 def _cache_key(area: str, target_date: date) -> str:
     """Deterministic key from area + target_date + train_days."""
-    raw = f"{area}:{target_date.isoformat()}:{_TRAIN_DAYS}:v6-59feat"
+    raw = f"{area}:{target_date.isoformat()}:{_TRAIN_DAYS}:v8-cqr30"
     return hashlib.md5(raw.encode()).hexdigest()[:12]
 
 
@@ -142,7 +142,21 @@ def _train_model(db: Session, target_date: date, area: str):
     low_model = _fit({**base_params, "objective": "quantile", "alpha": 0.10, "metric": "quantile"})
     high_model = _fit({**base_params, "objective": "quantile", "alpha": 0.90, "metric": "quantile"})
 
-    return {"point": point_model, "low": low_model, "high": high_model}
+    # Conformal calibration (CQR): compute correction factor on validation set
+    # so that the prediction interval achieves ~80% coverage in practice.
+    if len(X_val) > 0:
+        val_low = low_model.predict(X_val)
+        val_high = high_model.predict(X_val)
+        scores = np.maximum(val_low - y_val, y_val - val_high)
+        n = len(scores)
+        quantile_level = min(1.0, (1 - 0.20) * (1 + 1 / n))
+        q_hat = float(np.quantile(scores, quantile_level))
+        logger.info("CQR calibration: q_hat=%.4f (n=%d val samples)", q_hat, n)
+    else:
+        q_hat = 0.0
+        logger.warning("No validation set — skipping CQR calibration")
+
+    return {"point": point_model, "low": low_model, "high": high_model, "q_hat": q_hat}
 
 
 # ---------------------------------------------------------------------------
@@ -206,10 +220,12 @@ def build_lgbm_forecast(db: Session, target_date: date, area: str = "SE3") -> di
         point_model = models["point"]
         low_model = models.get("low")
         high_model = models.get("high")
+        q_hat = models.get("q_hat", 0.0)
     else:
         point_model = models
         low_model = None
         high_model = None
+        q_hat = 0.0
 
     # Build prediction features
     pred_rows = _build_prediction_features(db, target_date, area)
@@ -221,10 +237,10 @@ def build_lgbm_forecast(db: Session, target_date: date, area: str = "SE3") -> di
 
     predictions = point_model.predict(X_pred)
 
-    # Quantile predictions for intervals
+    # Quantile predictions for intervals (calibrated via CQR)
     if low_model is not None and high_model is not None:
-        low_preds = low_model.predict(X_pred)
-        high_preds = high_model.predict(X_pred)
+        low_preds = low_model.predict(X_pred) - q_hat
+        high_preds = high_model.predict(X_pred) + q_hat
     else:
         # Fallback to ±residual std for old cached models
         low_preds = predictions - 0.10
