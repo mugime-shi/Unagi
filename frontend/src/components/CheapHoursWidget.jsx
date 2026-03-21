@@ -1,14 +1,14 @@
-import { useCheapHours } from '../hooks/useCheapHours'
-import { toLocalHour } from '../utils/formatters'
+import { useCheapHours } from "../hooks/useCheapHours";
+import { toLocalHour } from "../utils/formatters";
 
 const APPLIANCES = [
-  { name: 'Washing machine', duration: 2, emoji: '🫧' },
-  { name: 'Dishwasher',      duration: 2, emoji: '🍽️' },
-  { name: 'EV charging',     duration: 4, emoji: '⚡' },
-]
+  { name: "Washing machine", duration: 2, emoji: "🫧" },
+  { name: "Dishwasher", duration: 2, emoji: "🍽️" },
+  { name: "EV charging", duration: 4, emoji: "⚡" },
+];
 
 function ApplianceRow({ name, emoji, duration, date, area }) {
-  const { data, loading } = useCheapHours(date, duration, area)
+  const { data, loading } = useCheapHours(date, duration, area);
 
   const skeletonRow = (
     <div className="flex items-center justify-between py-2.5 border-b border-gray-800 last:border-0">
@@ -19,13 +19,13 @@ function ApplianceRow({ name, emoji, duration, date, area }) {
       </div>
       <span className="text-xs text-gray-600">—</span>
     </div>
-  )
+  );
 
-  if (loading || !data?.cheapest_window) return skeletonRow
+  if (loading || !data?.cheapest_window) return skeletonRow;
 
-  const w = data.cheapest_window
-  const start = toLocalHour(w.start_utc)
-  const end = toLocalHour(w.end_utc)
+  const w = data.cheapest_window;
+  const start = toLocalHour(w.start_utc);
+  const end = toLocalHour(w.end_utc);
 
   return (
     <div className="flex items-center justify-between py-2.5 border-b border-gray-800 last:border-0">
@@ -39,21 +39,28 @@ function ApplianceRow({ name, emoji, duration, date, area }) {
           {start}–{end}
         </span>
         <span className="text-xs text-gray-500">
-          {w.avg_sek_kwh.toFixed(2)} SEK/kWh
+          {w.avg_sek_kwh.toFixed(2)}
         </span>
       </div>
     </div>
-  )
+  );
 }
 
-export function CheapHoursWidget({ date, area = 'SE3' }) {
+export function CheapHoursWidget({ date, area = "SE3" }) {
   return (
     <div className="bg-gray-900 rounded-2xl p-4">
-      <h2 className="text-sm font-medium text-gray-300 mb-1">Best time to run today</h2>
-      <p className="text-xs text-gray-600 mb-3">Cheapest consecutive window per appliance</p>
+      <h2 className="text-sm font-medium text-gray-300 mb-1">
+        Best time to run today
+      </h2>
+      <p className="text-xs text-gray-600 mb-3">
+        Cheapest consecutive window per appliance
+      </p>
+      <div className="flex justify-end mb-1">
+        <span className="text-xs text-gray-600">SEK/kWh</span>
+      </div>
       {APPLIANCES.map((a) => (
         <ApplianceRow key={a.name} {...a} date={date} area={area} />
       ))}
     </div>
-  )
+  );
 }
