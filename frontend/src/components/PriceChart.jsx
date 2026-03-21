@@ -156,6 +156,7 @@ export function PriceChart({
   balancing = null,
   detailDefaultOpen = false,
   predictedAt = null,
+  showNowMarker = true,
 }) {
   const [showDetail, setShowDetail] = useState(detailDefaultOpen);
   const isMobile = useIsMobile();
@@ -492,7 +493,7 @@ export function PriceChart({
           )}
 
           {/* Current price annotation with background for readability */}
-          {nowEntry && (
+          {showNowMarker && nowEntry && (
             <ReferenceDot
               x={nowEntry.hour}
               y={nowEntry.price_sek_kwh}

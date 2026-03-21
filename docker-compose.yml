@@ -15,7 +15,8 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - ./backend/app:/app/app  # hot-reload in development
+      - ./backend/app:/app/app        # hot-reload in development
+      - ./backend/namazu:/app/namazu  # CLI access inside container
 
   db:
     image: postgres:16-alpine

@@ -412,6 +412,7 @@ export default function App() {
                               ? retrospective?.predicted_at
                               : null
                           }
+                          showNowMarker={day !== "tomorrow"}
                         />
                       </div>
 
