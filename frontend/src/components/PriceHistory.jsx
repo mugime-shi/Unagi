@@ -31,9 +31,18 @@ function CustomTooltip({ active, payload, label }) {
   );
 }
 
+const RANGES = [
+  { label: "1W", days: 7 },
+  { label: "1M", days: 30 },
+  { label: "3M", days: 90 },
+  { label: "6M", days: 180 },
+  { label: "1Y", days: 365 },
+];
+
 export function PriceHistory({ area = "SE3" }) {
   const [tab, setTab] = useState("history");
-  const { data, loading, error } = useHistory(90, area);
+  const [days, setDays] = useState(90);
+  const { data, loading, error } = useHistory(days, area);
 
   const tabBtn = (id, label) => (
     <button
@@ -49,13 +58,36 @@ export function PriceHistory({ area = "SE3" }) {
     </button>
   );
 
+  const subNav = (
+    <div className="flex items-center justify-between">
+      <div className="flex gap-1">
+        {tabBtn("history", "History")}
+        {tabBtn("zones", "Zone Comparison")}
+      </div>
+      {tab === "history" && (
+        <div className="flex gap-1">
+          {RANGES.map(({ label, days: d }) => (
+            <button
+              key={d}
+              onClick={() => setDays(d)}
+              className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                days === d
+                  ? "bg-gray-700 text-white"
+                  : "text-gray-600 hover:text-gray-300"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
   if (tab === "zones") {
     return (
       <div className="space-y-3">
-        <div className="flex gap-1">
-          {tabBtn("history", "History")}
-          {tabBtn("zones", "Zone Comparison")}
-        </div>
+        {subNav}
         <ZoneComparison />
       </div>
     );
@@ -64,20 +96,14 @@ export function PriceHistory({ area = "SE3" }) {
   if (loading)
     return (
       <div className="space-y-3">
-        <div className="flex gap-1">
-          {tabBtn("history", "History")}
-          {tabBtn("zones", "Zone Comparison")}
-        </div>
+        {subNav}
         <p className="text-gray-500 text-sm">Loading history…</p>
       </div>
     );
   if (error)
     return (
       <div className="space-y-3">
-        <div className="flex gap-1">
-          {tabBtn("history", "History")}
-          {tabBtn("zones", "Zone Comparison")}
-        </div>
+        {subNav}
         <p className="text-red-400 text-sm">
           Failed to load history: {error.message}
         </p>
@@ -88,10 +114,7 @@ export function PriceHistory({ area = "SE3" }) {
   if (points.length === 0)
     return (
       <div className="space-y-3">
-        <div className="flex gap-1">
-          {tabBtn("history", "History")}
-          {tabBtn("zones", "Zone Comparison")}
-        </div>
+        {subNav}
         <p className="text-gray-500 text-sm">
           No historical data available yet.
         </p>
@@ -113,14 +136,11 @@ export function PriceHistory({ area = "SE3" }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex gap-1">
-        {tabBtn("history", "History")}
-        {tabBtn("zones", "Zone Comparison")}
-      </div>
+      {subNav}
       <div className="bg-gray-900 rounded-2xl p-4 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-medium text-gray-300">
-            Spot price history — last 90 days · {area}
+            Spot price history — last {days} days · {area}
           </h2>
           <span className="text-xs text-gray-500">SEK/kWh · daily avg</span>
         </div>
@@ -178,9 +198,9 @@ export function PriceHistory({ area = "SE3" }) {
         {/* Summary stats */}
         <div className="grid grid-cols-3 gap-3 text-center">
           {[
-            { label: "90-day min", value: overallMin.toFixed(3) },
-            { label: "90-day avg", value: overallAvg.toFixed(3) },
-            { label: "90-day max", value: overallMax.toFixed(3) },
+            { label: `${days}-day min`, value: overallMin.toFixed(3) },
+            { label: `${days}-day avg`, value: overallAvg.toFixed(3) },
+            { label: `${days}-day max`, value: overallMax.toFixed(3) },
           ].map(({ label, value }) => (
             <div key={label} className="bg-gray-800 rounded-xl py-3">
               <p className="text-xs text-gray-500 mb-1">{label}</p>
@@ -191,8 +211,8 @@ export function PriceHistory({ area = "SE3" }) {
         </div>
 
         <p className="text-xs text-gray-700 text-center">
-          {points.length} days with data out of last 90 · dashed line = period
-          average
+          {points.length} days with data out of last {days} · dashed line =
+          period average
         </p>
       </div>
     </div>

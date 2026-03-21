@@ -36,7 +36,7 @@ function tomorrowISO() {
 
 export default function App() {
   const [layer, setLayer] = useState("prices");
-  const [tab, setTab] = useState("now"); // "now" | "forecast"
+  const [tab, setTab] = useState("today"); // "today" | "tomorrow" | "trends"
   const [forecastDate, setForecastDate] = useState(tomorrowISO);
   const [area, setArea] = useState("SE3");
 
@@ -52,32 +52,32 @@ export default function App() {
   const { data: balancing } = useBalancing(todayISO(), area);
   const { data: generation } = useGeneration(area);
 
-  // ── Forecast tab data ──
+  // ── Tomorrow tab data ──
   // Tomorrow prices via usePrices; past dates via useDatePrices
   const {
     data: tomorrowData,
     loading: tomorrowLoading,
     error: tomorrowError,
-  } = usePrices(tab === "forecast" && isTomorrow ? "tomorrow" : null, area);
+  } = usePrices(tab === "tomorrow" && isTomorrow ? "tomorrow" : null, area);
   const {
     data: pastData,
     loading: pastLoading,
     error: pastError,
   } = useDatePrices(
-    tab === "forecast" && !isTomorrow ? forecastDate : null,
+    tab === "tomorrow" && !isTomorrow ? forecastDate : null,
     area,
   );
 
   const { data: forecast } = useForecast(
-    tab === "forecast" ? forecastDate : null,
+    tab === "tomorrow" ? forecastDate : null,
     area,
   );
   const { data: retrospective } = useRetrospective(
-    tab === "forecast" ? forecastDate : null,
+    tab === "tomorrow" ? forecastDate : null,
     area,
   );
   const { data: forecastGeneration } = useGenerationDate(
-    tab === "forecast" && isPastDate ? forecastDate : null,
+    tab === "tomorrow" && isPastDate ? forecastDate : null,
     area,
   );
 
@@ -109,7 +109,6 @@ export default function App() {
         <nav className="ml-auto flex gap-1">
           {[
             { id: "prices", label: "Prices" },
-            { id: "history", label: "History" },
             { id: "simulators", label: "Simulators" },
           ].map(({ id, label }) => (
             <button
@@ -130,34 +129,15 @@ export default function App() {
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-6 space-y-4">
-        {/* Area selector — global, visible on all layers */}
-        <div className="flex items-center gap-2">
-          <div className="flex gap-1">
-            {AREAS.map(({ id, label }) => (
-              <button
-                key={id}
-                onClick={() => setArea(id)}
-                className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                  area === id
-                    ? "bg-sky-600 text-white"
-                    : "text-gray-500 hover:text-gray-300 border border-gray-700"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <span className="text-gray-500 text-sm">· {areaCity}</span>
-        </div>
-
         {/* ── Layer 1: Prices ── */}
         {layer === "prices" && (
           <>
             {/* Tab selector */}
             <div className="flex gap-2 items-center">
               {[
-                { id: "now", label: "Now" },
-                { id: "forecast", label: "Forecast" },
+                { id: "today", label: "Today" },
+                { id: "tomorrow", label: "Tomorrow" },
+                { id: "trends", label: "Trends" },
               ].map(({ id, label }) => (
                 <button
                   key={id}
@@ -172,8 +152,8 @@ export default function App() {
                 </button>
               ))}
 
-              {/* Forecast tab: date navigation */}
-              {tab === "forecast" && (
+              {/* Tomorrow tab: date navigation */}
+              {tab === "tomorrow" && (
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => {
@@ -236,8 +216,28 @@ export default function App() {
               )}
             </div>
 
+            {/* Area selector — below tabs */}
+            <div className="flex items-center gap-2">
+              <div className="flex gap-1">
+                {AREAS.map(({ id, label }) => (
+                  <button
+                    key={id}
+                    onClick={() => setArea(id)}
+                    className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                      area === id
+                        ? "bg-sky-600 text-white"
+                        : "text-gray-500 hover:text-gray-300 border border-gray-700"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <span className="text-gray-500 text-sm">· {areaCity}</span>
+            </div>
+
             {/* ── Today tab ── */}
-            {tab === "now" && (
+            {tab === "today" && (
               <>
                 {todayLoading && (
                   <div className="animate-pulse space-y-4">
@@ -339,8 +339,8 @@ export default function App() {
               </>
             )}
 
-            {/* ── Forecast tab ── */}
-            {tab === "forecast" && (
+            {/* ── Tomorrow tab ── */}
+            {tab === "tomorrow" && (
               <>
                 {forecastLoading && (
                   <div className="animate-pulse bg-gray-900 rounded-2xl p-4">
@@ -498,11 +498,10 @@ export default function App() {
                 )}
               </>
             )}
+            {/* ── Trends tab ── */}
+            {tab === "trends" && <PriceHistory area={area} />}
           </>
         )}
-
-        {/* ── History ── */}
-        {layer === "history" && <PriceHistory area={area} />}
 
         {/* ── Simulators ── */}
         {layer === "simulators" && (
