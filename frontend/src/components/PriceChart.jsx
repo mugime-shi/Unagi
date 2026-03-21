@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Area,
   CartesianGrid,
@@ -66,7 +66,7 @@ function CustomDot() {
   return null;
 }
 
-function CustomTooltip({ active, payload, label, showDetail }) {
+function CustomTooltip({ active, payload, label, showWeekdayAvg }) {
   if (!active || !payload?.length) return null;
   const p = payload[0].payload;
   return (
@@ -83,7 +83,7 @@ function CustomTooltip({ active, payload, label, showDetail }) {
       <p className="text-gray-500 text-xs">
         {p.price_eur_mwh.toFixed(1)} EUR/MWh
       </p>
-      {showDetail && p.imb_short != null && (
+      {p.imb_short != null && (
         <p className="text-orange-400 text-xs mt-1">
           Imbalance Short: {p.imb_short.toFixed(2)} SEK/kWh
           {p.price_sek_kwh > 0 && (
@@ -93,12 +93,12 @@ function CustomTooltip({ active, payload, label, showDetail }) {
           )}
         </p>
       )}
-      {showDetail && p.imb_long != null && (
+      {p.imb_long != null && (
         <p className="text-teal-400 text-xs">
           Imbalance Long: {p.imb_long.toFixed(2)} SEK/kWh
         </p>
       )}
-      {showDetail && p.forecast_low != null && (
+      {showWeekdayAvg && p.forecast_low != null && (
         <p className="text-gray-400 text-xs mt-1">
           Weekday Avg {p.forecast_low.toFixed(2)}–
           {(p.forecast_low + p.forecast_band).toFixed(2)}
@@ -114,11 +114,11 @@ function CustomTooltip({ active, payload, label, showDetail }) {
           )}
         </p>
       )}
-      {/* Retrospective LGBM + forecast avg error */}
-      {(p.retro_lgbm != null || (showDetail && p.forecast_avg != null)) && (
+      {/* Retrospective LGBM + WeekDay Avg error */}
+      {(p.retro_lgbm != null || (showWeekdayAvg && p.forecast_avg != null)) && (
         <div className="mt-1 pt-1 border-t border-gray-700 text-xs">
           <p className="text-gray-500">Prediction:</p>
-          {showDetail && p.forecast_avg != null && p.price_sek_kwh > 0 && (
+          {showWeekdayAvg && p.forecast_avg != null && p.price_sek_kwh > 0 && (
             <p className="text-gray-400">
               Weekday Avg {p.forecast_avg.toFixed(2)}
               <span className="ml-1 text-gray-500">
@@ -159,16 +159,14 @@ export function PriceChart({
   lgbmForecast = null,
   retrospective = null,
   balancing = null,
-  detailDefaultOpen = false,
+  defaultShowLgbm = true,
+  defaultShowWeekdayAvg = true,
   predictedAt = null,
   showNowMarker = true,
 }) {
-  const [showDetail, setShowDetail] = useState(detailDefaultOpen);
+  const [showLgbm, setShowLgbm] = useState(defaultShowLgbm);
+  const [showWeekdayAvg, setShowWeekdayAvg] = useState(defaultShowWeekdayAvg);
   const isMobile = useIsMobile();
-
-  useEffect(() => {
-    setShowDetail(detailDefaultOpen);
-  }, [detailDefaultOpen]);
 
   // Forecast lookup: hour (0-23) → { low, band, avg }
   const forecastByHour = {};
@@ -244,6 +242,7 @@ export function PriceChart({
       imb_short: imbShortByTs[key] ?? null,
       imb_long: imbLongByTs[key] ?? null,
       retro_lgbm: retroByModel["lgbm"]?.[hour] ?? null,
+      retro_weekday: retroByModel["same_weekday_avg"]?.[hour] ?? null,
     };
   });
 
@@ -260,19 +259,25 @@ export function PriceChart({
 
   const hasBalancing =
     balancing && (balancing.short.length > 0 || balancing.long.length > 0);
-  const hasRetro =
-    retrospective?.models && Object.keys(retrospective.models).length > 0;
-  const hasRetroLgbm = hasRetro && retroByModel["lgbm"];
-  const hasDetailData = hasBalancing || forecast != null;
+  const hasRetroLgbm =
+    retrospective?.models &&
+    retroByModel["lgbm"] &&
+    Object.keys(retroByModel["lgbm"]).length > 0;
+  const hasRetroWeekday =
+    retrospective?.models &&
+    retroByModel["same_weekday_avg"] &&
+    Object.keys(retroByModel["same_weekday_avg"]).length > 0;
+
+  const hasLgbmData = lgbmForecast != null || hasRetroLgbm;
+  const hasWeekdayAvgData = forecast != null || hasRetroWeekday;
 
   // Y-axis domain: compute from all visible series
   const domainKeys = ["price_sek_kwh"];
-  if (lgbmForecast) domainKeys.push("lgbm_forecast", "lgbm_top");
-  if (hasRetroLgbm) domainKeys.push("retro_lgbm");
-  if (showDetail) {
-    if (hasBalancing) domainKeys.push("imb_short", "imb_long");
-    if (forecast) domainKeys.push("forecast_top");
-  }
+  if (showLgbm && lgbmForecast) domainKeys.push("lgbm_forecast", "lgbm_top");
+  if (showLgbm && hasRetroLgbm) domainKeys.push("retro_lgbm");
+  if (showWeekdayAvg && forecast) domainKeys.push("forecast_top");
+  if (showWeekdayAvg && hasRetroWeekday) domainKeys.push("retro_weekday");
+  if (hasBalancing) domainKeys.push("imb_short", "imb_long");
   const { domain } = computeClippedDomain(chartData, domainKeys);
 
   // Current hour data point for price annotation
@@ -313,7 +318,7 @@ export function PriceChart({
       )}
 
       {/* Legend row */}
-      {(hasDetailData || lgbmForecast || hasRetroLgbm) && (
+      {(hasLgbmData || hasWeekdayAvgData || hasBalancing) && (
         <div className="flex items-center justify-between mb-2">
           <div className="flex gap-4 text-xs text-gray-400 flex-wrap">
             {!isEstimate && (
@@ -322,13 +327,13 @@ export function PriceChart({
                 Day-ahead
               </span>
             )}
-            {(lgbmForecast || hasRetroLgbm) && (
+            {showLgbm && hasLgbmData && (
               <span className="flex items-center gap-1.5">
                 <span className="inline-block w-5 border-t-2 border-dashed border-amber-400" />
                 LGBM
               </span>
             )}
-            {showDetail && hasBalancing && (
+            {hasBalancing && (
               <>
                 <span className="flex items-center gap-1.5">
                   <span className="inline-block w-5 border-t border-orange-400 opacity-50" />
@@ -340,24 +345,41 @@ export function PriceChart({
                 </span>
               </>
             )}
-            {showDetail && forecast && (
+            {showWeekdayAvg && hasWeekdayAvgData && (
               <span className="flex items-center gap-1.5">
                 <span className="inline-block w-5 border-t-2 border-dashed border-gray-400" />
                 Weekday Avg
               </span>
             )}
           </div>
-          {hasDetailData && (
-            <button
-              onClick={() => setShowDetail((v) => !v)}
-              className={`text-xs px-2.5 py-0.5 rounded-full border transition-colors ${
-                showDetail
-                  ? "border-sky-600 text-sky-400 bg-sky-900/20"
-                  : "border-gray-700 text-gray-500 hover:text-gray-400"
-              }`}
-            >
-              {showDetail ? "▪ Detail" : "◦ Detail"}
-            </button>
+          {/* Independent model toggles */}
+          {(hasLgbmData || hasWeekdayAvgData) && (
+            <div className="flex gap-1">
+              {hasLgbmData && (
+                <button
+                  onClick={() => setShowLgbm((v) => !v)}
+                  className={`text-xs px-2.5 py-0.5 rounded-full border transition-colors ${
+                    showLgbm
+                      ? "border-amber-600 text-amber-400 bg-amber-900/20"
+                      : "border-gray-700 text-gray-500 hover:text-gray-400"
+                  }`}
+                >
+                  {showLgbm ? "▪" : "◦"} LGBM
+                </button>
+              )}
+              {hasWeekdayAvgData && (
+                <button
+                  onClick={() => setShowWeekdayAvg((v) => !v)}
+                  className={`text-xs px-2.5 py-0.5 rounded-full border transition-colors ${
+                    showWeekdayAvg
+                      ? "border-gray-500 text-gray-300 bg-gray-700/30"
+                      : "border-gray-700 text-gray-500 hover:text-gray-400"
+                  }`}
+                >
+                  {showWeekdayAvg ? "▪" : "◦"} Weekday Avg
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -387,7 +409,9 @@ export function PriceChart({
             tick={{ fill: "#9ca3af", fontSize: 11 }}
             width={48}
           />
-          <Tooltip content={<CustomTooltip showDetail={showDetail} />} />
+          <Tooltip
+            content={<CustomTooltip showWeekdayAvg={showWeekdayAvg} />}
+          />
           {!isEstimate && (
             <ReferenceLine
               yAxisId="price"
@@ -398,40 +422,8 @@ export function PriceChart({
             />
           )}
 
-          {/* ── Detail series (toggled) ── */}
-
-          {/* Weekday Avg forecast band */}
-          {showDetail && forecast && (
-            <>
-              <Area
-                yAxisId="price"
-                type="monotone"
-                dataKey="forecast_low"
-                stackId="fc"
-                fill="transparent"
-                stroke="none"
-                legendType="none"
-                connectNulls={false}
-                isAnimationActive={false}
-              />
-              <Area
-                yAxisId="price"
-                type="monotone"
-                dataKey="forecast_band"
-                stackId="fc"
-                fill={PRED_WEEKDAY_COLOR + "26"}
-                stroke={PRED_WEEKDAY_COLOR + "66"}
-                strokeWidth={1}
-                strokeDasharray="4 4"
-                legendType="none"
-                connectNulls={false}
-                isAnimationActive={false}
-              />
-            </>
-          )}
-
-          {/* Balancing overlay */}
-          {showDetail && hasBalancing && (
+          {/* ── Balancing overlay — always visible ── */}
+          {hasBalancing && (
             <>
               <Line
                 yAxisId="price"
@@ -460,10 +452,70 @@ export function PriceChart({
             </>
           )}
 
-          {/* ── Always-visible series ── */}
+          {/* ── WeekDay Avg forecast band (toggled) ── */}
+          {showWeekdayAvg && forecast && (
+            <>
+              <Area
+                yAxisId="price"
+                type="monotone"
+                dataKey="forecast_low"
+                stackId="fc"
+                fill="transparent"
+                stroke="none"
+                legendType="none"
+                connectNulls={false}
+                isAnimationActive={false}
+              />
+              <Area
+                yAxisId="price"
+                type="monotone"
+                dataKey="forecast_band"
+                stackId="fc"
+                fill={PRED_WEEKDAY_COLOR + "26"}
+                stroke={PRED_WEEKDAY_COLOR + "66"}
+                strokeWidth={1}
+                strokeDasharray="4 4"
+                legendType="none"
+                connectNulls={false}
+                isAnimationActive={false}
+              />
+            </>
+          )}
 
-          {/* LightGBM prediction band (80% CI) */}
-          {lgbmForecast && (
+          {/* WeekDay Avg center line — forward forecast (toggled) */}
+          {showWeekdayAvg && forecast && (
+            <Line
+              yAxisId="price"
+              type="monotone"
+              dataKey="forecast_avg"
+              stroke={PRED_WEEKDAY_COLOR}
+              strokeWidth={1.5}
+              strokeDasharray="4 3"
+              dot={false}
+              connectNulls={false}
+              isAnimationActive={false}
+              legendType="none"
+            />
+          )}
+
+          {/* WeekDay Avg retrospective line (toggled) */}
+          {showWeekdayAvg && hasRetroWeekday && (
+            <Line
+              yAxisId="price"
+              type="monotone"
+              dataKey="retro_weekday"
+              stroke={PRED_WEEKDAY_COLOR}
+              strokeWidth={1.5}
+              strokeDasharray="4 3"
+              dot={false}
+              connectNulls={false}
+              isAnimationActive={false}
+              legendType="none"
+            />
+          )}
+
+          {/* ── LightGBM prediction band (80% CI) — toggled ── */}
+          {showLgbm && lgbmForecast && (
             <>
               <Area
                 yAxisId="price"
@@ -492,15 +544,15 @@ export function PriceChart({
             </>
           )}
 
-          {/* LightGBM forward forecast (tomorrow) */}
-          {lgbmForecast && (
+          {/* LightGBM forward forecast line — toggled */}
+          {showLgbm && lgbmForecast && (
             <Line
               yAxisId="price"
               type="monotone"
               dataKey="lgbm_forecast"
               stroke={PRED_LGBM_COLOR}
               strokeWidth={2}
-              strokeDasharray="8 4"
+              strokeDasharray="5 3"
               dot={false}
               connectNulls={false}
               isAnimationActive={false}
@@ -508,15 +560,15 @@ export function PriceChart({
             />
           )}
 
-          {/* Retrospective LGBM (today/review) */}
-          {hasRetroLgbm && (
+          {/* Retrospective LGBM line — only when lgbmForecast is absent (avoids duplicate) */}
+          {showLgbm && hasRetroLgbm && !lgbmForecast && (
             <Line
               yAxisId="price"
               type="monotone"
               dataKey="retro_lgbm"
               stroke={PRED_LGBM_COLOR}
               strokeWidth={1.5}
-              strokeDasharray="4 4"
+              strokeDasharray="5 3"
               dot={false}
               connectNulls={false}
               isAnimationActive={false}
@@ -537,13 +589,28 @@ export function PriceChart({
             />
           )}
 
-          {/* Current price annotation with background for readability */}
+          {/* Vertical line at current hour */}
+          {showNowMarker && nowEntry && (
+            <ReferenceLine
+              yAxisId="price"
+              x={nowEntry.hour}
+              stroke="#94a3b8"
+              strokeWidth={1}
+              strokeDasharray="3 3"
+              strokeOpacity={0.4}
+            />
+          )}
+
+          {/* Current price dot + label */}
           {showNowMarker && nowEntry && (
             <ReferenceDot
               x={nowEntry.hour}
               y={nowEntry.price_sek_kwh}
               yAxisId="price"
-              r={0}
+              r={5}
+              fill="#60a5fa"
+              stroke="#0f172a"
+              strokeWidth={2}
               isFront
               label={
                 <NowPriceLabel

@@ -7,6 +7,11 @@ export function usePrices(day = "today", area = "SE3") {
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    if (!day) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     apiFetch(`/api/v1/prices/${day}?area=${area}`)

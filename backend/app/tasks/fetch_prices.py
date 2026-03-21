@@ -173,8 +173,18 @@ def fetch_generation_date(target_date: date, area: str = "SE3") -> dict:
     try:
         existing = get_generation_for_date(db, target_date, area)
         if existing:
-            log.info("SKIP generation %s %s — %d rows already in DB", target_date, area, len(existing))
-            return {"date": target_date.isoformat(), "market": "generation", "status": "cached", "rows": len(existing)}
+            # A full CET day = 96 fifteen-minute slots (24h UTC window, DST-invariant).
+            # Re-fetch if incomplete (e.g. backfill ran mid-day and only captured partial data).
+            distinct_slots = len({r.timestamp_utc for r in existing})
+            if distinct_slots >= 96:
+                log.info("SKIP generation %s %s — complete (%d slots)", target_date, area, distinct_slots)
+                return {
+                    "date": target_date.isoformat(),
+                    "market": "generation",
+                    "status": "cached",
+                    "rows": len(existing),
+                }
+            log.info("REFETCH generation %s %s — only %d/96 slots, data incomplete", target_date, area, distinct_slots)
 
         last_error = None
         for attempt in range(1, MAX_RETRIES + 1):

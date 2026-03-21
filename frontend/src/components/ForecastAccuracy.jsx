@@ -137,10 +137,6 @@ export function ForecastAccuracy({ area }) {
         {sorted.map((m) => {
           const isBest = sorted.length > 1 && m.name === best.name;
           const maeSek = m.mae_sek_kwh.toFixed(2);
-          const improvement =
-            sorted.length > 1 && m.name !== best.name
-              ? ((1 - best.mae_sek_kwh / m.mae_sek_kwh) * 100).toFixed(0)
-              : null;
 
           return (
             <div
@@ -165,11 +161,6 @@ export function ForecastAccuracy({ area }) {
                 >
                   MAE {maeSek} SEK/kWh
                 </span>
-                {improvement && (
-                  <span className="text-xs text-gray-500 ml-2">
-                    (best is {improvement}% better)
-                  </span>
-                )}
               </div>
             </div>
           );
