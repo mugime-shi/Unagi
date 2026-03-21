@@ -102,8 +102,15 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
-      <header className="border-b border-gray-800 px-4 sm:px-6 py-4 flex items-center gap-3">
-        <span className="text-xl font-bold tracking-tight">Unagi</span>
+      <header className="sticky top-0 z-50 bg-gray-950 border-b border-gray-800 px-4 sm:px-6 py-3 flex items-center gap-3">
+        <img
+          src="/logo/unagi_log.png"
+          alt="Unagi"
+          className="h-12 w-auto -my-1"
+        />
+        <span className="hidden sm:inline text-[11px] text-[#8a919c] tracking-wide self-end mb-0">
+          Catch an E[el] for now and then.
+        </span>
 
         {/* Layer selector */}
         <nav className="ml-auto flex gap-1">
@@ -511,6 +518,21 @@ export default function App() {
           </div>
         )}
       </main>
+
+      <footer className="border-t border-gray-800 px-4 sm:px-6 py-4 text-right">
+        <span className="text-[11px] text-[#8a919c] italic">
+          A state of total awareness...{" "}
+          <a
+            href="https://github.com/mugime-shi/Unagi"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs font-bold underline hover:text-gray-400 transition-colors"
+          >
+            Unagi
+          </a>
+          .
+        </span>
+      </footer>
     </div>
   );
 }
