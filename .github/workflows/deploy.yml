@@ -119,7 +119,6 @@ jobs:
           aws lambda wait function-updated --function-name unagi-scheduler
 
       - name: Smoke test
-        # TODO: Update URL after terraform apply creates new API Gateway
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             https://5ouka6u81a.execute-api.eu-north-1.amazonaws.com/health)
