@@ -19,7 +19,7 @@ services:
       - ./backend/unagi:/app/unagi    # CLI access inside container
 
   db:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     environment:
       POSTGRES_USER: unagi
       POSTGRES_PASSWORD: unagi
