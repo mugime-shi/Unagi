@@ -5,7 +5,7 @@ variable "aws_region" {
 
 variable "project" {
   description = "Project name prefix for all resources"
-  default     = "namazu"
+  default     = "unagi"
 }
 
 variable "database_url" {
@@ -52,6 +52,6 @@ variable "telegram_chat_id" {
 }
 
 variable "api_key" {
-  description = "API key for X-Namazu-Key header authentication"
+  description = "API key for X-Unagi-Key header authentication"
   sensitive   = true
 }

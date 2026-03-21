@@ -13,7 +13,7 @@ import json
 import os
 import urllib.request
 
-_TOKEN   = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 _CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 _API_URL = f"https://api.telegram.org/bot{_TOKEN}/sendMessage"
 
@@ -27,23 +27,25 @@ def _forward(raw: str) -> None:
     """Parse the SNS alarm payload and send a Telegram message."""
     try:
         msg = json.loads(raw)
-        alarm   = msg.get("AlarmName", "unknown")
-        state   = msg.get("NewStateValue", "?")
-        reason  = msg.get("NewStateReason", "")
-        text = f"\U0001f6a8 *Namazu Alert*\nAlarm: `{alarm}`\nState: {state}\n{reason}"
+        alarm = msg.get("AlarmName", "unknown")
+        state = msg.get("NewStateValue", "?")
+        reason = msg.get("NewStateReason", "")
+        text = f"\U0001f6a8 *Unagi Alert*\nAlarm: `{alarm}`\nState: {state}\n{reason}"
     except Exception:
         # Non-JSON SNS message (test publish etc.) — forward as-is
-        text = f"\U0001f6a8 *Namazu Alert*\n{raw}"
+        text = f"\U0001f6a8 *Unagi Alert*\n{raw}"
 
     if not _TOKEN or not _CHAT_ID:
         print("TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set — skipping")
         return
 
-    payload = json.dumps({
-        "chat_id":    _CHAT_ID,
-        "text":       text,
-        "parse_mode": "Markdown",
-    }).encode()
+    payload = json.dumps(
+        {
+            "chat_id": _CHAT_ID,
+            "text": text,
+            "parse_mode": "Markdown",
+        }
+    ).encode()
 
     req = urllib.request.Request(
         _API_URL,

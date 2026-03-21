@@ -7,7 +7,7 @@ services:
     ports:
       - "${API_PORT:-8100}:8000"
     environment:
-      DATABASE_URL: postgresql://namazu:namazu@db:5432/namazu
+      DATABASE_URL: postgresql://unagi:unagi@db:5432/unagi
       DEBUG: "true"
     env_file:
       - backend/.env
@@ -16,20 +16,20 @@ services:
         condition: service_healthy
     volumes:
       - ./backend/app:/app/app        # hot-reload in development
-      - ./backend/namazu:/app/namazu  # CLI access inside container
+      - ./backend/unagi:/app/unagi    # CLI access inside container
 
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: namazu
-      POSTGRES_PASSWORD: namazu
-      POSTGRES_DB: namazu
+      POSTGRES_USER: unagi
+      POSTGRES_PASSWORD: unagi
+      POSTGRES_DB: unagi
     ports:
       - "${DB_PORT:-5533}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U namazu -d namazu"]
+      test: ["CMD-SHELL", "pg_isready -U unagi -d unagi"]
       interval: 5s
       timeout: 5s
       retries: 5

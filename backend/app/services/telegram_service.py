@@ -7,7 +7,7 @@ No subscription management or DB needed — just two env vars:
   TELEGRAM_CHAT_ID    — your personal chat ID (get via /getUpdates after sending /start)
 
 Message format example:
-  ⚡ *Namazu — Monday, 16 Mar*
+  ⚡ *Unagi — Monday, 16 Mar*
   🇸🇪 *SE3* · avg *0\.45* SEK/kWh · range 0\.22–0\.81
   ⬇️ Cheapest 2h: *02:00–04:00* · avg 0\.31 SEK/kWh
   ⬆️ Priciest 2h: *18:00–20:00* · avg 0\.78 SEK/kWh
@@ -96,7 +96,7 @@ def build_telegram_message(db, area: str, target_date: date | None = None) -> st
 
     # Build MarkdownV2 message
     lines = [
-        f"⚡ *{_escape(f'Namazu — {day_label}')}*",
+        f"⚡ *{_escape(f'Unagi — {day_label}')}*",
         f"🇸🇪 *{area}* · avg *{_escape(f'{day_avg:.2f}')}* · range {_escape(f'{day_min:.2f}–{day_max:.2f}')} SEK/kWh",
     ]
     if cheap:
@@ -194,7 +194,7 @@ def send_pipeline_alert(step_name: str, results: list[dict]) -> dict:
     failed_str = ", ".join(_label(r) for r in failed)
     message = "\n".join(
         [
-            f"🔴 *{_escape(f'Namazu — {step_name}')}*",
+            f"🔴 *{_escape(f'Unagi — {step_name}')}*",
             f"Failed: {_escape(failed_str)}",
             f"OK: {_escape(f'{len(ok)} tasks succeeded')}",
         ]

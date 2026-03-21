@@ -2,7 +2,7 @@
 PostgreSQL connection via SQLAlchemy.
 
 Reads DATABASE_URL from config (env var or .env file).
-  - Local:  postgresql://namazu:namazu@localhost:5432/namazu  (docker-compose)
+  - Local:  postgresql://unagi:unagi@localhost:5432/unagi  (docker-compose)
   - Prod:   Supabase connection string (set via Lambda env var)
 """
 
@@ -13,7 +13,7 @@ from app.config import settings
 
 engine = create_engine(
     settings.database_url,
-    pool_pre_ping=True,   # detect stale connections
+    pool_pre_ping=True,  # detect stale connections
     pool_size=5,
     max_overflow=10,
     executemany_mode="values_plus_batch",  # batch UPSERTs via psycopg2 execute_values

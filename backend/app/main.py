@@ -22,11 +22,12 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:3000",
-        "https://namazu-el.vercel.app",
+        "https://unagieel.net",
+        "https://namazu-el.vercel.app",  # transition: remove after migration complete
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "X-Namazu-Key"],
+    allow_headers=["Content-Type", "X-Unagi-Key"],
 )
 
 app.include_router(prices.router, prefix="/api/v1")

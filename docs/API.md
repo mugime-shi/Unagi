@@ -2,7 +2,7 @@
 
 22 endpoints across 5 routers. All responses are JSON. Swagger UI available in development mode (`DEBUG=true`).
 
-Authentication: `X-Namazu-Key` header required on all `/api/v1/*` endpoints.
+Authentication: `X-Unagi-Key` header required on all `/api/v1/*` endpoints.
 
 ---
 

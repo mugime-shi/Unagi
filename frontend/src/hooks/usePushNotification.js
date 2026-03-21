@@ -93,7 +93,7 @@ export function usePushNotification(area) {
 
       setStatus("subscribed");
     } catch (err) {
-      console.error("[Namazu] Push subscribe error:", err);
+      console.error("[Unagi] Push subscribe error:", err);
       setStatus("error");
     }
   }
@@ -114,7 +114,7 @@ export function usePushNotification(area) {
       }
       setStatus("idle");
     } catch (err) {
-      console.error("[Namazu] Push unsubscribe error:", err);
+      console.error("[Unagi] Push unsubscribe error:", err);
       setStatus("error");
     }
   }

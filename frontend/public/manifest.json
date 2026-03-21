@@ -1,6 +1,6 @@
 {
-  "name": "Namazu",
-  "short_name": "Namazu",
+  "name": "Unagi",
+  "short_name": "Unagi",
   "description": "Swedish electricity price tracker and optimizer",
   "display": "standalone",
   "start_url": "/",

@@ -1,12 +1,12 @@
-# Namazu — Swedish Electricity Price Dashboard
+# Unagi — Swedish Electricity Price Dashboard
 
-> *Namazu (鯰) — the mythical Japanese catfish said to sense earthquakes before they happen. This one senses price movements before they spike.*
+> *Unagi (うなぎ) = eel → el (Swedish for electricity) → .net (fishing net / network). A quadruple wordplay that powers this dashboard.*
 
-**[Live demo → namazu-el.vercel.app](https://namazu-el.vercel.app)** &nbsp;|&nbsp; 142 tests &nbsp;|&nbsp; 0 SEK/month
+**[Live demo → unagieel.net](https://unagieel.net)** &nbsp;|&nbsp; 142 tests &nbsp;|&nbsp; 0 SEK/month
 
 A real-time dashboard for Swedish electricity spot prices with ML forecasting, built to answer one practical question: *when should you run your dishwasher?*
 
-![Namazu dashboard](docs/namazu_top.png)
+![Unagi dashboard](docs/unagi_top.png)
 
 ---
 
@@ -22,7 +22,7 @@ A real-time dashboard for Swedish electricity spot prices with ML forecasting, b
 ## Quick start
 
 ```bash
-git clone git@github.com:mugime-shi/Namazu.git && cd Namazu
+git clone git@github.com:mugime-shi/Unagi.git && cd Unagi
 docker compose up                                  # API on :8100, PostgreSQL on :5533
 cd frontend && npm install && npm run dev          # React on :5173
 ```

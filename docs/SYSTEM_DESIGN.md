@@ -127,9 +127,9 @@ Everything runs on permanent free tiers — no 12-month expiry.
 ## Project structure
 
 ```
-Namazu/
+Unagi/
 ├── backend/
-│   ├── namazu                          # CLI (./namazu help)
+│   ├── unagi                           # CLI (./unagi help)
 │   └── app/
 │       ├── main.py                     # FastAPI + Mangum handler
 │       ├── config.py                   # Pydantic settings

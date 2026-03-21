@@ -95,7 +95,7 @@ resource "aws_cloudwatch_metric_alarm" "scheduler_errors" {
   period              = 300 # 5-minute window matches EventBridge trigger frequency
   statistic           = "Sum"
   threshold           = 0
-  alarm_description   = "Namazu scheduler Lambda failed — today's price fetch may have been skipped"
+  alarm_description   = "Unagi scheduler Lambda failed — today's price fetch may have been skipped"
   treat_missing_data  = "notBreaching" # silence when Lambda hasn't run yet (weekends etc.)
   alarm_actions       = [aws_sns_topic.alerts.arn]
 
@@ -114,7 +114,7 @@ resource "aws_cloudwatch_metric_alarm" "api_errors" {
   period              = 300
   statistic           = "Sum"
   threshold           = 5    # occasional errors are fine; alert on sustained failure
-  alarm_description   = "Namazu API Lambda error rate elevated for 15 minutes"
+  alarm_description   = "Unagi API Lambda error rate elevated for 15 minutes"
   treat_missing_data  = "notBreaching"
   alarm_actions       = [aws_sns_topic.alerts.arn]
 

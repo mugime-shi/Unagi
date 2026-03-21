@@ -10,7 +10,7 @@ EXEMPT_PATHS = {"/health"}
 
 
 class ApiKeyMiddleware(BaseHTTPMiddleware):
-    """Reject requests missing a valid X-Namazu-Key header.
+    """Reject requests missing a valid X-Unagi-Key header.
 
     Behaviour:
     - OPTIONS (CORS preflight) and EXEMPT_PATHS always pass through.
@@ -26,7 +26,7 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         if settings.api_key:
-            provided = request.headers.get("x-namazu-key", "")
+            provided = request.headers.get("x-unagi-key", "")
             if not hmac.compare_digest(provided, settings.api_key):
                 return JSONResponse(status_code=403, content={"detail": "Forbidden"})
 

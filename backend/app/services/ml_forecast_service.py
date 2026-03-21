@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # Config
 # ---------------------------------------------------------------------------
 
-_CACHE_DIR = Path(os.environ.get("LGBM_CACHE_DIR", "/tmp/namazu_lgbm"))
+_CACHE_DIR = Path(os.environ.get("LGBM_CACHE_DIR", "/tmp/unagi_lgbm"))
 _TRAIN_DAYS = int(os.environ.get("LGBM_TRAIN_DAYS", "365"))
 _TEST_DAYS = 30  # held-out set for early stopping + CQR calibration
 _MIN_TRAIN_ROWS = 200  # minimum rows to attempt training

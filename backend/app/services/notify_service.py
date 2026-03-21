@@ -45,10 +45,10 @@ def _build_notification(db: Session, area: str) -> dict | None:
     day_label = tomorrow.strftime("%Y-%m-%d (%a)")  # e.g. "2024-03-16 (Mon)"
 
     return {
-        "title": f"Namazu — {day_label}",
+        "title": f"Unagi — {day_label}",
         "body": f"{area} · avg {avg:.2f} SEK/kWh · range {lo:.2f}–{hi:.2f}",
         "icon": "/icon.svg",
-        "tag": "namazu-price",  # replaces previous notification with same tag
+        "tag": "unagi-price",  # replaces previous notification with same tag
         "url": "/",
     }
 

@@ -1,4 +1,4 @@
-"""Tests for the X-Namazu-Key API key middleware."""
+"""Tests for the X-Unagi-Key API key middleware."""
 
 from unittest.mock import patch
 
@@ -45,7 +45,7 @@ class TestApiKeyEnabled:
             mock.api_key = SECRET
             resp = _client().get(
                 "/api/v1/prices/today",
-                headers={"X-Namazu-Key": "wrong-key"},
+                headers={"X-Unagi-Key": "wrong-key"},
             )
             assert resp.status_code == 403
 
@@ -54,7 +54,7 @@ class TestApiKeyEnabled:
             mock.api_key = SECRET
             resp = _client().get(
                 "/api/v1/prices/today",
-                headers={"X-Namazu-Key": SECRET},
+                headers={"X-Unagi-Key": SECRET},
             )
             # Should not be 403 (may be 500 due to no DB, but auth passed)
             assert resp.status_code != 403

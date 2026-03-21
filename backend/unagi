@@ -90,13 +90,13 @@ cmd_test() {
 
 cmd_lambda_backfill() {
     parse_flags "$@"
-    aws lambda invoke --function-name namazu-scheduler \
+    aws lambda invoke --function-name unagi-scheduler \
         --payload "{\"backfill_days\": $DAYS}" \
         --cli-binary-format raw-in-base64-out /dev/stdout
 }
 
 cmd_lambda_collect() {
-    aws lambda invoke --function-name namazu-scheduler \
+    aws lambda invoke --function-name unagi-scheduler \
         --payload '{"midnight_collect": true}' \
         --cli-binary-format raw-in-base64-out /dev/stdout
 }
@@ -104,11 +104,11 @@ cmd_lambda_collect() {
 cmd_lambda_predict() {
     parse_flags "$@"
     if [[ -n "${TARGET_DATE:-}" ]]; then
-        aws lambda invoke --function-name namazu-scheduler \
+        aws lambda invoke --function-name unagi-scheduler \
             --payload "{\"predict_only\": true, \"target_date\": \"$TARGET_DATE\"}" \
             --cli-binary-format raw-in-base64-out /dev/stdout
     else
-        aws lambda invoke --function-name namazu-scheduler \
+        aws lambda invoke --function-name unagi-scheduler \
             --payload '{"predict_only": true}' \
             --cli-binary-format raw-in-base64-out /dev/stdout
     fi
@@ -117,9 +117,9 @@ cmd_lambda_predict() {
 # ── Help ─────────────────────────────────────────────────────
 cmd_help() {
     cat <<'EOF'
-namazu — Namazu CLI 🐟
+unagi — Unagi CLI 🐟
 
-Usage: ./namazu <command> [flags]
+Usage: ./unagi <command> [flags]
 
 Data:
   fetch                         Fetch today + tomorrow spot prices
@@ -179,7 +179,7 @@ case "$command" in
     help|--help|-h)  cmd_help ;;
     *)
         echo "Unknown command: $command" >&2
-        echo "Run './namazu help' for usage." >&2
+        echo "Run './unagi help' for usage." >&2
         exit 1
         ;;
 esac

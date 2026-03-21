@@ -115,7 +115,7 @@ export function ZoneComparison({ days = 90 }) {
         </p>
         <pre className="text-xs text-gray-600 bg-gray-800 rounded p-3 overflow-x-auto">
           {`# Backfill via Lambda invoke (once):
-aws lambda invoke --function-name namazu-scheduler \\
+aws lambda invoke --function-name unagi-scheduler \\
   --payload '{"backfill_days":90}' /dev/null
 
 # Or locally (run 3×):

@@ -103,7 +103,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
       <header className="border-b border-gray-800 px-4 sm:px-6 py-4 flex items-center gap-3">
-        <span className="text-xl font-bold tracking-tight">Namazu</span>
+        <span className="text-xl font-bold tracking-tight">Unagi</span>
 
         {/* Layer selector */}
         <nav className="ml-auto flex gap-1">

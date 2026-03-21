@@ -3,9 +3,9 @@ resource "aws_apigatewayv2_api" "main" {
   protocol_type = "HTTP"
 
   cors_configuration {
-    allow_origins = ["https://namazu-el.vercel.app", "http://localhost:5173", "http://localhost:3000"]
+    allow_origins = ["https://unagieel.net", "https://namazu-el.vercel.app", "http://localhost:5173", "http://localhost:3000"]
     allow_methods = ["GET", "POST", "OPTIONS"]
-    allow_headers = ["Content-Type", "X-Namazu-Key"]
+    allow_headers = ["Content-Type", "X-Unagi-Key"]
     max_age       = 300
   }
 }

@@ -22,11 +22,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/app ${LAMBDA_TASK_ROOT}/app
 
 # ─── lambda: AWS Lambda via Mangum (API function) ────────────────────────────
-# Build with: docker build --target lambda -t namazu-api .
+# Build with: docker build --target lambda -t unagi-api .
 FROM lambda-base AS lambda
 CMD ["app.main.handler"]
 
 # ─── scheduler: AWS Lambda EventBridge handler (daily price fetch) ────────────
-# Build with: docker build --target scheduler -t namazu-scheduler .
+# Build with: docker build --target scheduler -t unagi-scheduler .
 FROM lambda-base AS scheduler
 CMD ["app.tasks.fetch_prices.lambda_handler"]

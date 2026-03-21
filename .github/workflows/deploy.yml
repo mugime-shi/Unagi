@@ -84,8 +84,8 @@ jobs:
           push: true
           provenance: false  # Lambda requires single-platform manifest, not OCI index
           tags: |
-            ${{ env.ECR_REGISTRY }}/namazu-api:${{ steps.tag.outputs.sha }}
-            ${{ env.ECR_REGISTRY }}/namazu-api:latest
+            ${{ env.ECR_REGISTRY }}/unagi-api:${{ steps.tag.outputs.sha }}
+            ${{ env.ECR_REGISTRY }}/unagi-api:latest
 
       - name: Build and push Scheduler image
         uses: docker/build-push-action@v6
@@ -96,29 +96,30 @@ jobs:
           push: true
           provenance: false  # Lambda requires single-platform manifest, not OCI index
           tags: |
-            ${{ env.ECR_REGISTRY }}/namazu-scheduler:${{ steps.tag.outputs.sha }}
-            ${{ env.ECR_REGISTRY }}/namazu-scheduler:latest
+            ${{ env.ECR_REGISTRY }}/unagi-scheduler:${{ steps.tag.outputs.sha }}
+            ${{ env.ECR_REGISTRY }}/unagi-scheduler:latest
 
       # ── 5. Update Lambda functions ────────────────────────────────────
       - name: "Update Lambda: API"
         run: |
           aws lambda update-function-code \
-            --function-name namazu-api \
-            --image-uri ${{ env.ECR_REGISTRY }}/namazu-api:${{ steps.tag.outputs.sha }}
+            --function-name unagi-api \
+            --image-uri ${{ env.ECR_REGISTRY }}/unagi-api:${{ steps.tag.outputs.sha }}
 
       - name: "Update Lambda: Scheduler"
         run: |
           aws lambda update-function-code \
-            --function-name namazu-scheduler \
-            --image-uri ${{ env.ECR_REGISTRY }}/namazu-scheduler:${{ steps.tag.outputs.sha }}
+            --function-name unagi-scheduler \
+            --image-uri ${{ env.ECR_REGISTRY }}/unagi-scheduler:${{ steps.tag.outputs.sha }}
 
       # ── 6. Smoke test ─────────────────────────────────────────────────
       - name: Wait for Lambda update
         run: |
-          aws lambda wait function-updated --function-name namazu-api
-          aws lambda wait function-updated --function-name namazu-scheduler
+          aws lambda wait function-updated --function-name unagi-api
+          aws lambda wait function-updated --function-name unagi-scheduler
 
       - name: Smoke test
+        # TODO: Update URL after terraform apply creates new API Gateway
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             https://5ouka6u81a.execute-api.eu-north-1.amazonaws.com/health)
