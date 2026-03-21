@@ -39,6 +39,39 @@ const RANGES = [
   { label: "1Y", days: 365 },
 ];
 
+function formatTick(iso, days) {
+  const d = new Date(iso + "T12:00:00");
+  if (days <= 7) {
+    const wd = d.toLocaleDateString("en-SE", { weekday: "short" });
+    return `${wd} ${d.getMonth() + 1}/${d.getDate()}`;
+  }
+  if (days <= 90) {
+    return d.toLocaleDateString("en-SE", { month: "short", day: "numeric" });
+  }
+  if (days <= 180) {
+    return d.toLocaleDateString("en-SE", { month: "short" });
+  }
+  // 1Y: "Jan '26"
+  return `${d.toLocaleDateString("en-SE", { month: "short" })} '${String(d.getFullYear()).slice(2)}`;
+}
+
+function getAdaptiveTicks(points, days) {
+  if (days <= 7) return points.map((d) => d.date);
+  if (days <= 90) {
+    const step = Math.max(1, Math.floor(points.length / 7));
+    return points
+      .filter((_, i) => i % step === 0 || i === points.length - 1)
+      .map((d) => d.date);
+  }
+  // 6M / 1Y: first of each month
+  return points
+    .filter((d, i) => {
+      if (i === 0 || i === points.length - 1) return true;
+      return new Date(d.date + "T12:00:00").getDate() === 1;
+    })
+    .map((d) => d.date);
+}
+
 export function PriceHistory({ area = "SE3" }) {
   const [tab, setTab] = useState("history");
   const [days, setDays] = useState(90);
@@ -64,23 +97,21 @@ export function PriceHistory({ area = "SE3" }) {
         {tabBtn("history", "History")}
         {tabBtn("zones", "Zone Comparison")}
       </div>
-      {tab === "history" && (
-        <div className="flex gap-1">
-          {RANGES.map(({ label, days: d }) => (
-            <button
-              key={d}
-              onClick={() => setDays(d)}
-              className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                days === d
-                  ? "bg-gray-700 text-white"
-                  : "text-gray-600 hover:text-gray-300"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="flex gap-1">
+        {RANGES.map(({ label, days: d }) => (
+          <button
+            key={d}
+            onClick={() => setDays(d)}
+            className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+              days === d
+                ? "bg-gray-700 text-white"
+                : "text-gray-600 hover:text-gray-300"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 
@@ -88,7 +119,7 @@ export function PriceHistory({ area = "SE3" }) {
     return (
       <div className="space-y-3">
         {subNav}
-        <ZoneComparison />
+        <ZoneComparison days={days} />
       </div>
     );
   }
@@ -126,13 +157,7 @@ export function PriceHistory({ area = "SE3" }) {
   const overallMin = Math.min(...allAvg);
   const overallMax = Math.max(...allAvg);
 
-  // X-axis: show ~8 evenly-spaced labels
-  const step = Math.max(1, Math.floor(points.length / 8));
-  const ticks = points
-    .filter((_, i) => i % step === 0 || i === points.length - 1)
-    .map((d) => d.date);
-
-  const fmt = (iso) => iso;
+  const ticks = getAdaptiveTicks(points, days);
 
   return (
     <div className="space-y-3">
@@ -164,7 +189,7 @@ export function PriceHistory({ area = "SE3" }) {
             <XAxis
               dataKey="date"
               ticks={ticks}
-              tickFormatter={fmt}
+              tickFormatter={(iso) => formatTick(iso, days)}
               tick={{ fill: "#6b7280", fontSize: 10 }}
               axisLine={false}
               tickLine={false}

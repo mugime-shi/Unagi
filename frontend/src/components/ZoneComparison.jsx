@@ -11,6 +11,37 @@ import {
 } from "recharts";
 import { useMultiZone } from "../hooks/useMultiZone";
 
+function formatTick(iso, days) {
+  const d = new Date(iso + "T12:00:00");
+  if (days <= 7) {
+    const wd = d.toLocaleDateString("en-SE", { weekday: "short" });
+    return `${wd} ${d.getMonth() + 1}/${d.getDate()}`;
+  }
+  if (days <= 90) {
+    return d.toLocaleDateString("en-SE", { month: "short", day: "numeric" });
+  }
+  if (days <= 180) {
+    return d.toLocaleDateString("en-SE", { month: "short" });
+  }
+  return `${d.toLocaleDateString("en-SE", { month: "short" })} '${String(d.getFullYear()).slice(2)}`;
+}
+
+function getAdaptiveTicks(points, days) {
+  if (days <= 7) return points.map((d) => d.date);
+  if (days <= 90) {
+    const step = Math.max(1, Math.floor(points.length / 7));
+    return points
+      .filter((_, i) => i % step === 0 || i === points.length - 1)
+      .map((d) => d.date);
+  }
+  return points
+    .filter((d, i) => {
+      if (i === 0 || i === points.length - 1) return true;
+      return new Date(d.date + "T12:00:00").getDate() === 1;
+    })
+    .map((d) => d.date);
+}
+
 // SE1 = cheapest (north), SE4 = most expensive (south)
 const ZONE_COLORS = {
   SE1: "#60a5fa", // blue
@@ -58,8 +89,8 @@ function mergeZones(zones) {
   });
 }
 
-export function ZoneComparison() {
-  const { data, loading, error } = useMultiZone(90);
+export function ZoneComparison({ days = 90 }) {
+  const { data, loading, error } = useMultiZone(days);
 
   if (loading)
     return <p className="text-gray-500 text-sm">Loading zone comparison…</p>;
@@ -96,13 +127,7 @@ python -m app.tasks.fetch_prices --backfill 90 --area SE4`}
     );
   }
 
-  // X-axis ticks: ~8 evenly spaced
-  const step = Math.max(1, Math.floor(points.length / 8));
-  const ticks = points
-    .filter((_, i) => i % step === 0 || i === points.length - 1)
-    .map((d) => d.date);
-
-  const fmt = (iso) => iso;
+  const ticks = getAdaptiveTicks(points, days);
 
   // Overall avg per zone (for summary cards)
   const summaries = Object.keys(ZONE_COLORS).map((area) => {
@@ -136,7 +161,7 @@ python -m app.tasks.fetch_prices --backfill 90 --area SE4`}
           <XAxis
             dataKey="date"
             ticks={ticks}
-            tickFormatter={fmt}
+            tickFormatter={(iso) => formatTick(iso, days)}
             tick={{ fill: "#6b7280", fontSize: 10 }}
             axisLine={false}
             tickLine={false}
@@ -168,7 +193,7 @@ python -m app.tasks.fetch_prices --backfill 90 --area SE4`}
         </LineChart>
       </ResponsiveContainer>
 
-      {/* 90-day avg per zone */}
+      {/* Period avg per zone */}
       <div className="grid grid-cols-4 gap-2 text-center">
         {summaries.map(({ area, city, avg }) => (
           <div key={area} className="bg-gray-800 rounded-xl py-3">
