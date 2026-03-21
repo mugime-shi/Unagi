@@ -2,7 +2,7 @@
 
 > *Unagi (うなぎ) = eel → el (Swedish for electricity) → .net (fishing net / network). A quadruple wordplay that powers this dashboard.*
 
-**[Live demo → unagieel.net](https://unagieel.net)** &nbsp;|&nbsp; 142 tests &nbsp;|&nbsp; 0 SEK/month
+**[Live demo → unagieel.net](https://unagieel.net)** &nbsp;|&nbsp; 202 tests &nbsp;|&nbsp; 0 SEK/month
 
 A real-time dashboard for Swedish electricity spot prices with ML forecasting, built to answer one practical question: *when should you run your dishwasher?*
 
