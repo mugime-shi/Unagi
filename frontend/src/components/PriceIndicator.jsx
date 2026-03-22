@@ -44,6 +44,7 @@ export function PriceIndicator({ prices }) {
         <span className={`text-3xl font-bold ${color}`}>{sek.toFixed(2)}</span>
         <span className="text-gray-400 text-sm">SEK/kWh</span>
         <span className={`text-sm font-medium ${color}`}>{level}</span>
+        <span className="text-xs text-gray-500">vs today</span>
       </div>
       <p className="text-xs text-gray-500 mt-1">
         Daily avg: {avg.toFixed(2)} SEK/kWh

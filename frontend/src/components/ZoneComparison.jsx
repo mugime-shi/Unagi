@@ -53,7 +53,7 @@ const ZONE_COLORS = {
 const ZONE_CITIES = {
   SE1: "Luleå",
   SE2: "Sundsvall",
-  SE3: "Göteborg",
+  SE3: "Stockholm",
   SE4: "Malmö",
 };
 

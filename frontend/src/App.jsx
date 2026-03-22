@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheapHoursWidget } from "./components/CheapHoursWidget";
 import { ForecastAccuracy } from "./components/ForecastAccuracy";
 import { GenerationChart } from "./components/GenerationChart";
@@ -18,11 +18,34 @@ import { usePrices } from "./hooks/usePrices";
 import { dateWithWeekday } from "./utils/formatters";
 
 const AREAS = [
-  { id: "SE1", label: "SE1", city: "Luleå" },
-  { id: "SE2", label: "SE2", city: "Sundsvall" },
-  { id: "SE3", label: "SE3", city: "Göteborg" },
-  { id: "SE4", label: "SE4", city: "Malmö" },
+  { id: "SE1", label: "SE1", city: "Luleå", cities: "Luleå, Umeå, Kiruna" },
+  {
+    id: "SE2",
+    label: "SE2",
+    city: "Sundsvall",
+    cities: "Sundsvall, Östersund, Gävle",
+  },
+  {
+    id: "SE3",
+    label: "SE3",
+    city: "Stockholm",
+    cities: "Stockholm, Göteborg, Uppsala",
+  },
+  {
+    id: "SE4",
+    label: "SE4",
+    city: "Malmö",
+    cities: "Malmö, Lund, Helsingborg",
+  },
 ];
+
+/** Map browser latitude to the closest electricity price area */
+function latToArea(lat) {
+  if (lat > 63.5) return "SE1";
+  if (lat > 60.5) return "SE2";
+  if (lat > 56.5) return "SE3";
+  return "SE4";
+}
 
 function todayISO() {
   return new Date().toISOString().split("T")[0];
@@ -39,6 +62,15 @@ export default function App() {
   const [tab, setTab] = useState("today"); // "today" | "tomorrow" | "trends"
   const [forecastDate, setForecastDate] = useState(tomorrowISO);
   const [area, setArea] = useState("SE3");
+
+  // Auto-detect area from browser geolocation (once, on mount)
+  useEffect(() => {
+    navigator.geolocation?.getCurrentPosition(
+      ({ coords }) => setArea(latToArea(coords.latitude)),
+      () => {}, // silent fallback to SE3
+      { timeout: 5000 },
+    );
+  }, []);
 
   const isTomorrow = forecastDate === tomorrowISO();
   const isPastDate = forecastDate < todayISO();
@@ -226,9 +258,10 @@ export default function App() {
             {/* Area selector — below tabs */}
             <div className="flex items-center gap-2">
               <div className="flex gap-1">
-                {AREAS.map(({ id, label }) => (
+                {AREAS.map(({ id, label, cities }) => (
                   <button
                     key={id}
+                    title={`${id}: ${cities}`}
                     onClick={() => setArea(id)}
                     className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
                       area === id
