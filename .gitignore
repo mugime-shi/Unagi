@@ -54,5 +54,8 @@ IDEAS.md
 # Claude Code
 .claude/
 
+# Local working documents
+tasks/
+
 # Original brief
 PROJECT_BRIEF_ORIGINAL.md

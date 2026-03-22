@@ -74,7 +74,7 @@ function CustomTooltip({ active, payload, label, showWeekdayAvg }) {
   if (!active || !payload?.length) return null;
   const p = payload[0].payload;
   return (
-    <div className="bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm">
+    <div className="bg-sea-800 border border-sea-700 rounded-lg px-3 py-2 text-sm">
       <p className="text-gray-400">{label}</p>
       <p
         className="font-semibold"
@@ -120,7 +120,7 @@ function CustomTooltip({ active, payload, label, showWeekdayAvg }) {
       )}
       {/* Retrospective LGBM + WeekDay Avg error */}
       {(p.retro_lgbm != null || (showWeekdayAvg && p.forecast_avg != null)) && (
-        <div className="mt-1 pt-1 border-t border-gray-700 text-xs">
+        <div className="mt-1 pt-1 border-t border-sea-700 text-xs">
           <p className="text-gray-500">Prediction:</p>
           {showWeekdayAvg && p.forecast_avg != null && p.price_sek_kwh > 0 && (
             <p className="text-gray-400">
@@ -365,7 +365,7 @@ export function PriceChart({
                   className={`text-xs px-2.5 py-0.5 rounded-full border transition-colors ${
                     showLgbm
                       ? "border-amber-600 text-amber-400 bg-amber-900/20"
-                      : "border-gray-700 text-gray-500 hover:text-gray-400"
+                      : "border-sea-700 text-gray-500 hover:text-gray-400"
                   }`}
                 >
                   {showLgbm ? "▪" : "◦"} LGBM
@@ -376,8 +376,8 @@ export function PriceChart({
                   onClick={() => setShowWeekdayAvg((v) => !v)}
                   className={`text-xs px-2.5 py-0.5 rounded-full border transition-colors ${
                     showWeekdayAvg
-                      ? "border-gray-500 text-gray-300 bg-gray-700/30"
-                      : "border-gray-700 text-gray-500 hover:text-gray-400"
+                      ? "border-sea-700 text-gray-300 bg-sea-700/30"
+                      : "border-sea-700 text-gray-500 hover:text-gray-400"
                   }`}
                 >
                   {showWeekdayAvg ? "▪" : "◦"} Weekday Avg

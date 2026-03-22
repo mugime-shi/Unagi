@@ -60,7 +60,7 @@ const ZONE_CITIES = {
 function ZoneTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs space-y-1">
+    <div className="bg-sea-800 border border-sea-700 rounded-lg px-3 py-2 text-xs space-y-1">
       <p className="text-gray-400 mb-1">{label}</p>
       {payload.map((p) => (
         <p key={p.dataKey} style={{ color: p.color }}>
@@ -105,7 +105,7 @@ export function ZoneComparison({ days = 90 }) {
 
   if (points.length === 0) {
     return (
-      <div className="bg-gray-900 rounded-2xl p-4 space-y-2">
+      <div className="bg-sea-900 rounded-2xl p-4 space-y-2">
         <h2 className="text-sm font-medium text-gray-300">
           Zone Comparison — SE1–SE4
         </h2>
@@ -113,7 +113,7 @@ export function ZoneComparison({ days = 90 }) {
           No multi-zone data yet. Run a backfill for SE1, SE2, SE4 to populate
           the chart.
         </p>
-        <pre className="text-xs text-gray-600 bg-gray-800 rounded p-3 overflow-x-auto">
+        <pre className="text-xs text-gray-600 bg-sea-800 rounded p-3 overflow-x-auto">
           {`# Backfill via Lambda invoke (once):
 aws lambda invoke --function-name unagi-scheduler \\
   --payload '{"backfill_days":90}' /dev/null
@@ -140,7 +140,7 @@ python -m app.tasks.fetch_prices --backfill 90 --area SE4`}
   });
 
   return (
-    <div className="bg-gray-900 rounded-2xl p-4 space-y-4">
+    <div className="bg-sea-900 rounded-2xl p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-gray-300">
           Zone Comparison — SE1–SE4
@@ -196,7 +196,7 @@ python -m app.tasks.fetch_prices --backfill 90 --area SE4`}
       {/* Period avg per zone */}
       <div className="grid grid-cols-4 gap-2 text-center">
         {summaries.map(({ area, city, avg }) => (
-          <div key={area} className="bg-gray-800 rounded-xl py-3">
+          <div key={area} className="bg-sea-800 rounded-xl py-3">
             <p className="text-xs mb-0.5" style={{ color: ZONE_COLORS[area] }}>
               {area}
             </p>

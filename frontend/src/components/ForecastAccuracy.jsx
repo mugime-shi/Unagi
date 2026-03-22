@@ -26,7 +26,7 @@ function modelLabel(name) {
 function BreakdownTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-xs">
+    <div className="bg-sea-800 border border-sea-700 rounded-lg px-3 py-2 text-xs">
       <p className="text-gray-400 mb-1">{label}</p>
       {payload.map((p) => (
         <p key={p.dataKey} style={{ color: p.fill }}>
@@ -57,7 +57,7 @@ export function ForecastAccuracy({ area }) {
   const modelNames = Object.keys(models);
   if (modelNames.length === 0) {
     return (
-      <div className="bg-gray-900 rounded-xl p-3 text-center">
+      <div className="bg-sea-900 rounded-xl p-3 text-center">
         <p className="text-xs text-gray-500">
           No forecast accuracy data yet — predictions need to be recorded first
         </p>
@@ -106,7 +106,7 @@ export function ForecastAccuracy({ area }) {
     : [];
 
   return (
-    <div className="bg-gray-900 rounded-xl p-4">
+    <div className="bg-sea-900 rounded-xl p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-xs text-gray-500">
           Forecast accuracy (last {data.days} days)
@@ -123,7 +123,7 @@ export function ForecastAccuracy({ area }) {
               className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
                 breakdownBy === id
                   ? "border-sky-600 text-sky-400 bg-sky-900/20"
-                  : "border-gray-700 text-gray-500 hover:text-gray-400"
+                  : "border-sea-700 text-gray-500 hover:text-gray-400"
               }`}
             >
               {label}
@@ -144,7 +144,7 @@ export function ForecastAccuracy({ area }) {
               className={`flex items-center justify-between px-3 py-2 rounded-lg ${
                 isBest
                   ? "bg-emerald-900/20 border border-emerald-800"
-                  : "bg-gray-800"
+                  : "bg-sea-800"
               }`}
             >
               <div>
@@ -169,7 +169,7 @@ export function ForecastAccuracy({ area }) {
 
       {/* Coverage rate badge */}
       {coverage && coverage.n_samples > 0 && (
-        <div className="mt-2 px-3 py-2 bg-gray-800 rounded-lg flex items-center justify-between">
+        <div className="mt-2 px-3 py-2 bg-sea-800 rounded-lg flex items-center justify-between">
           <span className="text-xs text-gray-400">80% CI coverage</span>
           <span
             className={`text-xs font-semibold ${
@@ -185,7 +185,7 @@ export function ForecastAccuracy({ area }) {
         </div>
       )}
       {coverage && coverage.n_samples === 0 && (
-        <div className="mt-2 px-3 py-2 bg-gray-800 rounded-lg">
+        <div className="mt-2 px-3 py-2 bg-sea-800 rounded-lg">
           <span className="text-xs text-gray-500">
             Coverage rate: collecting interval data...
           </span>

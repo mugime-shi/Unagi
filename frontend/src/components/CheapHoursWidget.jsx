@@ -11,7 +11,7 @@ function ApplianceRow({ name, emoji, duration, date, area }) {
   const { data, loading } = useCheapHours(date, duration, area);
 
   const skeletonRow = (
-    <div className="flex items-center justify-between py-2.5 border-b border-gray-800 last:border-0">
+    <div className="flex items-center justify-between py-2.5 border-b border-sea-800 last:border-0">
       <div className="flex items-center gap-2">
         <span className="text-base">{emoji}</span>
         <span className="text-sm text-gray-400">{name}</span>
@@ -28,7 +28,7 @@ function ApplianceRow({ name, emoji, duration, date, area }) {
   const end = toLocalHour(w.end_utc);
 
   return (
-    <div className="flex items-center justify-between py-2.5 border-b border-gray-800 last:border-0">
+    <div className="flex items-center justify-between py-2.5 border-b border-sea-800 last:border-0">
       <div className="flex items-center gap-2 min-w-0">
         <span className="text-base shrink-0">{emoji}</span>
         <span className="text-sm truncate">{name}</span>
@@ -48,7 +48,7 @@ function ApplianceRow({ name, emoji, duration, date, area }) {
 
 export function CheapHoursWidget({ date, area = "SE3" }) {
   return (
-    <div className="bg-gray-900 rounded-2xl p-4">
+    <div className="bg-sea-900 rounded-2xl p-4">
       <h2 className="text-sm font-medium text-gray-300 mb-1">
         Best time to run today
       </h2>

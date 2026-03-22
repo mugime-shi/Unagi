@@ -17,7 +17,7 @@ function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs">
+    <div className="bg-sea-800 border border-sea-700 rounded-lg px-3 py-2 text-xs">
       <p className="text-gray-400 mb-1">{dateWithWeekday(label)}</p>
       <p className="text-white font-semibold">
         avg {d.avg_sek_kwh?.toFixed(3)} SEK/kWh
@@ -83,7 +83,7 @@ export function PriceHistory({ area = "SE3" }) {
       onClick={() => setTab(id)}
       className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
         tab === id
-          ? "bg-gray-700 text-white"
+          ? "bg-sea-700 text-white"
           : "text-gray-500 hover:text-gray-300"
       }`}
     >
@@ -104,7 +104,7 @@ export function PriceHistory({ area = "SE3" }) {
             onClick={() => setDays(d)}
             className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
               days === d
-                ? "bg-gray-700 text-white"
+                ? "bg-sea-700 text-white"
                 : "text-gray-600 hover:text-gray-300"
             }`}
           >
@@ -162,7 +162,7 @@ export function PriceHistory({ area = "SE3" }) {
   return (
     <div className="space-y-3">
       {subNav}
-      <div className="bg-gray-900 rounded-2xl p-4 space-y-4">
+      <div className="bg-sea-900 rounded-2xl p-4 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-medium text-gray-300">
             Spot price history — last {days} days · {area}
@@ -227,7 +227,7 @@ export function PriceHistory({ area = "SE3" }) {
             { label: `${days}-day avg`, value: overallAvg.toFixed(3) },
             { label: `${days}-day max`, value: overallMax.toFixed(3) },
           ].map(({ label, value }) => (
-            <div key={label} className="bg-gray-800 rounded-xl py-3">
+            <div key={label} className="bg-sea-800 rounded-xl py-3">
               <p className="text-xs text-gray-500 mb-1">{label}</p>
               <p className="text-base font-semibold">{value}</p>
               <p className="text-xs text-gray-600">SEK/kWh</p>

@@ -49,7 +49,7 @@ function CustomTooltip({ active, payload, label }) {
   const hasData = payload.some((p) => p.value != null && p.value > 0);
   if (!hasData) return null;
   return (
-    <div className="bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm">
+    <div className="bg-sea-800 border border-sea-700 rounded-lg px-3 py-2 text-sm">
       <p className="text-gray-400 mb-1">{label}</p>
       {[...payload].reverse().map((p) =>
         p.value > 0 ? (
@@ -121,7 +121,7 @@ export function GenerationChart({ generation, prices }) {
   );
 
   return (
-    <div className="bg-gray-900 rounded-2xl p-4">
+    <div className="bg-sea-900 rounded-2xl p-4">
       <div className="flex items-start justify-between mb-3">
         <div>
           <h2 className="text-sm font-medium text-gray-300">

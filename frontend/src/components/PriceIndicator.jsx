@@ -32,7 +32,7 @@ export function PriceIndicator({ prices }) {
   } else {
     level = "Normal";
     color = "text-gray-200";
-    bg = "bg-gray-800/50 border-gray-700/40";
+    bg = "bg-sea-800/50 border-sea-700/40";
   }
 
   return (

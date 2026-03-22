@@ -101,8 +101,8 @@ export default function App() {
   const areaCity = AREAS.find((a) => a.id === area)?.city ?? area;
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
-      <header className="sticky top-0 z-50 bg-gray-950 border-b border-gray-800 px-4 sm:px-6 py-3 flex items-center gap-3">
+    <div className="min-h-screen bg-sea-950 text-gray-100 flex flex-col">
+      <header className="sticky top-0 z-50 bg-sea-950 border-b border-sea-800 px-4 sm:px-6 py-3 flex items-center gap-3">
         <img
           src="/logo/unagi_log.png"
           alt="Unagi"
@@ -123,7 +123,7 @@ export default function App() {
               onClick={() => setLayer(id)}
               className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
                 layer === id
-                  ? "bg-gray-700 text-white"
+                  ? "bg-sea-700 text-white"
                   : "text-gray-500 hover:text-gray-300"
               }`}
             >
@@ -135,12 +135,12 @@ export default function App() {
         <NotificationBell area={area} />
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-6 space-y-4">
+      <main className="w-full max-w-3xl mx-auto px-4 py-6 space-y-4 flex-1">
         {/* ── Layer 1: Prices ── */}
         {layer === "prices" && (
           <>
             {/* Tab selector */}
-            <div className="flex gap-2 items-center">
+            <div className="flex flex-wrap gap-2 items-center">
               {[
                 { id: "today", label: "Today" },
                 { id: "tomorrow", label: "Tomorrow" },
@@ -152,7 +152,7 @@ export default function App() {
                   className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
                     tab === id
                       ? "bg-sky-600 text-white"
-                      : "bg-gray-800 text-gray-400 hover:bg-gray-700"
+                      : "bg-sea-800 text-gray-400 hover:bg-sea-700"
                   }`}
                 >
                   {label}
@@ -168,7 +168,7 @@ export default function App() {
                       d.setDate(d.getDate() - 1);
                       setForecastDate(d.toISOString().split("T")[0]);
                     }}
-                    className="px-2 py-1 rounded-lg bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors text-sm"
+                    className="px-2 py-1 rounded-lg bg-sea-800 text-gray-400 hover:text-white hover:bg-sea-700 transition-colors text-sm"
                   >
                     &larr;
                   </button>
@@ -180,7 +180,7 @@ export default function App() {
                       onChange={(e) => setForecastDate(e.target.value)}
                       className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                     />
-                    <div className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1 text-sm text-gray-300 pointer-events-none flex items-center gap-2">
+                    <div className="bg-sea-800 border border-sea-700 rounded-lg px-3 py-1 text-sm text-gray-300 pointer-events-none flex items-center gap-2">
                       <span>
                         {forecastDate}{" "}
                         <span className="text-gray-500">
@@ -215,7 +215,7 @@ export default function App() {
                       if (next <= tomorrowISO()) setForecastDate(next);
                     }}
                     disabled={forecastDate >= tomorrowISO()}
-                    className="px-2 py-1 rounded-lg bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors text-sm disabled:opacity-30 disabled:pointer-events-none"
+                    className="px-2 py-1 rounded-lg bg-sea-800 text-gray-400 hover:text-white hover:bg-sea-700 transition-colors text-sm disabled:opacity-30 disabled:pointer-events-none"
                   >
                     &rarr;
                   </button>
@@ -233,7 +233,7 @@ export default function App() {
                     className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
                       area === id
                         ? "bg-sky-600 text-white"
-                        : "text-gray-500 hover:text-gray-300 border border-gray-700"
+                        : "text-gray-500 hover:text-gray-300 border border-sea-700"
                     }`}
                   >
                     {label}
@@ -248,22 +248,22 @@ export default function App() {
               <>
                 {todayLoading && (
                   <div className="animate-pulse space-y-4">
-                    <div className="bg-gray-900 rounded-2xl p-4">
+                    <div className="bg-sea-900 rounded-2xl p-4">
                       <div className="flex items-center justify-between mb-4">
-                        <div className="h-4 bg-gray-700 rounded w-40" />
-                        <div className="h-3 bg-gray-700 rounded w-12" />
+                        <div className="h-4 bg-sea-700 rounded w-40" />
+                        <div className="h-3 bg-sea-700 rounded w-12" />
                       </div>
-                      <div className="h-[300px] bg-gray-800 rounded-xl" />
+                      <div className="h-[300px] bg-sea-800 rounded-xl" />
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       {[0, 1, 2, 3].map((i) => (
                         <div
                           key={i}
-                          className="bg-gray-900 rounded-xl py-3 px-4 space-y-2"
+                          className="bg-sea-900 rounded-xl py-3 px-4 space-y-2"
                         >
-                          <div className="h-3 bg-gray-700 rounded w-16 mx-auto" />
-                          <div className="h-6 bg-gray-700 rounded w-12 mx-auto" />
-                          <div className="h-3 bg-gray-700 rounded w-10 mx-auto" />
+                          <div className="h-3 bg-sea-700 rounded w-16 mx-auto" />
+                          <div className="h-6 bg-sea-700 rounded w-12 mx-auto" />
+                          <div className="h-3 bg-sea-700 rounded w-10 mx-auto" />
                         </div>
                       ))}
                     </div>
@@ -281,7 +281,7 @@ export default function App() {
 
                     {/* Price + Generation visual group */}
                     <div className="space-y-2">
-                      <div className="bg-gray-900 rounded-2xl p-4">
+                      <div className="bg-sea-900 rounded-2xl p-4">
                         <div className="flex items-center justify-between mb-4">
                           <div>
                             <h2 className="text-sm font-medium text-gray-300">
@@ -327,10 +327,7 @@ export default function App() {
                         },
                         { label: "Max", value: todayData.summary.max_sek_kwh },
                       ].map(({ label, value }) => (
-                        <div
-                          key={label}
-                          className="bg-gray-900 rounded-xl py-3"
-                        >
+                        <div key={label} className="bg-sea-900 rounded-xl py-3">
                           <p className="text-xs text-gray-500 mb-1">{label}</p>
                           <p className="text-lg font-semibold">
                             {value != null ? value.toFixed(2) : "—"}
@@ -350,8 +347,8 @@ export default function App() {
             {tab === "tomorrow" && (
               <>
                 {forecastLoading && (
-                  <div className="animate-pulse bg-gray-900 rounded-2xl p-4">
-                    <div className="h-[300px] bg-gray-800 rounded-xl" />
+                  <div className="animate-pulse bg-sea-900 rounded-2xl p-4">
+                    <div className="h-[300px] bg-sea-800 rounded-xl" />
                   </div>
                 )}
                 {forecastError && (
@@ -372,7 +369,7 @@ export default function App() {
                         </p>
                       )}
 
-                    <div className="bg-gray-900 rounded-2xl p-4">
+                    <div className="bg-sea-900 rounded-2xl p-4">
                       <div className="flex items-center justify-between mb-4">
                         <div>
                           <h2 className="text-sm font-medium text-gray-300">
@@ -428,10 +425,7 @@ export default function App() {
                           value: forecastPriceData.summary.max_sek_kwh,
                         },
                       ].map(({ label, value }) => (
-                        <div
-                          key={label}
-                          className="bg-gray-900 rounded-xl py-3"
-                        >
+                        <div key={label} className="bg-sea-900 rounded-xl py-3">
                           <p className="text-xs text-gray-500 mb-1">{label}</p>
                           <p className="text-lg font-semibold">
                             {value != null ? value.toFixed(2) : "—"}
@@ -448,7 +442,7 @@ export default function App() {
                     {isPastDate &&
                       retrospective?.models &&
                       Object.keys(retrospective.models).length > 0 && (
-                        <div className="bg-gray-900 rounded-xl p-4">
+                        <div className="bg-sea-900 rounded-xl p-4">
                           <h3 className="text-xs text-gray-500 mb-3">
                             Prediction accuracy — {forecastPriceData.date}
                           </h3>
@@ -479,7 +473,7 @@ export default function App() {
                               .map(({ model, pairs, mae }) => (
                                 <div
                                   key={model}
-                                  className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-800"
+                                  className="flex items-center justify-between px-3 py-2 rounded-lg bg-sea-800"
                                 >
                                   <span className="text-sm font-medium text-gray-200">
                                     {model === "same_weekday_avg"
@@ -519,7 +513,7 @@ export default function App() {
         )}
       </main>
 
-      <footer className="border-t border-gray-800 px-4 sm:px-6 py-4 text-right">
+      <footer className="border-t border-sea-800 px-4 sm:px-6 py-4 text-right">
         <span className="text-[11px] text-[#8a919c] italic">
           A state of total awareness...{" "}
           <a
