@@ -122,7 +122,7 @@ export function SolarSimulator() {
         <button
           type="submit"
           disabled={loading}
-          className="bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white px-4 py-1.5 rounded-lg text-sm transition-colors"
+          className="bg-cyan-700 hover:bg-cyan-600 disabled:opacity-50 text-white px-4 py-1.5 rounded-lg text-sm transition-colors"
         >
           {loading ? "Simulating…" : "Simulate"}
         </button>
@@ -250,7 +250,7 @@ export function SolarSimulator() {
               <p
                 className="text-xs text-center mt-2 font-medium"
                 style={{
-                  color: result.battery_effect_sek >= 0 ? "#4ade80" : "#f87171",
+                  color: result.battery_effect_sek >= 0 ? "#22d3ee" : "#fb923c",
                 }}
               >
                 Battery adds {result.battery_effect_sek >= 0 ? "+" : ""}
@@ -268,22 +268,22 @@ export function SolarSimulator() {
                   Total benefit — skattereduktion impact ({result.month})
                 </p>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-green-900/25 border border-green-800/40 rounded-xl p-3 text-center">
-                    <p className="text-xs text-green-400/70 mb-1">
+                  <div className="bg-cyan-900/25 border border-cyan-800/40 rounded-xl p-3 text-center">
+                    <p className="text-xs text-cyan-400/70 mb-1">
                       with tax credit
                     </p>
-                    <p className="text-2xl font-bold text-green-400">
+                    <p className="text-2xl font-bold text-cyan-400">
                       {result.total_benefit_with_tax_credit_sek.toFixed(0)}
                     </p>
                     <p className="text-xs text-gray-500 mb-1">SEK / month</p>
-                    <p className="text-xs text-green-400/60">
+                    <p className="text-xs text-cyan-400/60">
                       ~
                       {(result.total_benefit_with_tax_credit_sek * 12).toFixed(
                         0,
                       )}{" "}
                       SEK / year
                     </p>
-                    <p className="text-xs text-green-400/50 mt-1">
+                    <p className="text-xs text-cyan-400/50 mt-1">
                       incl. {result.tax_credit.monthly_credit_sek.toFixed(0)}{" "}
                       SEK credit
                     </p>

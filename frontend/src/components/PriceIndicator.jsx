@@ -23,12 +23,12 @@ export function PriceIndicator({ prices }) {
   let level, color, bg;
   if (sek <= avg * 0.8) {
     level = "Cheap";
-    color = "text-green-300";
-    bg = "bg-green-950/40 border-green-800/40";
+    color = "text-cyan-300";
+    bg = "bg-cyan-950/40 border-cyan-800/40";
   } else if (sek >= avg * 1.2) {
     level = "Expensive";
-    color = "text-red-300";
-    bg = "bg-red-950/40 border-red-800/40";
+    color = "text-orange-300";
+    bg = "bg-orange-950/40 border-orange-800/40";
   } else {
     level = "Normal";
     color = "text-gray-200";
@@ -40,14 +40,13 @@ export function PriceIndicator({ prices }) {
       <p className="text-xs text-gray-400 mb-1">
         Right now ({currentCETTime15()} CET)
       </p>
-      <div className="flex items-baseline gap-3">
+      <div className="flex items-baseline gap-2">
         <span className={`text-3xl font-bold ${color}`}>{sek.toFixed(2)}</span>
         <span className="text-gray-400 text-sm">SEK/kWh</span>
-        <span className={`text-sm font-medium ${color}`}>{level}</span>
-        <span className="text-xs text-gray-500">vs today</span>
       </div>
       <p className="text-xs text-gray-500 mt-1">
-        Daily avg: {avg.toFixed(2)} SEK/kWh
+        <span className={`font-medium ${color}`}>{level}</span>
+        {" · "}avg {avg.toFixed(2)} SEK/kWh vs today
       </p>
     </div>
   );

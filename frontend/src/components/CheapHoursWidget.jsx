@@ -35,7 +35,7 @@ function ApplianceRow({ name, emoji, duration, date, area }) {
         <span className="text-xs text-gray-600 shrink-0">({duration}h)</span>
       </div>
       <div className="flex items-center gap-2 shrink-0 ml-2">
-        <span className="text-sm font-medium text-green-400">
+        <span className="text-sm font-medium text-cyan-400">
           {start}–{end}
         </span>
         <span className="text-xs text-gray-500">

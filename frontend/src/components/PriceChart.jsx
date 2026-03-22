@@ -22,9 +22,9 @@ const PRED_WEEKDAY_COLOR = "#9ca3af"; // gray-400
 const PRED_LGBM_COLOR = "#fbbf24"; // amber-400 — complementary to blue DA
 
 function priceColor(sek) {
-  if (sek <= 0.4) return "#22c55e"; // green — cheap
-  if (sek <= 0.7) return "#eab308"; // yellow — moderate
-  return "#ef4444"; // red — expensive
+  if (sek <= 0.4) return "#22d3ee"; // cyan — bioluminescent (cheap)
+  if (sek <= 0.7) return "#fbbf24"; // amber — eel belly (moderate)
+  return "#fb923c"; // orange — electric shock (expensive)
 }
 
 function NowPriceLabel({ viewBox, value }) {

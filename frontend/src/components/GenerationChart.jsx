@@ -122,44 +122,42 @@ export function GenerationChart({ generation, prices }) {
 
   return (
     <div className="bg-sea-900 rounded-2xl p-4">
-      <div className="flex items-start justify-between mb-3">
-        <div>
+      <div className="mb-3">
+        <div className="flex items-start justify-between">
           <h2 className="text-sm font-medium text-gray-300">
             Generation mix · MW
           </h2>
-          {(renewable_pct != null || carbon_free_pct != null) && (
-            <p className="text-xs text-gray-500 mt-0.5">
-              {renewable_pct != null && (
-                <span className="text-green-400">
-                  Renewable {renewable_pct}%
-                </span>
-              )}
-              {renewable_pct != null && carbon_free_pct != null && (
-                <span className="text-gray-600"> · </span>
-              )}
-              {carbon_free_pct != null && (
-                <span>Carbon-free {carbon_free_pct}%</span>
-              )}
-              {latest_slot && (
-                <span className="ml-2">· {lagLabel(latest_slot)}</span>
-              )}
-            </p>
-          )}
-        </div>
-        <div className="flex gap-3 flex-wrap justify-end">
-          {activeSources.map(({ key, color, label }) => (
-            <span
-              key={key}
-              className="flex items-center gap-1 text-xs text-gray-400"
-            >
+          <div className="flex gap-2 flex-wrap justify-end">
+            {activeSources.map(({ key, color, label }) => (
               <span
-                className="inline-block w-2.5 h-2.5 rounded-sm"
-                style={{ backgroundColor: color + "99" }}
-              />
-              {label}
-            </span>
-          ))}
+                key={key}
+                className="flex items-center gap-1 text-xs text-gray-400"
+              >
+                <span
+                  className="inline-block w-2.5 h-2.5 rounded-sm"
+                  style={{ backgroundColor: color + "99" }}
+                />
+                {label}
+              </span>
+            ))}
+          </div>
         </div>
+        {(renewable_pct != null || carbon_free_pct != null) && (
+          <p className="text-xs text-gray-500 mt-0.5">
+            {renewable_pct != null && (
+              <span className="text-green-400">Renewable {renewable_pct}%</span>
+            )}
+            {renewable_pct != null && carbon_free_pct != null && (
+              <span className="text-gray-600"> · </span>
+            )}
+            {carbon_free_pct != null && (
+              <span>Carbon-free {carbon_free_pct}%</span>
+            )}
+            {latest_slot && (
+              <span className="ml-2">· {lagLabel(latest_slot)}</span>
+            )}
+          </p>
+        )}
       </div>
       <ResponsiveContainer width="100%" height={240}>
         <AreaChart
