@@ -12,6 +12,7 @@ import {
 import { ZoneComparison } from "./ZoneComparison";
 import { dateWithWeekday } from "../utils/formatters";
 import { useHistory } from "../hooks/useHistory";
+import { useIsMobile } from "../hooks/useIsMobile";
 
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
@@ -75,6 +76,8 @@ function getAdaptiveTicks(points, days) {
 export function PriceHistory({ area = "SE3" }) {
   const [tab, setTab] = useState("history");
   const [days, setDays] = useState(90);
+  const isMobile = useIsMobile();
+  const chartHeight = isMobile ? 300 : 350;
   const { data, loading, error } = useHistory(days, area);
 
   const tabBtn = (id, label) => (
@@ -167,7 +170,7 @@ export function PriceHistory({ area = "SE3" }) {
           Spot price history — last {days} days · {area}
         </h2>
 
-        <ResponsiveContainer width="100%" height={300}>
+        <ResponsiveContainer width="100%" height={chartHeight}>
           <AreaChart
             data={points}
             margin={{ top: 24, right: 4, left: 0, bottom: 0 }}
@@ -224,25 +227,25 @@ export function PriceHistory({ area = "SE3" }) {
           </AreaChart>
         </ResponsiveContainer>
 
-        {/* Summary stats */}
-        <div className="grid grid-cols-3 gap-3 text-center">
-          {[
-            { label: `${days}-day min`, value: overallMin.toFixed(3) },
-            { label: `${days}-day avg`, value: overallAvg.toFixed(3) },
-            { label: `${days}-day max`, value: overallMax.toFixed(3) },
-          ].map(({ label, value }) => (
-            <div key={label} className="bg-sea-800 rounded-xl py-3">
-              <p className="text-xs text-gray-500 mb-1">{label}</p>
-              <p className="text-base font-semibold">{value}</p>
-              <p className="text-xs text-gray-600">SEK/kWh</p>
-            </div>
-          ))}
-        </div>
-
         <p className="text-xs text-gray-700 text-center">
           {points.length} days with data out of last {days} · dashed line =
           period average
         </p>
+      </div>
+
+      {/* Summary stats — outside chart container for visual separation */}
+      <div className="grid grid-cols-3 gap-3 text-center">
+        {[
+          { label: `${days}-day min`, value: overallMin.toFixed(3) },
+          { label: `${days}-day avg`, value: overallAvg.toFixed(3) },
+          { label: `${days}-day max`, value: overallMax.toFixed(3) },
+        ].map(({ label, value }) => (
+          <div key={label} className="bg-sea-800 rounded-xl py-3">
+            <p className="text-xs text-gray-500 mb-1">{label}</p>
+            <p className="text-base font-semibold">{value}</p>
+            <p className="text-xs text-gray-600">SEK/kWh</p>
+          </div>
+        ))}
       </div>
     </div>
   );
