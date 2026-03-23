@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { Analytics } from "@vercel/analytics/react";
 import { CheapHoursWidget } from "./components/CheapHoursWidget";
 import { ForecastAccuracy } from "./components/ForecastAccuracy";
 import { GenerationChart } from "./components/GenerationChart";
@@ -39,14 +40,6 @@ const AREAS = [
   },
 ];
 
-/** Map browser latitude to the closest electricity price area */
-function latToArea(lat) {
-  if (lat > 63.5) return "SE1";
-  if (lat > 60.5) return "SE2";
-  if (lat > 56.5) return "SE3";
-  return "SE4";
-}
-
 function todayISO() {
   return new Date().toISOString().split("T")[0];
 }
@@ -62,15 +55,6 @@ export default function App() {
   const [tab, setTab] = useState("today"); // "today" | "tomorrow" | "trends"
   const [forecastDate, setForecastDate] = useState(tomorrowISO);
   const [area, setArea] = useState("SE3");
-
-  // Auto-detect area from browser geolocation (once, on mount)
-  useEffect(() => {
-    navigator.geolocation?.getCurrentPosition(
-      ({ coords }) => setArea(latToArea(coords.latitude)),
-      () => {}, // silent fallback to SE3
-      { timeout: 5000 },
-    );
-  }, []);
 
   const isTomorrow = forecastDate === tomorrowISO();
   const isPastDate = forecastDate < todayISO();
@@ -560,6 +544,7 @@ export default function App() {
           .
         </span>
       </footer>
+      <Analytics />
     </div>
   );
 }
