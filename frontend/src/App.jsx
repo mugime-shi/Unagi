@@ -312,7 +312,6 @@ export default function App() {
                               </p>
                             )}
                           </div>
-                          <span className="text-xs text-gray-500">SEK/kWh</span>
                         </div>
                         <PriceChart
                           prices={todayData.prices}
@@ -401,7 +400,6 @@ export default function App() {
                               </p>
                             )}
                         </div>
-                        <span className="text-xs text-gray-500">SEK/kWh</span>
                       </div>
                       <PriceChart
                         prices={forecastPriceData.prices}

@@ -322,40 +322,42 @@ export function PriceChart({
       )}
 
       {/* Legend row */}
-      {(hasLgbmData || hasWeekdayAvgData || hasBalancing) && (
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex gap-4 text-xs text-gray-400 flex-wrap">
-            {!isEstimate && (
-              <span className="flex items-center gap-1.5">
-                <span className="inline-block w-5 border-t-[3px] border-blue-400" />
-                Day-ahead
-              </span>
-            )}
-            {showLgbm && hasLgbmData && (
-              <span className="flex items-center gap-1.5">
-                <span className="inline-block w-5 border-t-2 border-dashed border-amber-400" />
-                LGBM
-              </span>
-            )}
-            {hasBalancing && (
-              <>
+      <div className="flex items-center justify-end mb-2">
+        <div className="flex items-center gap-2">
+          {(hasLgbmData || hasWeekdayAvgData || hasBalancing) && (
+            <div className="flex gap-4 text-xs text-gray-400 flex-wrap">
+              {!isEstimate && (
                 <span className="flex items-center gap-1.5">
-                  <span className="inline-block w-5 border-t border-orange-400 opacity-50" />
-                  Imbalance Short
+                  <span className="inline-block w-5 border-t-[3px] border-blue-400" />
+                  Day-ahead
                 </span>
+              )}
+              {showLgbm && hasLgbmData && (
                 <span className="flex items-center gap-1.5">
-                  <span className="inline-block w-5 border-t border-teal-400 opacity-50" />
-                  Imbalance Long
+                  <span className="inline-block w-5 border-t-2 border-dashed border-amber-400" />
+                  LGBM
                 </span>
-              </>
-            )}
-            {showWeekdayAvg && hasWeekdayAvgData && (
-              <span className="flex items-center gap-1.5">
-                <span className="inline-block w-5 border-t-2 border-dashed border-gray-400" />
-                Weekday Avg
-              </span>
-            )}
-          </div>
+              )}
+              {hasBalancing && (
+                <>
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block w-5 border-t border-orange-400 opacity-50" />
+                    Imbalance Short
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block w-5 border-t border-teal-400 opacity-50" />
+                    Imbalance Long
+                  </span>
+                </>
+              )}
+              {showWeekdayAvg && hasWeekdayAvgData && (
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block w-5 border-t-2 border-dashed border-gray-400" />
+                  Weekday Avg
+                </span>
+              )}
+            </div>
+          )}
           {/* Independent model toggles */}
           {(hasLgbmData || hasWeekdayAvgData) && (
             <div className="flex gap-1">
@@ -386,12 +388,12 @@ export function PriceChart({
             </div>
           )}
         </div>
-      )}
+      </div>
 
       <ResponsiveContainer width="100%" height={chartHeight}>
         <ComposedChart
           data={chartData}
-          margin={{ top: 20, right: 16, left: 0, bottom: 24 }}
+          margin={{ top: 24, right: 16, left: 0, bottom: 24 }}
         >
           <CartesianGrid
             strokeDasharray="3 3"
@@ -412,6 +414,12 @@ export function PriceChart({
             tickFormatter={(v) => `${v.toFixed(2)}`}
             tick={{ fill: "#9ca3af", fontSize: 11 }}
             width={48}
+            label={{
+              value: "SEK/kWh",
+              position: "top",
+              offset: 8,
+              style: { fill: "#6b7280", fontSize: 11 },
+            }}
           />
           <Tooltip
             content={<CustomTooltip showWeekdayAvg={showWeekdayAvg} />}

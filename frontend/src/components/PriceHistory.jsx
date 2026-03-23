@@ -163,17 +163,14 @@ export function PriceHistory({ area = "SE3" }) {
     <div className="space-y-3">
       {subNav}
       <div className="bg-sea-900 rounded-2xl p-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-gray-300">
-            Spot price history — last {days} days · {area}
-          </h2>
-          <span className="text-xs text-gray-500">SEK/kWh · daily avg</span>
-        </div>
+        <h2 className="text-sm font-medium text-gray-300">
+          Spot price history — last {days} days · {area}
+        </h2>
 
         <ResponsiveContainer width="100%" height={300}>
           <AreaChart
             data={points}
-            margin={{ top: 4, right: 4, left: -20, bottom: 0 }}
+            margin={{ top: 24, right: 4, left: 0, bottom: 0 }}
           >
             <defs>
               <linearGradient id="histGrad" x1="0" y1="0" x2="0" y2="1">
@@ -200,6 +197,13 @@ export function PriceHistory({ area = "SE3" }) {
               axisLine={false}
               tickLine={false}
               tickFormatter={(v) => v.toFixed(2)}
+              width={48}
+              label={{
+                value: "SEK/kWh",
+                position: "top",
+                offset: 8,
+                style: { fill: "#6b7280", fontSize: 11 },
+              }}
             />
             <Tooltip content={<CustomTooltip />} />
             <ReferenceLine
