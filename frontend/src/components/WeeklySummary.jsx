@@ -33,11 +33,11 @@ export function WeeklySummary({ area = "SE3" }) {
 
   if (loading) {
     return (
-      <div className="grid grid-cols-7 gap-1.5">
+      <div className="no-scrollbar flex gap-2 overflow-x-auto snap-x snap-mandatory pb-2 sm:grid sm:grid-cols-7 sm:gap-1.5 sm:overflow-visible sm:pb-0">
         {Array.from({ length: 7 }).map((_, i) => (
           <div
             key={i}
-            className="h-28 rounded-xl border border-sea-700/30 bg-sea-900/30 animate-pulse"
+            className="min-w-[5.5rem] sm:min-w-0 h-28 rounded-xl border border-sea-700/30 bg-sea-900/30 animate-pulse"
           />
         ))}
       </div>
@@ -51,7 +51,7 @@ export function WeeklySummary({ area = "SE3" }) {
   return (
     <div className="space-y-2">
       {/* Header with color legend */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-1">
         <h3 className="text-sm font-medium text-gray-400">Weekly forecast</h3>
         <div className="flex items-center gap-3 text-[0.6rem] text-gray-500">
           <span className="flex items-center gap-1">
@@ -67,7 +67,7 @@ export function WeeklySummary({ area = "SE3" }) {
             Expensive
           </span>
           {refAvg && (
-            <span className="text-gray-600">
+            <span className="hidden sm:inline text-gray-600">
               vs 30d avg {refAvg.toFixed(2)}
             </span>
           )}
@@ -75,7 +75,7 @@ export function WeeklySummary({ area = "SE3" }) {
       </div>
 
       {/* Cards */}
-      <div className="grid grid-cols-7 gap-1.5">
+      <div className="no-scrollbar flex gap-2 overflow-x-auto snap-x snap-mandatory pb-2 sm:grid sm:grid-cols-7 sm:gap-1.5 sm:overflow-visible sm:pb-0">
         {data.days.map((day) => {
           const cfg = CLASS_CONFIG[day.classification] || CLASS_CONFIG.normal;
           const isTomorrow = day.horizon === 1;
@@ -92,7 +92,7 @@ export function WeeklySummary({ area = "SE3" }) {
           return (
             <div
               key={day.date}
-              className={`rounded-xl border px-1.5 py-3 text-center ${cfg.bg} ${
+              className={`min-w-[5.5rem] snap-center sm:min-w-0 rounded-xl border px-1.5 py-3 text-center ${cfg.bg} ${
                 isTomorrow ? "ring-1 ring-amber-500/30" : ""
               }`}
             >

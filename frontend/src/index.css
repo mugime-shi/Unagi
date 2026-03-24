@@ -6,3 +6,11 @@ html,
 body {
   background-color: #060e1f; /* sea-950 — prevents white flash on iOS overscroll */
 }
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

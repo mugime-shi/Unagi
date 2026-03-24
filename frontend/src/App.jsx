@@ -325,6 +325,20 @@ export default function App() {
                 ))}
               </div>
               <span className="text-gray-500 text-sm">· {areaCity}</span>
+              {tab === "today" && (
+                <span className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sea-800/50 border border-sea-700/40 shadow-[inset_0_1px_0_0_rgba(148,163,184,0.05)]">
+                  <span className="text-sm font-mono text-gray-300 tabular-nums tracking-wide">
+                    {todayISO()}
+                  </span>
+                  <span className="text-xs text-cyan-400/60 font-medium">
+                    (
+                    {new Date().toLocaleDateString("en-US", {
+                      weekday: "short",
+                    })}
+                    )
+                  </span>
+                </span>
+              )}
             </div>
 
             {/* ── Today tab ── */}
@@ -396,16 +410,16 @@ export default function App() {
                       )}
                     </div>
 
-                    {/* Min / Avg (date) / Avg (month) / Max */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                    {/* Min / Avg / Monthly / Max */}
+                    <div className="grid grid-cols-4 gap-3 text-center">
                       {[
                         { label: "Min", value: todayData.summary.min_sek_kwh },
                         {
-                          label: `Avg (${todayData.date})`,
+                          label: "Avg",
                           value: todayData.summary.avg_sek_kwh,
                         },
                         {
-                          label: "Avg (month)",
+                          label: "Monthly",
                           value: todayData.summary.month_avg_sek_kwh,
                         },
                         { label: "Max", value: todayData.summary.max_sek_kwh },
@@ -492,7 +506,7 @@ export default function App() {
                     )}
 
                     {/* Summary cards */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-center">
+                    <div className="grid grid-cols-3 gap-3 text-center">
                       {[
                         {
                           label: "Min",
