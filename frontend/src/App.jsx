@@ -517,7 +517,7 @@ export default function App() {
                       ))}
                     </div>
 
-                    {/* Weekly outlook */}
+                    {/* Weekly forecast */}
                     <WeeklySummary area={area} />
 
                     {/* Forecast accuracy — cumulative 30-day MAE */}
