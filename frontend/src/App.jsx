@@ -537,7 +537,13 @@ export default function App() {
                     </div>
 
                     {/* Weekly forecast */}
-                    <WeeklySummary area={area} />
+                    <WeeklySummary
+                      area={area}
+                      onDateSelect={(d) => {
+                        setTab("tomorrow");
+                        setForecastDate(d);
+                      }}
+                    />
 
                     {/* Forecast accuracy — cumulative 30-day MAE */}
                     <ForecastAccuracy area={area} />

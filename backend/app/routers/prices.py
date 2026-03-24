@@ -681,10 +681,19 @@ def get_balancing_prices(
             rows = fetch_and_store_balancing(db, date, area)
         except BalancingError as exc:
             if not rows:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"No balancing price data for {date}: {exc}",
-                )
+                # Return 200 with empty data instead of 404.
+                # eSett lags ~5-6h; the resource exists but data isn't published yet.
+                return {
+                    "area": area,
+                    "date": date.isoformat(),
+                    "currency": "SEK/kWh",
+                    "source": "eSett EXP14",
+                    "note": f"No data yet — eSett lags ~5-6 h. {exc}",
+                    "count": 0,
+                    "summary": {"min_sek_kwh": None, "max_sek_kwh": None, "avg_sek_kwh": None},
+                    "long": [],
+                    "short": [],
+                }
 
     long_prices = []
     short_prices = []

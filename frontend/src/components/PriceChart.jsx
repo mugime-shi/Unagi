@@ -483,8 +483,8 @@ export function PriceChart({
                 type="monotone"
                 dataKey="imb_long"
                 stroke="#2dd4bf"
-                strokeWidth={1}
-                strokeOpacity={0.45}
+                strokeWidth={1.5}
+                strokeOpacity={0.6}
                 dot={false}
                 connectNulls={false}
                 isAnimationActive={false}
@@ -495,8 +495,8 @@ export function PriceChart({
                 type="monotone"
                 dataKey="imb_short"
                 stroke="#f97316"
-                strokeWidth={1}
-                strokeOpacity={0.45}
+                strokeWidth={1.5}
+                strokeOpacity={0.6}
                 dot={false}
                 connectNulls={false}
                 isAnimationActive={false}

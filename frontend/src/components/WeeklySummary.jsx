@@ -28,7 +28,7 @@ const SHORT_WEEKDAYS = {
   Sunday: "Sun",
 };
 
-export function WeeklySummary({ area = "SE3" }) {
+export function WeeklySummary({ area = "SE3", onDateSelect }) {
   const { data, loading, error } = useWeeklyForecast(area);
 
   if (loading) {
@@ -92,9 +92,10 @@ export function WeeklySummary({ area = "SE3" }) {
           return (
             <div
               key={day.date}
+              onClick={() => onDateSelect?.(day.date)}
               className={`min-w-[5.5rem] snap-center sm:min-w-0 rounded-xl border px-1.5 py-3 text-center ${cfg.bg} ${
                 isTomorrow ? "ring-1 ring-amber-500/30" : ""
-              }`}
+              } ${onDateSelect ? "cursor-pointer hover:brightness-110 transition-all" : ""}`}
             >
               <p className="text-[0.65rem] text-gray-500 truncate">
                 {SHORT_WEEKDAYS[day.weekday] || day.weekday} {shortDate}

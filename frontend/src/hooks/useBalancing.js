@@ -38,11 +38,19 @@ export function useBalancing(dateISO, area = "SE3") {
 
     tryFetch(dateISO)
       .then((d) => {
+        // eSett lags ~5-6 h — if today's data is empty, fall back to yesterday
+        if (d.count === 0) {
+          const yd = prevDay(dateISO);
+          return tryFetch(yd).then((ydData) => {
+            setData(ydData);
+            setDataDate(yd);
+          });
+        }
         setData(d);
         setDataDate(dateISO);
       })
       .catch(() => {
-        // Today's data not yet published — try yesterday
+        // Network / server error — try yesterday
         const yd = prevDay(dateISO);
         return tryFetch(yd)
           .then((d) => {
