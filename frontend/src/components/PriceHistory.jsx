@@ -97,7 +97,7 @@ export function PriceHistory({ area = "SE3" }) {
   const subNav = (
     <div className="flex items-center justify-between">
       <div className="flex gap-1">
-        {tabBtn("history", "History")}
+        {tabBtn("history", "Daily")}
         {tabBtn("zones", "Zone Comparison")}
       </div>
       <div className="flex gap-1">
@@ -167,7 +167,10 @@ export function PriceHistory({ area = "SE3" }) {
       {subNav}
       <div className="bg-sea-900 rounded-2xl p-4 space-y-4">
         <h2 className="text-sm font-medium text-gray-300">
-          Spot price history — last {days} days · {area}
+          Spot price
+          <span className="text-gray-500 ml-1.5">
+            last {days} days · {area}
+          </span>
         </h2>
 
         <ResponsiveContainer width="100%" height={chartHeight}>
@@ -201,12 +204,6 @@ export function PriceHistory({ area = "SE3" }) {
               tickLine={false}
               tickFormatter={(v) => v.toFixed(2)}
               width={48}
-              label={{
-                value: "SEK/kWh",
-                position: "top",
-                offset: 8,
-                style: { fill: "#6b7280", fontSize: 11 },
-              }}
             />
             <Tooltip content={<CustomTooltip />} />
             <ReferenceLine

@@ -170,6 +170,7 @@ export function PriceChart({
 }) {
   const [showLgbm, setShowLgbm] = useState(defaultShowLgbm);
   const [showWeekdayAvg, setShowWeekdayAvg] = useState(defaultShowWeekdayAvg);
+  const [hoveredData, setHoveredData] = useState(null);
   const isMobile = useIsMobile();
 
   // Forecast lookup: hour (0-23) → { low, band, avg }
@@ -291,6 +292,22 @@ export function PriceChart({
 
   const chartHeight = isMobile ? 300 : 350;
 
+  // Legend live values: hovered point or latest available per series
+  // When showNowMarker is false (Tomorrow tab), only show values on hover
+  const legendDA =
+    hoveredData ??
+    (showNowMarker ? (nowEntry ?? chartData[chartData.length - 1]) : null);
+  const legendImb =
+    hoveredData ??
+    (showNowMarker
+      ? (() => {
+          for (let i = chartData.length - 1; i >= 0; i--) {
+            if (chartData[i].imb_short != null) return chartData[i];
+          }
+          return null;
+        })()
+      : null);
+
   return (
     <div className="w-full">
       {isEstimate && (
@@ -330,23 +347,43 @@ export function PriceChart({
                 <span className="flex items-center gap-1.5">
                   <span className="inline-block w-5 border-t-[3px] border-blue-400" />
                   Day-ahead
+                  {legendDA?.price_sek_kwh != null && (
+                    <span className="text-blue-400 font-medium">
+                      {legendDA.price_sek_kwh.toFixed(2)}
+                    </span>
+                  )}
                 </span>
               )}
               {showLgbm && hasLgbmData && (
                 <span className="flex items-center gap-1.5">
                   <span className="inline-block w-5 border-t-2 border-dashed border-amber-400" />
                   LGBM
+                  {legendDA?.lgbm_forecast != null && (
+                    <span className="text-amber-400 font-medium">
+                      {legendDA.lgbm_forecast.toFixed(2)}
+                    </span>
+                  )}
                 </span>
               )}
               {hasBalancing && (
                 <>
                   <span className="flex items-center gap-1.5">
-                    <span className="inline-block w-5 border-t border-orange-400 opacity-50" />
-                    Imbalance Short
+                    <span className="inline-block w-5 border-t border-orange-400" />
+                    Imb Short
+                    {legendImb?.imb_short != null && (
+                      <span className="text-orange-400 font-medium">
+                        {legendImb.imb_short.toFixed(2)}
+                      </span>
+                    )}
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="inline-block w-5 border-t border-teal-400 opacity-50" />
-                    Imbalance Long
+                    <span className="inline-block w-5 border-t border-teal-400" />
+                    Imb Long
+                    {legendImb?.imb_long != null && (
+                      <span className="text-teal-400 font-medium">
+                        {legendImb.imb_long.toFixed(2)}
+                      </span>
+                    )}
                   </span>
                 </>
               )}
@@ -355,6 +392,9 @@ export function PriceChart({
                   <span className="inline-block w-5 border-t-2 border-dashed border-gray-400" />
                   Weekday Avg
                 </span>
+              )}
+              {(legendDA || legendImb) && (
+                <span className="text-gray-500">SEK/kWh</span>
               )}
             </div>
           )}
@@ -394,6 +434,12 @@ export function PriceChart({
         <ComposedChart
           data={chartData}
           margin={{ top: 24, right: 16, left: 0, bottom: 24 }}
+          onMouseMove={(e) => {
+            if (e?.activePayload?.[0]?.payload) {
+              setHoveredData(e.activePayload[0].payload);
+            }
+          }}
+          onMouseLeave={() => setHoveredData(null)}
         >
           <CartesianGrid
             strokeDasharray="3 3"
@@ -414,12 +460,7 @@ export function PriceChart({
             tickFormatter={(v) => `${v.toFixed(2)}`}
             tick={{ fill: "#9ca3af", fontSize: 11 }}
             width={48}
-            label={{
-              value: "SEK/kWh",
-              position: "top",
-              offset: 8,
-              style: { fill: "#6b7280", fontSize: 11 },
-            }}
+            padding={{ top: 16 }}
           />
           <Tooltip
             content={<CustomTooltip showWeekdayAvg={showWeekdayAvg} />}
@@ -442,8 +483,8 @@ export function PriceChart({
                 type="monotone"
                 dataKey="imb_long"
                 stroke="#2dd4bf"
-                strokeWidth={0.8}
-                strokeOpacity={0.5}
+                strokeWidth={1}
+                strokeOpacity={0.45}
                 dot={false}
                 connectNulls={false}
                 isAnimationActive={false}
@@ -454,8 +495,8 @@ export function PriceChart({
                 type="monotone"
                 dataKey="imb_short"
                 stroke="#f97316"
-                strokeWidth={0.8}
-                strokeOpacity={0.5}
+                strokeWidth={1}
+                strokeOpacity={0.45}
                 dot={false}
                 connectNulls={false}
                 isAnimationActive={false}

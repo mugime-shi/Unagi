@@ -383,8 +383,11 @@ export default function App() {
                         <div className="flex items-center justify-between mb-4">
                           <div>
                             <h2 className="text-sm font-medium text-gray-300">
-                              Spot price — {dateWithWeekday(todayData.date)} ·{" "}
-                              {todayData.count} slots
+                              Spot price
+                              <span className="text-gray-500 ml-1.5">
+                                {dateWithWeekday(todayData.date)} ·{" "}
+                                {todayData.count} slots
+                              </span>
                             </h2>
                             {balancing && (
                               <p className="text-xs text-gray-500 mt-0.5">
@@ -470,9 +473,11 @@ export default function App() {
                       <div className="flex items-center justify-between mb-4">
                         <div>
                           <h2 className="text-sm font-medium text-gray-300">
-                            {isTomorrow ? "Forecast" : "Spot price"} —{" "}
-                            {dateWithWeekday(forecastPriceData.date)} ·{" "}
-                            {forecastPriceData.count} slots
+                            {isTomorrow ? "Forecast" : "Spot price"}
+                            <span className="text-gray-500 ml-1.5">
+                              {dateWithWeekday(forecastPriceData.date)} ·{" "}
+                              {forecastPriceData.count} slots
+                            </span>
                           </h2>
                           {retrospective?.models &&
                             Object.keys(retrospective.models).length > 0 && (
