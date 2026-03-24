@@ -505,6 +505,143 @@ def get_forecast_retrospective(
     }
 
 
+@router.get("/forecast/weekly")
+def get_weekly_forecast(
+    db: DbDep,
+    area: AreaDep = "SE3",
+):
+    """
+    7-day price forecast with Cheap/Normal/Expensive classification.
+
+    Returns d+1 through d+7 predictions with daily averages, hourly slots,
+    and a classification relative to the 30-day rolling average.
+    Classification confidence is based on distance from threshold boundaries.
+    """
+    if area not in VALID_AREAS:
+        raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
+
+    from sqlalchemy import text
+
+    from app.services.ml_forecast_service import build_multi_horizon_forecast
+
+    today = date.today()
+
+    # Compute 30-day reference average from actual prices
+    ref_row = db.execute(
+        text("""
+            SELECT AVG(daily_avg) AS ref_avg FROM (
+                SELECT target_date, AVG(actual_sek_kwh) AS daily_avg
+                FROM forecast_accuracy
+                WHERE area = :area
+                  AND model_name = 'lgbm'
+                  AND actual_sek_kwh IS NOT NULL
+                  AND target_date >= CURRENT_DATE - 30
+                GROUP BY target_date
+            ) sub
+        """),
+        {"area": area},
+    ).fetchone()
+    reference_avg = float(ref_row[0]) if ref_row and ref_row[0] else None
+
+    # Try to load existing predictions from forecast_accuracy first
+    model_names = {"lgbm": 1, **{f"lgbm_d{h}": h for h in range(2, 8)}}
+    existing = db.execute(
+        text("""
+            SELECT model_name, target_date, hour, predicted_sek_kwh,
+                   predicted_low_sek_kwh, predicted_high_sek_kwh
+            FROM forecast_accuracy
+            WHERE area = :area
+              AND model_name IN :models
+              AND target_date > CURRENT_DATE
+              AND target_date <= CURRENT_DATE + 7
+            ORDER BY target_date, hour
+        """),
+        {"area": area, "models": tuple(model_names.keys())},
+    ).fetchall()
+
+    # Group by target_date
+    days_data: dict[date, dict] = {}
+    for row in existing:
+        model, tdate, hour, pred, low, high = row
+        horizon = model_names.get(model, 1)
+        if tdate not in days_data:
+            days_data[tdate] = {"horizon": horizon, "model": model, "slots": []}
+        days_data[tdate]["slots"].append({
+            "hour": hour,
+            "avg_sek_kwh": float(pred) if pred is not None else None,
+            "low_sek_kwh": float(low) if low is not None else None,
+            "high_sek_kwh": float(high) if high is not None else None,
+        })
+
+    # If no stored predictions, generate on-the-fly
+    if not days_data:
+        horizon_results = build_multi_horizon_forecast(db, today, area=area, max_horizon=7)
+        for hr in horizon_results:
+            days_data[hr["target_date"]] = {
+                "horizon": hr["horizon"],
+                "model": "lgbm" if hr["horizon"] == 1 else f"lgbm_d{hr['horizon']}",
+                "slots": hr["forecast"]["slots"],
+            }
+
+    # Build response with classification
+    threshold = 0.15
+    days_response = []
+    for tdate in sorted(days_data.keys()):
+        dd = days_data[tdate]
+        slots = sorted(dd["slots"], key=lambda s: s["hour"])
+        valid_prices = [s["avg_sek_kwh"] for s in slots if s.get("avg_sek_kwh") is not None]
+
+        if not valid_prices:
+            continue
+
+        daily_avg = sum(valid_prices) / len(valid_prices)
+        daily_low = min(s.get("low_sek_kwh") or s["avg_sek_kwh"] for s in slots if s.get("avg_sek_kwh") is not None)
+        daily_high = max(s.get("high_sek_kwh") or s["avg_sek_kwh"] for s in slots if s.get("avg_sek_kwh") is not None)
+
+        # Classification + confidence
+        classification = "normal"
+        confidence = 0.5
+        if reference_avg and reference_avg > 0:
+            ratio = daily_avg / reference_avg
+            cheap_bound = 1 - threshold
+            expensive_bound = 1 + threshold
+
+            if ratio < cheap_bound:
+                classification = "cheap"
+                # Confidence: how far below the cheap boundary (0.5 at boundary, 1.0 at ratio=0)
+                confidence = min(1.0, 0.5 + (cheap_bound - ratio) / cheap_bound)
+            elif ratio > expensive_bound:
+                classification = "expensive"
+                # Confidence: how far above the expensive boundary
+                confidence = min(1.0, 0.5 + (ratio - expensive_bound) / expensive_bound)
+            else:
+                classification = "normal"
+                # Confidence: highest in the middle, lower near boundaries
+                dist_to_edge = min(abs(ratio - cheap_bound), abs(ratio - expensive_bound))
+                band_half = threshold
+                confidence = min(1.0, 0.5 + (dist_to_edge / band_half) * 0.5)
+
+        days_response.append({
+            "date": tdate.isoformat(),
+            "weekday": tdate.strftime("%A"),
+            "horizon": dd["horizon"],
+            "model": dd["model"],
+            "daily_avg": round(daily_avg, 4),
+            "daily_low": round(daily_low, 4),
+            "daily_high": round(daily_high, 4),
+            "classification": classification,
+            "confidence": round(confidence, 2),
+            "slots": slots,
+        })
+
+    return {
+        "area": area,
+        "generated_at": datetime.now(tz=timezone.utc).isoformat(),
+        "reference_avg_30d": round(reference_avg, 4) if reference_avg else None,
+        "days": days_response,
+    }
+
+
 @router.get("/balancing")
 def get_balancing_prices(
     db: DbDep,

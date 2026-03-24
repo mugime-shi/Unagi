@@ -168,12 +168,16 @@ def _build_prediction_features(
     db: Session,
     target_date: date,
     area: str,
+    price_overrides: dict[tuple[date, int], float] | None = None,
 ) -> list[dict] | None:
     """
     Build feature rows for predicting target_date (24 hours).
 
     Delegates to build_feature_matrix(include_target=False) so that
     training and prediction features are always in sync.
+
+    price_overrides: inject predicted prices as pseudo-actuals for lag
+    features (used in recursive multi-horizon forecasting).
     """
     rows = build_feature_matrix(
         db,
@@ -181,82 +185,86 @@ def _build_prediction_features(
         target_date,
         area=area,
         include_target=False,
+        price_overrides=price_overrides,
     )
     return rows if rows else None
 
 
-def build_lgbm_forecast(db: Session, target_date: date, area: str = "SE3") -> dict:
+_NULL_RESPONSE = {
+    "slots": [{"hour": h, "avg_sek_kwh": None, "low_sek_kwh": None, "high_sek_kwh": None} for h in range(24)],
+    "summary": {
+        "predicted_avg_sek_kwh": None,
+        "predicted_low_sek_kwh": None,
+        "predicted_high_sek_kwh": None,
+    },
+}
+
+
+def get_or_train_model(db: Session, target_date: date, area: str = "SE3") -> dict | None:
+    """Load cached model or train a new one.
+
+    target_date is the d+1 prediction target (model trains on data through target_date - 1).
+    Returns model dict with 'point', 'low', 'high', 'q_hat' keys, or None on failure.
     """
-    Generate a 24-hour price forecast using LightGBM.
-
-    Returns the same format as build_forecast():
-    {
-        "slots": [{"hour": 0-23, "avg_sek_kwh", "low_sek_kwh", "high_sek_kwh"}],
-        "summary": {"predicted_avg_sek_kwh", "predicted_low_sek_kwh", "predicted_high_sek_kwh"}
-    }
-
-    low/high use quantile regression (alpha=0.10/0.90) for calibrated
-    prediction intervals instead of the naive ±1σ approach.
-    """
-    _null_response = {
-        "slots": [{"hour": h, "avg_sek_kwh": None, "low_sek_kwh": None, "high_sek_kwh": None} for h in range(24)],
-        "summary": {
-            "predicted_avg_sek_kwh": None,
-            "predicted_low_sek_kwh": None,
-            "predicted_high_sek_kwh": None,
-        },
-    }
-
-    # Try cache first
     models = _load_cached(area, target_date)
     if models is None:
         models = _train_model(db, target_date, area)
         if models is None:
-            return _null_response
+            return None
         _save_cache(area, target_date, models)
 
     # Support both old (single model) and new (dict) cache format
-    if isinstance(models, dict):
-        point_model = models["point"]
-        low_model = models.get("low")
-        high_model = models.get("high")
-        q_hat = models.get("q_hat", 0.0)
-    else:
-        point_model = models
-        low_model = None
-        high_model = None
-        q_hat = 0.0
+    if not isinstance(models, dict):
+        models = {"point": models, "low": None, "high": None, "q_hat": 0.0}
 
-    # Build prediction features
-    pred_rows = _build_prediction_features(db, target_date, area)
+    return models
+
+
+def predict_with_model(
+    models: dict,
+    db: Session,
+    target_date: date,
+    area: str = "SE3",
+    price_overrides: dict[tuple[date, int], float] | None = None,
+) -> dict:
+    """Generate a 24-hour forecast using a pre-trained model.
+
+    Use with get_or_train_model() to avoid retraining for each horizon:
+        models = get_or_train_model(db, d1_target, area)
+        d1 = predict_with_model(models, db, d1_target, area)
+        d2 = predict_with_model(models, db, d2_target, area, price_overrides=...)
+
+    Returns same format as build_lgbm_forecast().
+    """
+    pred_rows = _build_prediction_features(db, target_date, area, price_overrides=price_overrides)
     if pred_rows is None:
-        return _null_response
+        return _NULL_RESPONSE
 
     X_pred = np.array([[r.get(col) for col in FEATURE_COLS] for r in pred_rows], dtype=object)
     X_pred = np.where(X_pred == None, np.nan, X_pred).astype(np.float64)  # noqa: E711
 
+    point_model = models["point"]
+    low_model = models.get("low")
+    high_model = models.get("high")
+    q_hat = models.get("q_hat", 0.0)
+
     predictions = point_model.predict(X_pred)
 
-    # Quantile predictions for intervals (calibrated via CQR)
     if low_model is not None and high_model is not None:
         low_preds = low_model.predict(X_pred) - q_hat
         high_preds = high_model.predict(X_pred) + q_hat
     else:
-        # Fallback to ±residual std for old cached models
         low_preds = predictions - 0.10
         high_preds = predictions + 0.10
 
     slots = []
     for i, pred in enumerate(predictions):
-        pred_val = round(float(pred), 4)
-        low_val = round(max(0.0, float(low_preds[i])), 4)
-        high_val = round(float(high_preds[i]), 4)
         slots.append(
             {
                 "hour": i,
-                "avg_sek_kwh": pred_val,
-                "low_sek_kwh": low_val,
-                "high_sek_kwh": high_val,
+                "avg_sek_kwh": round(float(pred), 4),
+                "low_sek_kwh": round(max(0.0, float(low_preds[i])), 4),
+                "high_sek_kwh": round(float(high_preds[i]), 4),
             }
         )
 
@@ -269,3 +277,63 @@ def build_lgbm_forecast(db: Session, target_date: date, area: str = "SE3") -> di
             "predicted_high_sek_kwh": round(max(v[2] for v in valid), 4),
         },
     }
+
+
+def build_lgbm_forecast(
+    db: Session,
+    target_date: date,
+    area: str = "SE3",
+    price_overrides: dict[tuple[date, int], float] | None = None,
+) -> dict:
+    """Generate a 24-hour price forecast using LightGBM.
+
+    Convenience wrapper around get_or_train_model() + predict_with_model().
+    For multi-horizon forecasting, use those functions directly to avoid retraining.
+    """
+    models = get_or_train_model(db, target_date, area)
+    if models is None:
+        return _NULL_RESPONSE
+    return predict_with_model(models, db, target_date, area, price_overrides=price_overrides)
+
+
+def build_multi_horizon_forecast(
+    db: Session,
+    base_date: date,
+    area: str = "SE3",
+    max_horizon: int = 7,
+) -> list[dict]:
+    """Generate recursive forecasts for d+1 through d+max_horizon.
+
+    Trains one model (for d+1) and reuses it for all horizons.
+    Each horizon's predictions become lag features for the next.
+
+    Returns list of dicts, each with keys:
+        horizon (int), target_date (date), forecast (dict with slots/summary)
+    """
+    d1_target = base_date + timedelta(days=1)
+    models = get_or_train_model(db, d1_target, area)
+    if models is None:
+        return []
+
+    results = []
+    cumulative_overrides: dict[tuple[date, int], float] = {}
+
+    for horizon in range(1, max_horizon + 1):
+        target = base_date + timedelta(days=horizon)
+        forecast = predict_with_model(
+            models, db, target, area,
+            price_overrides=cumulative_overrides if horizon > 1 else None,
+        )
+
+        results.append({
+            "horizon": horizon,
+            "target_date": target,
+            "forecast": forecast,
+        })
+
+        # Accumulate predictions for next horizon's lag features
+        for slot in forecast["slots"]:
+            if slot.get("avg_sek_kwh") is not None:
+                cumulative_overrides[(target, slot["hour"])] = slot["avg_sek_kwh"]
+
+    return results

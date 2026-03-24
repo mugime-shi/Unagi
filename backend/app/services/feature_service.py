@@ -452,6 +452,7 @@ def build_feature_matrix(
     end_date: date,
     area: str = "SE3",
     include_target: bool = True,
+    price_overrides: dict[tuple[date, int], float] | None = None,
 ) -> list[dict]:
     """
     Build a feature matrix for [start_date, end_date] inclusive.
@@ -466,6 +467,10 @@ def build_feature_matrix(
     When include_target=False, rows are generated for all 24 hours even without
     actual prices for that date. This is used for prediction (future dates).
 
+    price_overrides: optional dict of {(date, hour): price_sek_kwh} to inject
+    predicted prices as pseudo-actuals for lag features (used in recursive
+    multi-horizon forecasting, e.g. d+1 predictions used as lags for d+2).
+
     Returns a list of dicts (easily convertible to DataFrame).
     """
     # Load extra history for lag + rolling features (14 days before start_date)
@@ -473,6 +478,10 @@ def build_feature_matrix(
     hist_start = start_date - timedelta(days=14)
     price_end = end_date if include_target else end_date - timedelta(days=1)
     prices = _load_hourly_prices(db, hist_start, price_end, area)
+
+    # Merge predicted prices as pseudo-actuals for recursive forecasting
+    if price_overrides:
+        prices.update(price_overrides)
     gen = _load_hourly_generation(db, hist_start, end_date, area)
     weather = _load_hourly_weather(db, hist_start, end_date)
     balancing = _load_hourly_balancing(db, hist_start, end_date, area)

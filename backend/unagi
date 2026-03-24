@@ -7,13 +7,18 @@ AREA=SE3
 TRIALS=100
 
 # ── Parse flags after subcommand ─────────────────────────────
+HORIZON=3
+TRAIN_DAYS=270
+
 parse_flags() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --days)   DAYS="$2";        shift 2 ;;
-            --area)   AREA="$2";        shift 2 ;;
-            --trials) TRIALS="$2";      shift 2 ;;
-            --date)   TARGET_DATE="$2"; shift 2 ;;
+            --days)       DAYS="$2";       shift 2 ;;
+            --area)       AREA="$2";       shift 2 ;;
+            --trials)     TRIALS="$2";     shift 2 ;;
+            --date)       TARGET_DATE="$2"; shift 2 ;;
+            --horizon)    HORIZON="$2";    shift 2 ;;
+            --train-days) TRAIN_DAYS="$2"; shift 2 ;;
             *) echo "Unknown flag: $1" >&2; exit 1 ;;
         esac
     done
@@ -75,6 +80,11 @@ cmd_features() {
     python -m scripts.build_feature_matrix --days "$DAYS" --area "$AREA" --csv
 }
 
+cmd_backtest_horizon() {
+    parse_flags "$@"
+    python -m scripts.run_backtest_horizon --days "$DAYS" --horizon "$HORIZON" --area "$AREA" --train-days "$TRAIN_DAYS"
+}
+
 cmd_ablation_gas() {
     parse_flags "$@"
     python -m scripts.ablation_gas --days "$DAYS" --area "$AREA"
@@ -132,6 +142,8 @@ Data:
 
 ML:
   backtest [--days N] [--area]  LightGBM vs baseline comparison
+  backtest-horizon [--days N] [--horizon H] [--train-days T]
+                                Multi-horizon backtest (d+1..d+H, recursive)
   ablation-gas [--days N]       Gas feature ON/OFF comparison (A/B test)
   sweep [--days N] [--area]     Training window size optimization
   tune [--trials N] [--area]    Optuna hyperparameter tuning
@@ -151,6 +163,8 @@ Flags:
   --area CODE   Price area SE1-SE4 (default: SE3)
   --trials N    Optuna trials (default: 100)
   --date D      Target date YYYY-MM-DD (lambda-predict only)
+  --horizon H   Max forecast horizon (default: 3, backtest-horizon only)
+  --train-days T Training window days (default: 270, backtest-horizon only)
 EOF
 }
 
@@ -167,6 +181,7 @@ case "$command" in
     backfill-gas)   cmd_backfill_gas "$@" ;;
     backfill-bal)   cmd_backfill_bal "$@" ;;
     backtest)       cmd_backtest "$@" ;;
+    backtest-horizon) cmd_backtest_horizon "$@" ;;
     ablation-gas)   cmd_ablation_gas "$@" ;;
     sweep)          cmd_sweep "$@" ;;
     tune)           cmd_tune "$@" ;;

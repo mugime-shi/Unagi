@@ -188,6 +188,10 @@ def get_accuracy(
     """
     cutoff = date.today() - timedelta(days=days)
 
+    # Production model names: lgbm (d+1), lgbm_d2..d7, same_weekday_avg
+    # Exclude backtest-only models (lgbm_h1..h7) from user-facing accuracy
+    _PROD_MODELS = {"lgbm", "same_weekday_avg"} | {f"lgbm_d{h}" for h in range(2, 8)}
+
     query = db.query(ForecastAccuracy).filter(
         ForecastAccuracy.area == area,
         ForecastAccuracy.target_date >= cutoff,
@@ -195,6 +199,8 @@ def get_accuracy(
     )
     if model_name:
         query = query.filter(ForecastAccuracy.model_name == model_name)
+    else:
+        query = query.filter(ForecastAccuracy.model_name.in_(_PROD_MODELS))
 
     rows = query.all()
 
@@ -238,12 +244,15 @@ def get_accuracy_breakdown(
     """
     cutoff = date.today() - timedelta(days=days)
 
+    _PROD_MODELS = {"lgbm", "same_weekday_avg"} | {f"lgbm_d{h}" for h in range(2, 8)}
+
     rows = (
         db.query(ForecastAccuracy)
         .filter(
             ForecastAccuracy.area == area,
             ForecastAccuracy.target_date >= cutoff,
             ForecastAccuracy.actual_sek_kwh.isnot(None),
+            ForecastAccuracy.model_name.in_(_PROD_MODELS),
         )
         .all()
     )

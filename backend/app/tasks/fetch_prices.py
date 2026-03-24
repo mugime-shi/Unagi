@@ -648,7 +648,6 @@ def _record_predictions(areas: list[str], target_date: date | None = None) -> li
     results = []
     try:
         from app.services.backtest_service import record_predictions
-        from app.services.ml_forecast_service import build_lgbm_forecast
         from app.services.price_service import build_forecast, get_prices_for_date_range
 
         target = target_date or (date.today() + timedelta(days=1))
@@ -671,17 +670,28 @@ def _record_predictions(areas: list[str], target_date: date | None = None) -> li
                 failures.append({"market": f"same_weekday_avg {area}", "status": "error", "error": str(exc)})
                 db.rollback()
 
-            # lgbm
+            # lgbm — multi-horizon (d+1 through d+7)
             try:
-                result = build_lgbm_forecast(db, target, area=area)
-                if result.get("slots") and result["slots"][0].get("avg_sek_kwh") is not None:
-                    n = record_predictions(db, target, area, "lgbm", result["slots"])
-                    log.info("Recorded %d lgbm predictions for %s %s", n, target, area)
-                    results.append({"market": f"lgbm {area}", "status": "ok"})
-                else:
-                    failures.append({"market": f"lgbm {area}", "status": "error", "error": "no slots"})
+                from app.services.ml_forecast_service import build_multi_horizon_forecast
+
+                base_date = target - timedelta(days=1)  # perspective day
+                horizon_results = build_multi_horizon_forecast(db, base_date, area=area, max_horizon=7)
+
+                for hr in horizon_results:
+                    h = hr["horizon"]
+                    forecast = hr["forecast"]
+                    t_date = hr["target_date"]
+                    model_name = "lgbm" if h == 1 else f"lgbm_d{h}"
+
+                    if forecast.get("slots") and forecast["slots"][0].get("avg_sek_kwh") is not None:
+                        n = record_predictions(db, t_date, area, model_name, forecast["slots"])
+                        log.info("Recorded %d %s predictions for %s %s", n, model_name, t_date, area)
+                    else:
+                        failures.append({"market": f"{model_name} {area}", "status": "error", "error": "no slots"})
+
+                results.append({"market": f"lgbm d+1..d+7 {area}", "status": "ok"})
             except Exception as exc:
-                log.warning("lgbm record failed for %s %s: %s", target, area, exc)
+                log.warning("lgbm multi-horizon failed for %s %s: %s", target, area, exc)
                 failures.append({"market": f"lgbm {area}", "status": "error", "error": str(exc)})
                 db.rollback()
 

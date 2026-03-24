@@ -16,6 +16,8 @@ import { useGeneration } from "./hooks/useGeneration";
 import { useGenerationDate } from "./hooks/useGenerationDate";
 import { useRetrospective } from "./hooks/useRetrospective";
 import { usePrices } from "./hooks/usePrices";
+import { useWeeklyForecast } from "./hooks/useWeeklyForecast";
+import { WeeklySummary } from "./components/WeeklySummary";
 import { dateWithWeekday } from "./utils/formatters";
 
 const AREAS = [
@@ -50,6 +52,12 @@ function tomorrowISO() {
   return d.toISOString().split("T")[0];
 }
 
+function weekAheadISO() {
+  const d = new Date();
+  d.setDate(d.getDate() + 7);
+  return d.toISOString().split("T")[0];
+}
+
 export default function App() {
   const [layer, setLayer] = useState("prices");
   const [tab, setTab] = useState("today"); // "today" | "tomorrow" | "trends"
@@ -58,6 +66,7 @@ export default function App() {
 
   const isTomorrow = forecastDate === tomorrowISO();
   const isPastDate = forecastDate < todayISO();
+  const isFutureDate = forecastDate > tomorrowISO();
 
   // ── Today data ──
   const {
@@ -97,10 +106,21 @@ export default function App() {
     area,
   );
 
+  // Weekly forecast for future dates (d+2 onwards)
+  const { data: weeklyData } = useWeeklyForecast(area);
+
   // Extract LGBM forecast (center line + 80% CI band) from retrospective — tomorrow and past dates
-  const lgbmForecast = retrospective?.models?.lgbm
+  // Also check for lgbm_d* models (multi-horizon predictions)
+  const lgbmRetroModels = retrospective?.models;
+  const lgbmRetroKey = lgbmRetroModels
+    ? Object.keys(lgbmRetroModels).find(
+        (k) => k === "lgbm" || k.startsWith("lgbm_d"),
+      )
+    : null;
+  const lgbmRetroEntries = lgbmRetroKey ? lgbmRetroModels[lgbmRetroKey] : null;
+  const lgbmForecast = lgbmRetroEntries
     ? {
-        slots: retrospective.models.lgbm.map((p) => ({
+        slots: lgbmRetroEntries.map((p) => ({
           hour: p.hour,
           avg_sek_kwh: p.predicted_sek_kwh,
           low_sek_kwh: p.predicted_low_sek_kwh ?? null,
@@ -109,10 +129,57 @@ export default function App() {
       }
     : null;
 
+  // For future dates (d+2+), build synthetic price data from weekly forecast
+  const weeklyDayData = weeklyData?.days?.find((d) => d.date === forecastDate);
+  const futurePriceData =
+    isFutureDate && weeklyDayData
+      ? {
+          date: weeklyDayData.date,
+          count: weeklyDayData.slots.length,
+          is_estimate: true,
+          published: false,
+          prices: weeklyDayData.slots.map((s) => {
+            // Convert Stockholm hour to UTC for chart rendering
+            const local = new Date(
+              `${weeklyDayData.date}T${String(s.hour).padStart(2, "0")}:00:00`,
+            );
+            const sthlm = new Date(
+              local.toLocaleString("en-US", { timeZone: "Europe/Stockholm" }),
+            );
+            const utcBase = new Date(
+              local.getTime() + (local.getTime() - sthlm.getTime()),
+            );
+            return {
+              timestamp_utc: utcBase.toISOString().replace("Z", "+00:00"),
+              price_sek_kwh: s.avg_sek_kwh,
+              price_eur_mwh: s.avg_sek_kwh * 100,
+            };
+          }),
+          summary: {
+            min_sek_kwh: weeklyDayData.daily_low,
+            avg_sek_kwh: weeklyDayData.daily_avg,
+            max_sek_kwh: weeklyDayData.daily_high,
+          },
+        }
+      : null;
+
   // Resolved forecast tab price data
-  const forecastPriceData = isTomorrow ? tomorrowData : pastData;
-  const forecastLoading = isTomorrow ? tomorrowLoading : pastLoading;
-  const forecastError = isTomorrow ? tomorrowError : pastError;
+  const forecastPriceData = isFutureDate
+    ? futurePriceData
+    : isTomorrow
+      ? tomorrowData
+      : pastData;
+  const forecastLoading = isFutureDate
+    ? false
+    : isTomorrow
+      ? tomorrowLoading
+      : pastLoading;
+  const forecastError =
+    isFutureDate && !futurePriceData
+      ? null
+      : isTomorrow
+        ? tomorrowError
+        : pastError;
 
   const areaCity = AREAS.find((a) => a.id === area)?.city ?? area;
 
@@ -192,7 +259,7 @@ export default function App() {
                     <input
                       type="date"
                       value={forecastDate}
-                      max={tomorrowISO()}
+                      max={weekAheadISO()}
                       onChange={(e) => setForecastDate(e.target.value)}
                       className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                     />
@@ -228,9 +295,9 @@ export default function App() {
                       const d = new Date(forecastDate);
                       d.setDate(d.getDate() + 1);
                       const next = d.toISOString().split("T")[0];
-                      if (next <= tomorrowISO()) setForecastDate(next);
+                      if (next <= weekAheadISO()) setForecastDate(next);
                     }}
-                    disabled={forecastDate >= tomorrowISO()}
+                    disabled={forecastDate >= weekAheadISO()}
                     className="px-2 py-1 rounded-lg bg-sea-800 text-gray-400 hover:text-white hover:bg-sea-700 transition-colors text-sm disabled:opacity-30 disabled:pointer-events-none"
                   >
                     &rarr;
@@ -367,7 +434,7 @@ export default function App() {
                     <div className="h-[300px] bg-sea-800 rounded-xl" />
                   </div>
                 )}
-                {forecastError && (
+                {forecastError && !isFutureDate && (
                   <p className="text-red-400 text-sm">
                     Failed to load prices: {forecastError.message}
                   </p>
@@ -449,6 +516,9 @@ export default function App() {
                         </div>
                       ))}
                     </div>
+
+                    {/* Weekly outlook */}
+                    <WeeklySummary area={area} />
 
                     {/* Forecast accuracy — cumulative 30-day MAE */}
                     <ForecastAccuracy area={area} />
