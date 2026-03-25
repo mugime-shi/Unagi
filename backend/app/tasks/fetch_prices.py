@@ -402,14 +402,16 @@ def lambda_handler(event: dict, context) -> dict:
     # Predictions run separately at 00:20 UTC via predict_only.
     if event.get("midnight_collect"):
         yesterday = date.today() - timedelta(days=1)
-        tomorrow = date.today() + timedelta(days=1)
+        today = date.today()
         log.info("midnight_collect — fetching %s data for areas=%s", yesterday, areas)
 
         results = []
         for area in areas:
             results.append(fetch_generation_date(yesterday, area))
             results.append(fetch_balancing_date(yesterday, area))
-            results.append(fetch_load_forecast_date(tomorrow, area))
+            # Fetch today's load forecast (already in DB from yesterday's daily_fetch).
+            # Tomorrow's A65 is not published until ~10:00 UTC; daily_fetch handles it.
+            results.append(fetch_load_forecast_date(today, area))
 
         results.append(_fetch_weather_forecast())
         results.append(_fetch_gas_prices())

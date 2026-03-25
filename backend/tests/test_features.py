@@ -374,6 +374,22 @@ def test_load_forecast_features_none_without_data(db):
     assert h0["load_x_hour"] is None
 
 
+def test_load_forecast_d1_fallback(db):
+    """D-1 load forecast used as fallback when current day missing."""
+    d = date(2026, 3, 10)
+    _insert_prices(db, d)
+    _insert_prices(db, d - timedelta(days=1))
+    # Only insert D-1 load forecast (not D)
+    _insert_load_forecast(db, d - timedelta(days=1), base_load=11000.0)
+
+    rows = build_feature_matrix(db, d, d, include_target=False)
+    h12 = next(r for r in rows if r["hour"] == 12)
+    assert h12["load_forecast_hour"] is not None  # D-1 fallback
+    assert h12["load_forecast_max"] is not None
+    assert h12["load_forecast_range"] is not None
+    assert h12["load_x_hour"] is not None
+
+
 def test_load_forecast_range_correct(db):
     """load_forecast_range = max - min of the day."""
     d = date(2026, 3, 10)

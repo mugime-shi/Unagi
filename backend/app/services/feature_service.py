@@ -620,9 +620,11 @@ def build_feature_matrix(
             sol = _solar_features(current, hour)
 
             # Load forecast features (current day — forward-looking, available at prediction time)
-            lf_hour = load_fc.get((current, hour))
-            lf_max = daily_load_max.get(current)
-            lf_min = daily_load_min.get(current)
+            # Fallback to D-1 when current day not yet published
+            # (ENTSO-E A65 published ~10:00 UTC, predictions run at 00:20 UTC)
+            lf_hour = load_fc.get((current, hour)) or load_fc.get((prev_day, hour))
+            lf_max = daily_load_max.get(current) or daily_load_max.get(prev_day)
+            lf_min = daily_load_min.get(current) or daily_load_min.get(prev_day)
             lf_range = round(lf_max - lf_min, 1) if lf_max is not None and lf_min is not None else None
             # 7-day rolling average of daily max load (for anomaly detection)
             lf_max_7d = [
