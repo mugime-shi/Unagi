@@ -81,8 +81,8 @@ def client(db):
 # ---------------------------------------------------------------------------
 
 
-def _make_point(hour: int, price_eur: float = 50.0) -> PricePoint:
-    ts = datetime(2026, 3, 11, hour, 0, tzinfo=timezone.utc)
+def _make_point(hour: int, price_eur: float = 50.0, target_date: date = date(2026, 3, 11)) -> PricePoint:
+    ts = datetime(target_date.year, target_date.month, target_date.day, hour, 0, tzinfo=timezone.utc)
     return PricePoint(
         timestamp_utc=ts,
         price_eur_mwh=price_eur,
@@ -173,7 +173,8 @@ def test_get_today_prices_mock_when_no_db_data(client):
 
 
 def test_get_today_prices_real_data_when_db_populated(client, db):
-    upsert_prices(db, [_make_point(h) for h in range(24)])
+    today = date.today()
+    upsert_prices(db, [_make_point(h, target_date=today) for h in range(24)])
     data = client.get("/api/v1/prices/today").json()
     assert data["is_estimate"] is False
 
