@@ -566,12 +566,14 @@ def get_weekly_forecast(
         horizon = model_names.get(model, 1)
         if tdate not in days_data:
             days_data[tdate] = {"horizon": horizon, "model": model, "slots": []}
-        days_data[tdate]["slots"].append({
-            "hour": hour,
-            "avg_sek_kwh": float(pred) if pred is not None else None,
-            "low_sek_kwh": float(low) if low is not None else None,
-            "high_sek_kwh": float(high) if high is not None else None,
-        })
+        days_data[tdate]["slots"].append(
+            {
+                "hour": hour,
+                "avg_sek_kwh": float(pred) if pred is not None else None,
+                "low_sek_kwh": float(low) if low is not None else None,
+                "high_sek_kwh": float(high) if high is not None else None,
+            }
+        )
 
     # If no stored predictions, generate on-the-fly
     if not days_data:
@@ -584,7 +586,7 @@ def get_weekly_forecast(
             }
 
     # Build response with classification
-    threshold = 0.15
+    threshold = 0.18
     days_response = []
     for tdate in sorted(days_data.keys()):
         dd = days_data[tdate]
@@ -621,18 +623,20 @@ def get_weekly_forecast(
                 band_half = threshold
                 confidence = min(1.0, 0.5 + (dist_to_edge / band_half) * 0.5)
 
-        days_response.append({
-            "date": tdate.isoformat(),
-            "weekday": tdate.strftime("%A"),
-            "horizon": dd["horizon"],
-            "model": dd["model"],
-            "daily_avg": round(daily_avg, 4),
-            "daily_low": round(daily_low, 4),
-            "daily_high": round(daily_high, 4),
-            "classification": classification,
-            "confidence": round(confidence, 2),
-            "slots": slots,
-        })
+        days_response.append(
+            {
+                "date": tdate.isoformat(),
+                "weekday": tdate.strftime("%A"),
+                "horizon": dd["horizon"],
+                "model": dd["model"],
+                "daily_avg": round(daily_avg, 4),
+                "daily_low": round(daily_low, 4),
+                "daily_high": round(daily_high, 4),
+                "classification": classification,
+                "confidence": round(confidence, 2),
+                "slots": slots,
+            }
+        )
 
     return {
         "area": area,

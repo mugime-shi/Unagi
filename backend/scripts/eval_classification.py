@@ -82,9 +82,7 @@ def evaluate(area: str = "SE3", threshold: float = 0.15, days: int = 90):
         rolling_ref = {}
         for i, d in enumerate(sorted_dates):
             window = [
-                daily_actuals[sorted_dates[j]]
-                for j in range(max(0, i - 30), i)
-                if sorted_dates[j] in daily_actuals
+                daily_actuals[sorted_dates[j]] for j in range(max(0, i - 30), i) if sorted_dates[j] in daily_actuals
             ]
             if window:
                 rolling_ref[d] = sum(window) / len(window)
@@ -115,6 +113,8 @@ def evaluate(area: str = "SE3", threshold: float = 0.15, days: int = 90):
             # Worst case: predicted Cheap but actual Expensive (or vice versa)
             worst_misclass = 0
 
+            bias_sum = 0.0
+
             for target_date, pred_avg, actual_avg in entries:
                 ref = rolling_ref.get(target_date)
                 if ref is None:
@@ -124,6 +124,7 @@ def evaluate(area: str = "SE3", threshold: float = 0.15, days: int = 90):
                 actual_class = _classify(actual_avg, ref, threshold)
                 confusion[(actual_class, pred_class)] += 1
                 total += 1
+                bias_sum += pred_avg - actual_avg
 
                 if pred_class == actual_class:
                     correct += 1
@@ -139,8 +140,11 @@ def evaluate(area: str = "SE3", threshold: float = 0.15, days: int = 90):
 
             accuracy = correct / total * 100
             worst_pct = worst_misclass / total * 100
+            me = bias_sum / total
 
-            print(f"\n  d+{horizon} — {total} days, accuracy: {accuracy:.1f}%, worst misclass: {worst_pct:.1f}%")
+            print(
+                f"\n  d+{horizon} — {total} days, accuracy: {accuracy:.1f}%, worst misclass: {worst_pct:.1f}%, ME: {me:+.4f} SEK/kWh"
+            )
             print(f"  {'':>20} {'Pred Cheap':>12} {'Pred Normal':>12} {'Pred Exp':>12}")
             print(f"  {'':>20} {'-' * 12} {'-' * 12} {'-' * 12}")
             for actual_label in LABELS:
@@ -188,7 +192,10 @@ def main():
     parser = argparse.ArgumentParser(description="Evaluate classification accuracy")
     parser.add_argument("--area", default="SE3")
     parser.add_argument(
-        "--threshold", type=float, default=0.15, help="Cheap/Expensive band width (default: 0.15 = +/-15%%)",
+        "--threshold",
+        type=float,
+        default=0.18,
+        help="Cheap/Expensive band width (default: 0.18 = +/-18%%)",
     )
     parser.add_argument("--days", type=int, default=90, help="Lookback period")
     args = parser.parse_args()

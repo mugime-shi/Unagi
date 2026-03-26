@@ -21,11 +21,11 @@ export function PriceIndicator({ prices }) {
     prices.reduce((s, p) => s + parseFloat(p.price_sek_kwh), 0) / prices.length;
 
   let level, color, bg;
-  if (sek <= avg * 0.8) {
+  if (sek <= avg * 0.82) {
     level = "Cheap";
     color = "text-cyan-300";
     bg = "bg-cyan-950/40 border-cyan-800/40";
-  } else if (sek >= avg * 1.2) {
+  } else if (sek >= avg * 1.18) {
     level = "Expensive";
     color = "text-orange-300";
     bg = "bg-orange-950/40 border-orange-800/40";
