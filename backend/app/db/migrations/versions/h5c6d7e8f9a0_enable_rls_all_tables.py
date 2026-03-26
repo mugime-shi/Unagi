@@ -25,6 +25,7 @@ TABLES = [
     "gas_price",
     "de_spot_price",
     "forecast_accuracy",
+    "alembic_version",
 ]
 
 
