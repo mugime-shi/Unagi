@@ -307,7 +307,7 @@ export default function App() {
             </div>
 
             {/* Area selector — below tabs */}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <div className="flex gap-1">
                 {AREAS.map(({ id, label, cities }) => (
                   <button
@@ -324,9 +324,9 @@ export default function App() {
                   </button>
                 ))}
               </div>
-              <span className="text-gray-500 text-sm">· {areaCity}</span>
+              <span className="text-gray-500 text-sm whitespace-nowrap">· {areaCity}</span>
               {tab === "today" && (
-                <span className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sea-800/50 border border-sea-700/40 shadow-[inset_0_1px_0_0_rgba(148,163,184,0.05)]">
+                <span className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sea-800/50 border border-sea-700/40 shadow-[inset_0_1px_0_0_rgba(148,163,184,0.05)] whitespace-nowrap">
                   <span className="text-sm font-mono text-gray-300 tabular-nums tracking-wide">
                     {todayISO()}
                   </span>
