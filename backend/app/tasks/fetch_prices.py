@@ -774,21 +774,24 @@ def _record_forecasts_and_actuals(areas: list[str]) -> None:
 
 
 def _send_notifications(areas: list[str]) -> None:
-    """Send Web Push + Telegram alerts for each area after a daily price fetch."""
+    """Send Web Push + Telegram alerts after a daily price fetch."""
     db = SessionLocal()
     try:
         from app.services.notify_service import notify_subscribers
-        from app.services.telegram_service import send_telegram_alert
+        from app.services.telegram_service import send_telegram_digest
 
+        # Web Push: per-area (subscribers choose their area)
         for area in areas:
             try:
                 notify_subscribers(db, area)
             except Exception as exc:
                 log.warning("Web Push error for %s: %s", area, exc)
-            try:
-                send_telegram_alert(db, area)
-            except Exception as exc:
-                log.warning("Telegram error for %s: %s", area, exc)
+
+        # Telegram: single digest combining all areas
+        try:
+            send_telegram_digest(db, areas)
+        except Exception as exc:
+            log.warning("Telegram digest error: %s", exc)
     finally:
         db.close()
 

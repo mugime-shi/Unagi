@@ -85,18 +85,20 @@ resource "aws_lambda_permission" "sns_invoke_alarm_handler" {
 # CloudWatch Alarms
 # ---------------------------------------------------------------------------
 
-# Scheduler Lambda: any error is critical — means no price fetch today
+# Scheduler Lambda: tolerate ENTSO-E data delays (load_forecast + generation
+# return errors when data is not yet published — up to 8 per run for 4 areas).
+# Alert only on sustained failures that indicate a real infrastructure issue.
 resource "aws_cloudwatch_metric_alarm" "scheduler_errors" {
   alarm_name          = "${var.project}-scheduler-errors"
   comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
+  evaluation_periods  = 2    # 2 × 5-min = 10 min sustained before alerting
   metric_name         = "Errors"
   namespace           = "AWS/Lambda"
-  period              = 300 # 5-minute window matches EventBridge trigger frequency
+  period              = 300
   statistic           = "Sum"
-  threshold           = 0
-  alarm_description   = "Unagi scheduler Lambda failed — today's price fetch may have been skipped"
-  treat_missing_data  = "notBreaching" # silence when Lambda hasn't run yet (weekends etc.)
+  threshold           = 2    # tolerate single invocation failures from data delays
+  alarm_description   = "Unagi scheduler Lambda sustained errors — check ENTSO-E connectivity and Lambda health"
+  treat_missing_data  = "notBreaching"
   alarm_actions       = [aws_sns_topic.alerts.arn]
 
   dimensions = {

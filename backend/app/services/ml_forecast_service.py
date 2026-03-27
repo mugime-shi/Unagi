@@ -73,7 +73,7 @@ def _save_cache(area: str, target_date: date, model):
 # ---------------------------------------------------------------------------
 
 
-def _train_model(db: Session, target_date: date, area: str):
+def _train_model(db: Session, target_date: date, area: str, *, huber_delta: float = 1.0):
     """
     Train LightGBM models on historical data.
 
@@ -135,7 +135,7 @@ def _train_model(db: Session, target_date: date, area: str):
         return lgb.train(params, train_set, num_boost_round=200, callbacks=callbacks)
 
     # Point forecast (Huber loss — reduces spike influence while keeping calm precision)
-    point_model = _fit({**base_params, "objective": "huber", "huber_delta": 0.5, "metric": "mae"})
+    point_model = _fit({**base_params, "objective": "huber", "huber_delta": huber_delta, "metric": "mae"})
     logger.info("LightGBM point model: %d rounds, %d features", point_model.best_iteration, len(FEATURE_COLS))
 
     # Quantile models for prediction intervals
@@ -321,15 +321,20 @@ def build_multi_horizon_forecast(
     for horizon in range(1, max_horizon + 1):
         target = base_date + timedelta(days=horizon)
         forecast = predict_with_model(
-            models, db, target, area,
+            models,
+            db,
+            target,
+            area,
             price_overrides=cumulative_overrides if horizon > 1 else None,
         )
 
-        results.append({
-            "horizon": horizon,
-            "target_date": target,
-            "forecast": forecast,
-        })
+        results.append(
+            {
+                "horizon": horizon,
+                "target_date": target,
+                "forecast": forecast,
+            }
+        )
 
         # Accumulate predictions for next horizon's lag features
         for slot in forecast["slots"]:

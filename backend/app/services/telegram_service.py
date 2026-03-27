@@ -126,6 +126,74 @@ def send_telegram_alert(db, area: str = "SE3", target_date: date | None = None) 
         log.info("No tomorrow prices for %s — skipping Telegram alert", area)
         return {"status": "skipped", "reason": "no_data"}
 
+    return _send_message(message, log_label=f"alert for {area}")
+
+
+def build_telegram_digest(db, areas: list[str], target_date: date | None = None) -> str | None:
+    """Build a single Telegram message combining all areas into one digest."""
+    target = target_date or (datetime.now(tz=_STOCKHOLM) + timedelta(days=1)).date()
+    day_label = target.strftime("%Y-%m-%d (%a)")
+
+    sections: list[str] = []
+    for area in areas:
+        rows = get_prices_for_date(db, target, area)
+        if not rows:
+            continue
+
+        from collections import defaultdict
+
+        hour_prices: dict[int, list[float]] = defaultdict(list)
+        for r in rows:
+            ts = r.timestamp_utc
+            local_hour = ts.astimezone(_STOCKHOLM).hour
+            hour_prices[local_hour].append(float(r.price_sek_kwh))
+
+        hourly: list[tuple[str, float]] = []
+        for h in sorted(hour_prices):
+            avg_h = sum(hour_prices[h]) / len(hour_prices[h])
+            hourly.append((f"{h:02d}:00", avg_h))
+
+        if not hourly:
+            continue
+
+        prices = [p for _, p in hourly]
+        day_avg = sum(prices) / len(prices)
+        day_min = min(prices)
+        day_max = max(prices)
+
+        cheap = _cheapest_window(hourly, 2)
+        pricey = _priciest_window(hourly, 2)
+
+        line = f"🇸🇪 *{area}* · avg *{_escape(f'{day_avg:.2f}')}* · range {_escape(f'{day_min:.2f}–{day_max:.2f}')}"
+        if cheap:
+            line += f"\n    ⬇️ {_escape(cheap[0])}–{_escape(cheap[1])} · {_escape(f'{cheap[2]:.2f}')}"
+        if pricey:
+            line += f"\n    ⬆️ {_escape(pricey[0])}–{_escape(pricey[1])} · {_escape(f'{pricey[2]:.2f}')}"
+        sections.append(line)
+
+    if not sections:
+        return None
+
+    header = f"⚡ *{_escape(f'Unagi — {day_label}')}*"
+    return header + "\n\n" + "\n\n".join(sections)
+
+
+def send_telegram_digest(db, areas: list[str], target_date: date | None = None) -> dict:
+    """Send a single combined Telegram message for all areas."""
+    if not settings.telegram_bot_token or not settings.telegram_chat_id:
+        log.info("Telegram not configured — skipping digest")
+        return {"status": "skipped", "reason": "not_configured"}
+
+    message = build_telegram_digest(db, areas, target_date)
+    if message is None:
+        log.info("No price data for digest — skipping")
+        return {"status": "skipped", "reason": "no_data"}
+
+    return _send_message(message, log_label=f"digest for {','.join(areas)}")
+
+
+def _send_message(message: str, log_label: str = "") -> dict:
+    """Send a MarkdownV2 message to the configured Telegram chat."""
     url = _TELEGRAM_API.format(token=settings.telegram_bot_token)
     try:
         with httpx.Client(timeout=10) as client:
@@ -138,8 +206,8 @@ def send_telegram_alert(db, area: str = "SE3", target_date: date | None = None) 
                 },
             )
         resp.raise_for_status()
-        log.info("Telegram alert sent for %s", area)
-        return {"status": "ok", "area": area}
+        log.info("Telegram sent: %s", log_label)
+        return {"status": "ok"}
     except httpx.HTTPStatusError as exc:
         log.error("Telegram API error %s: %s", exc.response.status_code, exc.response.text)
         return {"status": "error", "reason": str(exc)}

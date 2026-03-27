@@ -127,6 +127,7 @@ def run_backtest_horizon(
     max_horizon: int = 3,
     area: str = "SE3",
     train_days: int = 270,
+    huber_delta: float = 1.0,
 ) -> dict:
     """Run walk-forward backtest for d+1 through d+max_horizon.
 
@@ -137,6 +138,7 @@ def run_backtest_horizon(
 
     # Reload the module-level constant
     import app.services.ml_forecast_service as ml_svc
+
     ml_svc._TRAIN_DAYS = train_days
 
     db = SessionLocal()
@@ -147,7 +149,12 @@ def run_backtest_horizon(
 
         log.info(
             "Horizon backtest: %s -> %s (%d days), area=%s, max_horizon=d+%d, train_days=%d",
-            start_date, end_date, days, area, max_horizon, train_days,
+            start_date,
+            end_date,
+            days,
+            area,
+            max_horizon,
+            train_days,
         )
 
         # Model names for each horizon
@@ -175,7 +182,7 @@ def run_backtest_horizon(
             # Train model once for this perspective day
             # Model is trained on data through perspective_day (target = perspective_day + 1)
             train_target = perspective_day + timedelta(days=1)
-            models = _train_model(db, train_target, area)
+            models = _train_model(db, train_target, area, huber_delta=huber_delta)
             if models is None:
                 log.warning("Training failed for perspective %s, skipping", perspective_day)
                 dates_skipped += 1
@@ -189,7 +196,10 @@ def run_backtest_horizon(
                 model_name = model_names[horizon]
 
                 slots = _predict_with_model(
-                    models, db, target, area,
+                    models,
+                    db,
+                    target,
+                    area,
                     price_overrides=cumulative_overrides if horizon > 1 else None,
                 )
 
@@ -213,7 +223,8 @@ def run_backtest_horizon(
 
         log.info(
             "Horizon backtest complete: %d perspective days processed, %d skipped",
-            dates_processed, dates_skipped,
+            dates_processed,
+            dates_skipped,
         )
 
         # Compute accuracy for each horizon
@@ -241,9 +252,10 @@ def main():
     parser.add_argument("--horizon", type=int, default=3, help="Max forecast horizon (1-7)")
     parser.add_argument("--area", default="SE3", help="Price area")
     parser.add_argument("--train-days", type=int, default=270, help="Training window (days)")
+    parser.add_argument("--huber-delta", type=float, default=1.0, help="Huber loss delta")
     args = parser.parse_args()
 
-    results = run_backtest_horizon(args.days, args.horizon, args.area, args.train_days)
+    results = run_backtest_horizon(args.days, args.horizon, args.area, args.train_days, huber_delta=args.huber_delta)
 
     if not results:
         print("\nNo scored results. Check that actual price data exists.")
@@ -268,8 +280,7 @@ def main():
             vs_d1 = f"+{pct:.1f}%"
 
         print(
-            f"  {label:<10} {mae:>10.4f} {m['rmse_sek_kwh']:>10.4f}"
-            f" {m['n_samples']:>10} {m['n_days']:>8} {vs_d1:>10}"
+            f"  {label:<10} {mae:>10.4f} {m['rmse_sek_kwh']:>10.4f} {m['n_samples']:>10} {m['n_days']:>8} {vs_d1:>10}"
         )
 
     print("-" * 72)
