@@ -428,6 +428,41 @@ export default function App() {
                           balancing={balancing}
                           showNowMarker={true}
                         />
+
+                        {/* Min / Avg / Monthly / Max — directly under chart */}
+                        <div className="grid grid-cols-4 gap-3 text-center mt-4">
+                          {[
+                            {
+                              label: "Min",
+                              value: todayData.summary.min_sek_kwh,
+                            },
+                            {
+                              label: "Avg",
+                              value: todayData.summary.avg_sek_kwh,
+                            },
+                            {
+                              label: "Monthly",
+                              value: todayData.summary.month_avg_sek_kwh,
+                            },
+                            {
+                              label: "Max",
+                              value: todayData.summary.max_sek_kwh,
+                            },
+                          ].map(({ label, value }) => (
+                            <div
+                              key={label}
+                              className="bg-sea-800 rounded-xl py-3"
+                            >
+                              <p className="text-xs text-gray-500 mb-1">
+                                {label}
+                              </p>
+                              <p className="text-lg font-semibold">
+                                {value != null ? value.toFixed(2) : "—"}
+                              </p>
+                              <p className="text-xs text-gray-500">SEK/kWh</p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
 
                       {generation?.time_series?.length > 0 && (
@@ -436,30 +471,6 @@ export default function App() {
                           prices={todayData.prices}
                         />
                       )}
-                    </div>
-
-                    {/* Min / Avg / Monthly / Max */}
-                    <div className="grid grid-cols-4 gap-3 text-center">
-                      {[
-                        { label: "Min", value: todayData.summary.min_sek_kwh },
-                        {
-                          label: "Avg",
-                          value: todayData.summary.avg_sek_kwh,
-                        },
-                        {
-                          label: "Monthly",
-                          value: todayData.summary.month_avg_sek_kwh,
-                        },
-                        { label: "Max", value: todayData.summary.max_sek_kwh },
-                      ].map(({ label, value }) => (
-                        <div key={label} className="bg-sea-900 rounded-xl py-3">
-                          <p className="text-xs text-gray-500 mb-1">{label}</p>
-                          <p className="text-lg font-semibold">
-                            {value != null ? value.toFixed(2) : "—"}
-                          </p>
-                          <p className="text-xs text-gray-500">SEK/kWh</p>
-                        </div>
-                      ))}
                     </div>
 
                     <CheapHoursWidget date={todayISO()} area={area} />
@@ -526,6 +537,67 @@ export default function App() {
                         }
                         showNowMarker={false}
                       />
+
+                      {/* Summary cards — directly under chart */}
+                      {(() => {
+                        const isUnpublished =
+                          forecastPriceData.is_estimate &&
+                          forecastPriceData.published === false;
+                        const primarySummary =
+                          isUnpublished && lgbmSummary
+                            ? lgbmSummary
+                            : forecastPriceData.summary;
+                        const isLgbmPrimary =
+                          isUnpublished && lgbmSummary != null;
+                        const showLgbmComparison =
+                          !isUnpublished && lgbmSummary != null;
+                        return (
+                          <div className="grid grid-cols-3 gap-3 text-center mt-4">
+                            {[
+                              {
+                                label: "Min",
+                                primary: primarySummary.min_sek_kwh,
+                                lgbm: lgbmSummary?.min_sek_kwh,
+                              },
+                              {
+                                label: "Avg",
+                                primary: primarySummary.avg_sek_kwh,
+                                lgbm: lgbmSummary?.avg_sek_kwh,
+                              },
+                              {
+                                label: "Max",
+                                primary: primarySummary.max_sek_kwh,
+                                lgbm: lgbmSummary?.max_sek_kwh,
+                              },
+                            ].map(({ label, primary, lgbm }) => (
+                              <div
+                                key={label}
+                                className="bg-sea-800 rounded-xl py-3"
+                              >
+                                <p className="text-xs text-gray-500 mb-1">
+                                  {label}
+                                </p>
+                                <p
+                                  className={`text-lg font-semibold ${isLgbmPrimary ? "text-amber-400" : ""}`}
+                                >
+                                  {primary != null ? primary.toFixed(2) : "—"}
+                                </p>
+                                <p className="text-xs text-gray-500">SEK/kWh</p>
+                                {isLgbmPrimary && (
+                                  <p className="text-[10px] text-amber-500/60 mt-0.5">
+                                    LGBM forecast
+                                  </p>
+                                )}
+                                {showLgbmComparison && lgbm != null && (
+                                  <p className="text-[10px] text-amber-400/70 mt-0.5">
+                                    LGBM: {lgbm.toFixed(2)}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* Generation mix — past dates only */}
@@ -535,67 +607,6 @@ export default function App() {
                         prices={forecastPriceData.prices}
                       />
                     )}
-
-                    {/* Summary cards */}
-                    {(() => {
-                      const isUnpublished =
-                        forecastPriceData.is_estimate &&
-                        forecastPriceData.published === false;
-                      const primarySummary =
-                        isUnpublished && lgbmSummary
-                          ? lgbmSummary
-                          : forecastPriceData.summary;
-                      const isLgbmPrimary =
-                        isUnpublished && lgbmSummary != null;
-                      const showLgbmComparison =
-                        !isUnpublished && lgbmSummary != null;
-                      return (
-                        <div className="grid grid-cols-3 gap-3 text-center">
-                          {[
-                            {
-                              label: "Min",
-                              primary: primarySummary.min_sek_kwh,
-                              lgbm: lgbmSummary?.min_sek_kwh,
-                            },
-                            {
-                              label: "Avg",
-                              primary: primarySummary.avg_sek_kwh,
-                              lgbm: lgbmSummary?.avg_sek_kwh,
-                            },
-                            {
-                              label: "Max",
-                              primary: primarySummary.max_sek_kwh,
-                              lgbm: lgbmSummary?.max_sek_kwh,
-                            },
-                          ].map(({ label, primary, lgbm }) => (
-                            <div
-                              key={label}
-                              className="bg-sea-900 rounded-xl py-3"
-                            >
-                              <p className="text-xs text-gray-500 mb-1">
-                                {label}
-                              </p>
-                              <p
-                                className={`text-lg font-semibold ${isLgbmPrimary ? "text-amber-400" : ""}`}
-                              >
-                                {primary != null ? primary.toFixed(2) : "—"}
-                              </p>
-                              <p className="text-xs text-gray-500">SEK/kWh</p>
-                              {isLgbmPrimary && (
-                                <p className="text-[10px] text-amber-500/60 mt-0.5">
-                                  LGBM forecast
-                                </p>
-                              )}
-                              {showLgbmComparison && lgbm != null && (
-                                <p className="text-[10px] text-amber-400/70 mt-0.5">
-                                  LGBM: {lgbm.toFixed(2)}
-                                </p>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })()}
 
                     {/* Weekly forecast */}
                     <WeeklySummary
