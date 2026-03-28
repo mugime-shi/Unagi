@@ -65,8 +65,9 @@ export function ForecastAccuracy({ area }) {
     );
   }
 
-  // Sort: best MAE first
+  // Show only d+1 models (lgbm, same_weekday_avg); hide multi-horizon lgbm_d* variants
   const sorted = modelNames
+    .filter((name) => !name.startsWith("lgbm_d"))
     .map((name) => ({ name, ...models[name] }))
     .sort((a, b) => a.mae_sek_kwh - b.mae_sek_kwh);
 
@@ -97,12 +98,14 @@ export function ForecastAccuracy({ area }) {
   }
 
   const chartModels = chartData
-    ? Object.keys(breakdown.models).sort((a, b) => {
-        // best model first
-        const maeA = models[a]?.mae_sek_kwh ?? 1;
-        const maeB = models[b]?.mae_sek_kwh ?? 1;
-        return maeA - maeB;
-      })
+    ? Object.keys(breakdown.models)
+        .filter((name) => !name.startsWith("lgbm_d"))
+        .sort((a, b) => {
+          // best model first
+          const maeA = models[a]?.mae_sek_kwh ?? 1;
+          const maeB = models[b]?.mae_sek_kwh ?? 1;
+          return maeA - maeB;
+        })
     : [];
 
   return (
