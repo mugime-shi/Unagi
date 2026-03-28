@@ -48,6 +48,7 @@ function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   const hasData = payload.some((p) => p.value != null && p.value > 0);
   if (!hasData) return null;
+  const ci = payload[0]?.payload?.carbon_intensity;
   return (
     <div className="bg-sea-800 border border-sea-700 rounded-lg px-3 py-2 text-sm">
       <p className="text-gray-400 mb-1">{label}</p>
@@ -57,6 +58,11 @@ function CustomTooltip({ active, payload, label }) {
             {p.name}: {Math.round(p.value)} MW
           </p>
         ) : null,
+      )}
+      {ci != null && (
+        <p className="text-gray-400 mt-1 border-t border-sea-700 pt-1">
+          {Math.round(ci)} gCO₂/kWh
+        </p>
       )}
     </div>
   );
@@ -70,6 +76,7 @@ export function GenerationChart({ generation, prices }) {
     time_series: timeSeries,
     renewable_pct,
     carbon_free_pct,
+    carbon_intensity,
     latest_slot,
   } = generation;
 
@@ -99,6 +106,7 @@ export function GenerationChart({ generation, prices }) {
       nuclear: d?.nuclear ?? null,
       solar: d?.solar ?? null,
       other: d?.other ?? null,
+      carbon_intensity: d?.carbon_intensity ?? null,
     };
   });
 
@@ -152,6 +160,14 @@ export function GenerationChart({ generation, prices }) {
             )}
             {carbon_free_pct != null && (
               <span>Carbon-free {carbon_free_pct}%</span>
+            )}
+            {carbon_intensity != null && (
+              <>
+                <span className="text-gray-600"> · </span>
+                <span className="text-gray-400">
+                  {Math.round(carbon_intensity)} gCO₂/kWh
+                </span>
+              </>
             )}
             {latest_slot && (
               <span className="ml-2">· {lagLabel(latest_slot)}</span>
