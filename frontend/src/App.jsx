@@ -16,6 +16,7 @@ import { useGeneration } from "./hooks/useGeneration";
 import { useGenerationDate } from "./hooks/useGenerationDate";
 import { useRetrospective } from "./hooks/useRetrospective";
 import { usePrices } from "./hooks/usePrices";
+import { useLgbmForecast } from "./hooks/useLgbmForecast";
 import { useWeeklyForecast } from "./hooks/useWeeklyForecast";
 import { WeeklySummary } from "./components/WeeklySummary";
 import { dateWithWeekday } from "./utils/formatters";
@@ -108,6 +109,13 @@ export default function App() {
 
   // Weekly forecast for future dates (d+2 onwards)
   const { data: weeklyData } = useWeeklyForecast(area);
+
+  // SHAP explanations from live LGBM forecast endpoint
+  const { data: lgbmLive } = useLgbmForecast(
+    tab === "tomorrow" ? forecastDate : null,
+    area,
+  );
+  const shapExplanations = lgbmLive?.explanations ?? null;
 
   // Extract LGBM forecast (center line + 80% CI band) from retrospective — tomorrow and past dates
   // Also check for lgbm_d* models (multi-horizon predictions)
@@ -510,6 +518,7 @@ export default function App() {
                         forecast={forecast}
                         lgbmForecast={lgbmForecast}
                         retrospective={retrospective}
+                        shapExplanations={shapExplanations}
                         defaultShowLgbm={true}
                         defaultShowWeekdayAvg={false}
                         predictedAt={

@@ -118,6 +118,22 @@ function CustomTooltip({ active, payload, label, showWeekdayAvg }) {
           )}
         </p>
       )}
+      {p.shap_top?.length > 0 && (
+        <div className="text-xs mt-0.5 space-y-0.5">
+          {p.shap_top.slice(0, 3).map((s) => (
+            <p
+              key={s.group}
+              className={
+                s.impact > 0 ? "text-amber-500/80" : "text-cyan-500/80"
+              }
+            >
+              {s.impact > 0 ? "\u2191" : "\u2193"} {s.group} (
+              {s.impact > 0 ? "+" : ""}
+              {s.impact.toFixed(2)})
+            </p>
+          ))}
+        </div>
+      )}
       {/* Retrospective LGBM + WeekDay Avg error */}
       {(p.retro_lgbm != null || (showWeekdayAvg && p.forecast_avg != null)) && (
         <div className="mt-1 pt-1 border-t border-sea-700 text-xs">
@@ -162,6 +178,7 @@ export function PriceChart({
   forecast = null,
   lgbmForecast = null,
   retrospective = null,
+  shapExplanations = null,
   balancing = null,
   defaultShowLgbm = true,
   defaultShowWeekdayAvg = true,
@@ -199,6 +216,14 @@ export function PriceChart({
         };
       }
     });
+  }
+
+  // SHAP explanation lookup: hour (0-23) → top contributing groups
+  const shapByHour = {};
+  if (shapExplanations?.hours) {
+    for (const h of shapExplanations.hours) {
+      shapByHour[h.hour] = h.top;
+    }
   }
 
   // Retrospective lookups: hour (0-23) → predicted SEK/kWh per model
@@ -248,6 +273,7 @@ export function PriceChart({
       imb_long: imbLongByTs[key] ?? null,
       retro_lgbm: retroByModel["lgbm"]?.[hour] ?? null,
       retro_weekday: retroByModel["same_weekday_avg"]?.[hour] ?? null,
+      shap_top: shapByHour[hour] ?? null,
     };
   });
 

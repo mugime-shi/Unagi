@@ -16,6 +16,11 @@ from pathlib import Path
 import numpy as np
 from sqlalchemy.orm import Session
 
+try:
+    import shap as _shap
+except ImportError:
+    _shap = None
+
 from app.services.feature_service import FEATURE_COLS, TARGET_COL, build_feature_matrix
 
 logger = logging.getLogger(__name__)
@@ -28,6 +33,111 @@ _CACHE_DIR = Path(os.environ.get("LGBM_CACHE_DIR", "/tmp/unagi_lgbm"))
 _TRAIN_DAYS = int(os.environ.get("LGBM_TRAIN_DAYS", "365"))
 _TEST_DAYS = 30  # held-out set for early stopping + CQR calibration
 _MIN_TRAIN_ROWS = 200  # minimum rows to attempt training
+
+# ---------------------------------------------------------------------------
+# SHAP feature groups: 59 raw features → 10 human-readable groups
+# ---------------------------------------------------------------------------
+
+SHAP_GROUPS: dict[str, list[str]] = {
+    "Price history": [
+        "prev_day_same_hour",
+        "prev_2day_same_hour",
+        "prev_3day_same_hour",
+        "prev_week_same_hour",
+        "daily_avg_prev_day",
+        "daily_max_prev_day",
+        "daily_min_prev_day",
+        "daily_range_prev_day",
+        "price_change_d1_d2",
+        "rolling_7d_mean",
+        "rolling_7d_std",
+    ],
+    "Wind": ["gen_wind_mw", "wind_ratio", "wind_speed_10m_fc", "wind_speed_100m_fc", "wind_x_hour"],
+    "Temperature": ["temperature_c", "temp_forecast", "daily_avg_temp_prev_day", "temp_deviation", "temp_x_month"],
+    "Hydro": ["gen_hydro_mw", "hydro_ratio"],
+    "Nuclear": ["gen_nuclear_mw", "nuclear_ratio"],
+    "Solar & daylight": [
+        "sun_elevation",
+        "sun_azimuth",
+        "daylight_hours",
+        "radiation_wm2",
+        "radiation_forecast",
+        "gen_total_mw",
+    ],
+    "Demand": [
+        "load_forecast_max",
+        "load_forecast_min",
+        "load_forecast_hour",
+        "load_forecast_range",
+        "load_forecast_vs_avg",
+        "load_x_hour",
+    ],
+    "Calendar": [
+        "hour",
+        "weekday",
+        "month",
+        "hour_sin",
+        "hour_cos",
+        "weekday_sin",
+        "weekday_cos",
+        "month_sin",
+        "month_cos",
+        "is_weekend",
+        "is_holiday_se",
+        "holiday_score",
+        "is_bridge_day",
+    ],
+    "Gas & imports": [
+        "gas_price_eur_mwh",
+        "gas_price_7d_avg",
+        "gas_price_change",
+        "de_price_prev_day",
+        "de_se3_spread_prev_day",
+        "de_price_same_hour_prev_day",
+    ],
+    "Grid balance": ["bal_up_avg_prev_day", "bal_down_avg_prev_day", "bal_spread_prev_day"],
+}
+
+# Reverse lookup: feature_name → group_name
+_FEAT_TO_GROUP: dict[str, str] = {}
+for _grp, _feats in SHAP_GROUPS.items():
+    for _f in _feats:
+        _FEAT_TO_GROUP[_f] = _grp
+
+
+def _compute_shap_explanations(point_model, X_pred: np.ndarray, top_n: int = 5) -> dict:
+    """Compute per-hour SHAP explanations grouped by feature category.
+
+    Returns dict with 'base_value' and 'hours' list, each containing
+    the top_n contributing feature groups sorted by absolute impact.
+    """
+    if _shap is None:
+        return None
+    explainer = _shap.TreeExplainer(point_model)
+    shap_values = explainer.shap_values(X_pred)  # shape: (24, 59)
+    base_value = float(explainer.expected_value)
+
+    # Aggregate SHAP values by group for each hour
+    hours = []
+    for hour_idx in range(shap_values.shape[0]):
+        group_impacts: dict[str, float] = {}
+        for feat_idx, feat_name in enumerate(FEATURE_COLS):
+            grp = _FEAT_TO_GROUP.get(feat_name, "Other")
+            group_impacts[grp] = group_impacts.get(grp, 0.0) + shap_values[hour_idx, feat_idx]
+
+        # Sort by absolute impact, take top N
+        sorted_groups = sorted(group_impacts.items(), key=lambda x: abs(x[1]), reverse=True)[:top_n]
+        top = [
+            {
+                "group": name,
+                "impact": round(float(val), 4),
+                "direction": "higher" if val > 0 else "lower",
+            }
+            for name, val in sorted_groups
+        ]
+        hours.append({"hour": hour_idx, "top": top})
+
+    return {"base_value": round(base_value, 4), "hours": hours}
 
 
 # ---------------------------------------------------------------------------
@@ -268,8 +378,15 @@ def predict_with_model(
             }
         )
 
+    # SHAP explanations (point model only)
+    try:
+        explanations = _compute_shap_explanations(point_model, X_pred)
+    except Exception:
+        logger.warning("SHAP computation failed, skipping explanations", exc_info=True)
+        explanations = None
+
     valid = [(s["low_sek_kwh"], s["avg_sek_kwh"], s["high_sek_kwh"]) for s in slots]
-    return {
+    result = {
         "slots": slots,
         "summary": {
             "predicted_avg_sek_kwh": round(sum(v[1] for v in valid) / len(valid), 4),
@@ -277,6 +394,9 @@ def predict_with_model(
             "predicted_high_sek_kwh": round(max(v[2] for v in valid), 4),
         },
     }
+    if explanations is not None:
+        result["explanations"] = explanations
+    return result
 
 
 def build_lgbm_forecast(

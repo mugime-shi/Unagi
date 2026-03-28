@@ -20,6 +20,7 @@ dependencies = [
     "mangum>=0.17.0",
     "pywebpush>=2.0.0",
     "lightgbm>=4.0.0",
+    "shap>=0.43.0",
 ]
 
 [project.optional-dependencies]
