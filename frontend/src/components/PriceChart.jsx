@@ -73,21 +73,34 @@ function CustomDot() {
 function CustomTooltip({ active, payload, label, showWeekdayAvg }) {
   if (!active || !payload?.length) return null;
   const p = payload[0].payload;
+  const estimated = p.is_estimate;
+
+  // Best LGBM value: forward forecast or retrospective
+  const lgbmVal = p.lgbm_forecast ?? p.retro_lgbm ?? null;
+
   return (
     <div className="bg-sea-800 border border-sea-700 rounded-lg px-3 py-2 text-sm">
       <p className="text-gray-400">{label}</p>
-      <p
-        className="font-semibold"
-        style={{ color: priceColor(p.price_sek_kwh) }}
-      >
-        {p.price_sek_kwh.toFixed(2)}{" "}
-        <span className="text-gray-400 font-normal">SEK/kWh</span>
-        <span className="text-gray-500 text-xs ml-2">Day-ahead</span>
-      </p>
-      <p className="text-gray-500 text-xs">
-        {p.price_eur_mwh.toFixed(1)} EUR/MWh
-      </p>
-      {p.imb_short != null && (
+
+      {/* Day-ahead price — only when actually published */}
+      {!estimated && (
+        <>
+          <p
+            className="font-semibold"
+            style={{ color: priceColor(p.price_sek_kwh) }}
+          >
+            {p.price_sek_kwh.toFixed(2)}{" "}
+            <span className="text-gray-400 font-normal">SEK/kWh</span>
+            <span className="text-gray-500 text-xs ml-2">Day-ahead</span>
+          </p>
+          <p className="text-gray-500 text-xs">
+            {p.price_eur_mwh.toFixed(1)} EUR/MWh
+          </p>
+        </>
+      )}
+
+      {/* Balancing prices — only with published DA */}
+      {!estimated && p.imb_short != null && (
         <p className="text-orange-400 text-xs mt-1">
           Imbalance Short: {p.imb_short.toFixed(2)} SEK/kWh
           {p.price_sek_kwh > 0 && (
@@ -97,27 +110,38 @@ function CustomTooltip({ active, payload, label, showWeekdayAvg }) {
           )}
         </p>
       )}
-      {p.imb_long != null && (
+      {!estimated && p.imb_long != null && (
         <p className="text-teal-400 text-xs">
           Imbalance Long: {p.imb_long.toFixed(2)} SEK/kWh
         </p>
       )}
+
+      {/* Weekday Avg — forward forecast only */}
       {showWeekdayAvg && p.forecast_low != null && (
         <p className="text-gray-400 text-xs mt-1">
           Weekday Avg {p.forecast_low.toFixed(2)}–
           {(p.forecast_low + p.forecast_band).toFixed(2)}
         </p>
       )}
-      {p.lgbm_forecast != null && (
-        <p className="text-amber-400 text-xs mt-1">
-          LGBM {p.lgbm_forecast.toFixed(2)}
+
+      {/* LGBM — single unified line (forecast or retro, never both) */}
+      {lgbmVal != null && (
+        <p
+          className={`text-xs mt-1 ${estimated ? "text-amber-400 font-semibold text-sm" : "text-amber-400"}`}
+        >
+          LGBM {lgbmVal.toFixed(2)}
           {p.lgbm_low != null && p.lgbm_band != null && (
             <span className="text-amber-500/70 ml-1">
               [{p.lgbm_low.toFixed(2)}–{(p.lgbm_low + p.lgbm_band).toFixed(2)}]
             </span>
           )}
+          {estimated && (
+            <span className="text-gray-400 font-normal ml-1">SEK/kWh</span>
+          )}
         </p>
       )}
+
+      {/* SHAP explanations */}
       {p.shap_top?.length > 0 && (
         <div className="text-xs mt-0.5 space-y-0.5">
           {p.shap_top.slice(0, 3).map((s) => (
@@ -133,35 +157,6 @@ function CustomTooltip({ active, payload, label, showWeekdayAvg }) {
             </p>
           ))}
         </div>
-      )}
-      {/* Retrospective LGBM + WeekDay Avg error */}
-      {(p.retro_lgbm != null || (showWeekdayAvg && p.forecast_avg != null)) && (
-        <div className="mt-1 pt-1 border-t border-sea-700 text-xs">
-          <p className="text-gray-500">Prediction:</p>
-          {showWeekdayAvg && p.forecast_avg != null && p.price_sek_kwh > 0 && (
-            <p className="text-gray-400">
-              Weekday Avg {p.forecast_avg.toFixed(2)}
-              <span className="ml-1 text-gray-500">
-                (err {((p.forecast_avg - p.price_sek_kwh) * 100).toFixed(1)}{" "}
-                öre)
-              </span>
-            </p>
-          )}
-          {p.retro_lgbm != null && (
-            <p className="text-amber-400">
-              LGBM {p.retro_lgbm.toFixed(2)}
-              {p.price_sek_kwh > 0 && (
-                <span className="ml-1 text-amber-500">
-                  (err {((p.retro_lgbm - p.price_sek_kwh) * 100).toFixed(1)}{" "}
-                  öre)
-                </span>
-              )}
-            </p>
-          )}
-        </div>
-      )}
-      {p.is_estimate && (
-        <p className="text-yellow-500 text-xs mt-1">Estimated</p>
       )}
     </div>
   );
@@ -303,12 +298,16 @@ export function PriceChart({
   const hasWeekdayAvgData = forecast != null || hasRetroWeekday;
 
   // Y-axis domain: compute from all visible series
-  const domainKeys = ["price_sek_kwh"];
+  // When estimated, exclude fallback price_sek_kwh — use LGBM forecast for scale
+  const domainKeys = isEstimate ? [] : ["price_sek_kwh"];
   if (showLgbm && lgbmForecast) domainKeys.push("lgbm_forecast", "lgbm_top");
   if (showLgbm && hasRetroLgbm) domainKeys.push("retro_lgbm");
   if (showWeekdayAvg && forecast) domainKeys.push("forecast_top");
   if (showWeekdayAvg && hasRetroWeekday) domainKeys.push("retro_weekday");
   if (hasBalancing) domainKeys.push("imb_short", "imb_long");
+  // Ensure at least lgbm_forecast is included when estimated and no other keys
+  if (isEstimate && domainKeys.length === 0)
+    domainKeys.push("lgbm_forecast", "lgbm_top");
   const { domain } = computeClippedDomain(chartData, domainKeys);
 
   // Current hour data point for price annotation
@@ -366,92 +365,74 @@ export function PriceChart({
 
       {/* Legend row */}
       <div className="flex items-center justify-end mb-2">
-        <div className="flex items-center gap-2">
-          {(hasLgbmData || hasWeekdayAvgData || hasBalancing) && (
-            <div className="flex gap-4 text-xs text-gray-400 flex-wrap">
-              {!isEstimate && (
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block w-5 border-t-[3px] border-blue-400" />
-                  Day-ahead
-                  {legendDA?.price_sek_kwh != null && (
-                    <span className="text-blue-400 font-medium">
-                      {legendDA.price_sek_kwh.toFixed(2)}
-                    </span>
-                  )}
+        <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap">
+          {/* Day-ahead legend — only with published prices */}
+          {!isEstimate && (
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-5 border-t-[3px] border-blue-400" />
+              Day-ahead
+              {legendDA?.price_sek_kwh != null && (
+                <span className="text-blue-400 font-medium">
+                  {legendDA.price_sek_kwh.toFixed(2)}
                 </span>
               )}
-              {showLgbm && hasLgbmData && (
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block w-5 border-t-2 border-dashed border-amber-400" />
-                  LGBM
-                  {legendDA?.lgbm_forecast != null && (
-                    <span className="text-amber-400 font-medium">
-                      {legendDA.lgbm_forecast.toFixed(2)}
-                    </span>
-                  )}
-                </span>
-              )}
-              {hasBalancing && (
-                <>
-                  <span className="flex items-center gap-1.5">
-                    <span className="inline-block w-5 border-t border-orange-400" />
-                    Imb Short
-                    {legendImb?.imb_short != null && (
-                      <span className="text-orange-400 font-medium">
-                        {legendImb.imb_short.toFixed(2)}
-                      </span>
-                    )}
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="inline-block w-5 border-t border-teal-400" />
-                    Imb Long
-                    {legendImb?.imb_long != null && (
-                      <span className="text-teal-400 font-medium">
-                        {legendImb.imb_long.toFixed(2)}
-                      </span>
-                    )}
-                  </span>
-                </>
-              )}
-              {showWeekdayAvg && hasWeekdayAvgData && (
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block w-5 border-t-2 border-dashed border-gray-400" />
-                  Weekday Avg
-                </span>
-              )}
-              {(legendDA || legendImb) && (
-                <span className="text-gray-500">SEK/kWh</span>
-              )}
-            </div>
+            </span>
           )}
-          {/* Independent model toggles */}
-          {(hasLgbmData || hasWeekdayAvgData) && (
-            <div className="flex gap-1">
-              {hasLgbmData && (
-                <button
-                  onClick={() => setShowLgbm((v) => !v)}
-                  className={`text-xs px-2.5 py-0.5 rounded-full border transition-colors ${
-                    showLgbm
-                      ? "border-amber-600 text-amber-400 bg-amber-900/20"
-                      : "border-sea-700 text-gray-500 hover:text-gray-400"
-                  }`}
-                >
-                  {showLgbm ? "▪" : "◦"} LGBM
-                </button>
-              )}
-              {hasWeekdayAvgData && (
-                <button
-                  onClick={() => setShowWeekdayAvg((v) => !v)}
-                  className={`text-xs px-2.5 py-0.5 rounded-full border transition-colors ${
-                    showWeekdayAvg
-                      ? "border-sea-700 text-gray-300 bg-sea-700/30"
-                      : "border-sea-700 text-gray-500 hover:text-gray-400"
-                  }`}
-                >
-                  {showWeekdayAvg ? "▪" : "◦"} Weekday Avg
-                </button>
-              )}
-            </div>
+
+          {/* Balancing legends */}
+          {hasBalancing && (
+            <>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-5 border-t border-orange-400" />
+                Imb Short
+                {legendImb?.imb_short != null && (
+                  <span className="text-orange-400 font-medium">
+                    {legendImb.imb_short.toFixed(2)}
+                  </span>
+                )}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-5 border-t border-teal-400" />
+                Imb Long
+                {legendImb?.imb_long != null && (
+                  <span className="text-teal-400 font-medium">
+                    {legendImb.imb_long.toFixed(2)}
+                  </span>
+                )}
+              </span>
+            </>
+          )}
+
+          {/* Model toggles — serve as both legend and toggle */}
+          {hasLgbmData && (
+            <button
+              onClick={() => setShowLgbm((v) => !v)}
+              className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border transition-colors ${
+                showLgbm
+                  ? "border-amber-600 text-amber-400 bg-amber-900/20"
+                  : "border-sea-700 text-gray-500 hover:text-gray-400"
+              }`}
+            >
+              <span className="inline-block w-4 border-t-2 border-dashed border-current" />
+              LGBM
+            </button>
+          )}
+          {hasWeekdayAvgData && (
+            <button
+              onClick={() => setShowWeekdayAvg((v) => !v)}
+              className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border transition-colors ${
+                showWeekdayAvg
+                  ? "border-sea-700 text-gray-300 bg-sea-700/30"
+                  : "border-sea-700 text-gray-500 hover:text-gray-400"
+              }`}
+            >
+              <span className="inline-block w-4 border-t-2 border-dashed border-current" />
+              Weekday Avg
+            </button>
+          )}
+
+          {(legendDA || legendImb) && (
+            <span className="text-gray-500">SEK/kWh</span>
           )}
         </div>
       </div>
@@ -680,8 +661,8 @@ export function PriceChart({
             />
           )}
 
-          {/* Current price dot + label */}
-          {showNowMarker && nowEntry && (
+          {/* Current price dot + label — only with published prices */}
+          {showNowMarker && nowEntry && !isEstimate && (
             <ReferenceDot
               x={nowEntry.hour}
               y={nowEntry.price_sek_kwh}
