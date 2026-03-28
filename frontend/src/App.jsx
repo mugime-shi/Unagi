@@ -129,6 +129,21 @@ export default function App() {
       }
     : null;
 
+  // LGBM-based summary for Min/Avg/Max cards (all from point predictions)
+  const lgbmSummary = lgbmForecast?.slots?.length
+    ? (() => {
+        const avgs = lgbmForecast.slots
+          .map((s) => s.avg_sek_kwh)
+          .filter((v) => v != null);
+        if (!avgs.length) return null;
+        return {
+          min_sek_kwh: Math.min(...avgs),
+          avg_sek_kwh: avgs.reduce((a, b) => a + b, 0) / avgs.length,
+          max_sek_kwh: Math.max(...avgs),
+        };
+      })()
+    : null;
+
   // For future dates (d+2+), build synthetic price data from weekly forecast
   const weeklyDayData = weeklyData?.days?.find((d) => d.date === forecastDate);
   const futurePriceData =
@@ -324,7 +339,9 @@ export default function App() {
                   </button>
                 ))}
               </div>
-              <span className="text-gray-500 text-sm whitespace-nowrap">· {areaCity}</span>
+              <span className="text-gray-500 text-sm whitespace-nowrap">
+                · {areaCity}
+              </span>
               {tab === "today" && (
                 <span className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sea-800/50 border border-sea-700/40 shadow-[inset_0_1px_0_0_rgba(148,163,184,0.05)] whitespace-nowrap">
                   <span className="text-sm font-mono text-gray-300 tabular-nums tracking-wide">
@@ -511,30 +528,65 @@ export default function App() {
                     )}
 
                     {/* Summary cards */}
-                    <div className="grid grid-cols-3 gap-3 text-center">
-                      {[
-                        {
-                          label: "Min",
-                          value: forecastPriceData.summary.min_sek_kwh,
-                        },
-                        {
-                          label: "Avg",
-                          value: forecastPriceData.summary.avg_sek_kwh,
-                        },
-                        {
-                          label: "Max",
-                          value: forecastPriceData.summary.max_sek_kwh,
-                        },
-                      ].map(({ label, value }) => (
-                        <div key={label} className="bg-sea-900 rounded-xl py-3">
-                          <p className="text-xs text-gray-500 mb-1">{label}</p>
-                          <p className="text-lg font-semibold">
-                            {value != null ? value.toFixed(2) : "—"}
-                          </p>
-                          <p className="text-xs text-gray-500">SEK/kWh</p>
+                    {(() => {
+                      const isUnpublished =
+                        forecastPriceData.is_estimate &&
+                        forecastPriceData.published === false;
+                      const primarySummary =
+                        isUnpublished && lgbmSummary
+                          ? lgbmSummary
+                          : forecastPriceData.summary;
+                      const isLgbmPrimary =
+                        isUnpublished && lgbmSummary != null;
+                      const showLgbmComparison =
+                        !isUnpublished && lgbmSummary != null;
+                      return (
+                        <div className="grid grid-cols-3 gap-3 text-center">
+                          {[
+                            {
+                              label: "Min",
+                              primary: primarySummary.min_sek_kwh,
+                              lgbm: lgbmSummary?.min_sek_kwh,
+                            },
+                            {
+                              label: "Avg",
+                              primary: primarySummary.avg_sek_kwh,
+                              lgbm: lgbmSummary?.avg_sek_kwh,
+                            },
+                            {
+                              label: "Max",
+                              primary: primarySummary.max_sek_kwh,
+                              lgbm: lgbmSummary?.max_sek_kwh,
+                            },
+                          ].map(({ label, primary, lgbm }) => (
+                            <div
+                              key={label}
+                              className="bg-sea-900 rounded-xl py-3"
+                            >
+                              <p className="text-xs text-gray-500 mb-1">
+                                {label}
+                              </p>
+                              <p
+                                className={`text-lg font-semibold ${isLgbmPrimary ? "text-amber-400" : ""}`}
+                              >
+                                {primary != null ? primary.toFixed(2) : "—"}
+                              </p>
+                              <p className="text-xs text-gray-500">SEK/kWh</p>
+                              {isLgbmPrimary && (
+                                <p className="text-[10px] text-amber-500/60 mt-0.5">
+                                  LGBM forecast
+                                </p>
+                              )}
+                              {showLgbmComparison && lgbm != null && (
+                                <p className="text-[10px] text-amber-400/70 mt-0.5">
+                                  LGBM: {lgbm.toFixed(2)}
+                                </p>
+                              )}
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      );
+                    })()}
 
                     {/* Weekly forecast */}
                     <WeeklySummary
