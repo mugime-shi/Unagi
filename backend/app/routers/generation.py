@@ -80,6 +80,8 @@ def get_today_generation(db: DbDep, area: AreaDep = "SE3"):
     needs_fetch = not rows
     if rows:
         latest_ts = max(r.timestamp_utc for r in rows)
+        if latest_ts.tzinfo is None:
+            latest_ts = latest_ts.replace(tzinfo=timezone.utc)
         stale_seconds = (datetime.now(timezone.utc) - latest_ts).total_seconds()
         needs_fetch = stale_seconds > 45 * 60
 
@@ -108,10 +110,10 @@ def get_today_generation(db: DbDep, area: AreaDep = "SE3"):
         raise HTTPException(status_code=404, detail="No generation data available")
 
     response = {
-        "area":   area,
-        "date":   today.isoformat(),
+        "area": area,
+        "date": today.isoformat(),
         "source": "ENTSO-E A75",
-        "note":   "renewable = hydro + wind + solar. carbon_free adds nuclear.",
+        "note": "renewable = hydro + wind + solar. carbon_free adds nuclear.",
         **summary,
     }
 
@@ -140,8 +142,8 @@ def get_generation_for_date_endpoint(
 
     summary = build_generation_summary(rows)
     return {
-        "area":   area,
-        "date":   date.isoformat(),
+        "area": area,
+        "date": date.isoformat(),
         "source": "ENTSO-E A75",
         **summary,
     }

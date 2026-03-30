@@ -85,8 +85,8 @@ def get_generation_for_date(
     Fetch generation rows for target_date from DB.
     Window: Stockholm midnight → next Stockholm midnight (handles CET/CEST transitions).
     """
-    day_start = stockholm_midnight_utc(target_date)
-    day_end = stockholm_midnight_utc(target_date + timedelta(days=1))
+    day_start = stockholm_midnight_utc(target_date).replace(tzinfo=None)
+    day_end = stockholm_midnight_utc(target_date + timedelta(days=1)).replace(tzinfo=None)
 
     return (
         db.query(GenerationMix)
