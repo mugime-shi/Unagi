@@ -304,59 +304,34 @@ export function PriceChart({
       imbLongByTs[tsKey(p.timestamp_utc)] = parseFloat(String(p.price_sek_kwh));
   }
 
-  // Group prices by hour — handles both PT60M (24 pts) and PT15M (96 pts)
-  const hourlyPrices: Record<
-    string,
-    { sek: number[]; eur: number[]; ts: string; isEstimate?: boolean }
-  > = {};
-  for (const p of prices) {
+  const chartData: ChartDataPoint[] = prices.map((p) => {
     const localHour = toLocalHour(p.timestamp_utc);
-    const hourKey = localHour.slice(0, 2) + ":00";
-    if (!hourlyPrices[hourKey]) {
-      hourlyPrices[hourKey] = {
-        sek: [],
-        eur: [],
-        ts: p.timestamp_utc,
-        isEstimate: p.is_estimate,
-      };
-    }
-    hourlyPrices[hourKey].sek.push(parseFloat(String(p.price_sek_kwh)));
-    hourlyPrices[hourKey].eur.push(parseFloat(String(p.price_eur_mwh)));
-  }
-
-  const chartData: ChartDataPoint[] = Object.entries(hourlyPrices)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([hourKey, { sek, eur, ts, isEstimate }]) => {
-      const hour = parseInt(hourKey.slice(0, 2), 10);
-      const avgSek = sek.reduce((s, v) => s + v, 0) / sek.length;
-      const avgEur = eur.reduce((s, v) => s + v, 0) / eur.length;
-      const key = tsKey(ts);
-      const fh = forecastByHour[hour];
-      return {
-        hour: hourKey,
-        timestamp_utc: ts,
-        price_sek_kwh: avgSek,
-        price_eur_mwh: avgEur,
-        is_estimate: isEstimate,
-        forecast_low: fh?.low ?? null,
-        forecast_band: fh?.band ?? null,
-        forecast_avg: fh?.avg ?? null,
-        forecast_top: fh ? (fh.low ?? 0) + fh.band : null,
-        lgbm_forecast: lgbmByHour[hour]?.avg ?? null,
-        lgbm_low: lgbmByHour[hour]?.low ?? null,
-        lgbm_band:
-          lgbmByHour[hour]?.low != null && lgbmByHour[hour]?.high != null
-            ? (lgbmByHour[hour].high as number) -
-              (lgbmByHour[hour].low as number)
-            : null,
-        lgbm_top: lgbmByHour[hour]?.high ?? null,
-        imb_short: imbShortByTs[key] ?? null,
-        imb_long: imbLongByTs[key] ?? null,
-        retro_lgbm: retroByModel["lgbm"]?.[hour] ?? null,
-        retro_weekday: retroByModel["same_weekday_avg"]?.[hour] ?? null,
-        shap_top: shapByHour[hour] ?? null,
-      };
-    });
+    const hour = parseInt(localHour.split(":")[0], 10);
+    const key = tsKey(p.timestamp_utc);
+    const fh = forecastByHour[hour];
+    return {
+      ...p,
+      hour: localHour,
+      price_sek_kwh: parseFloat(String(p.price_sek_kwh)),
+      price_eur_mwh: parseFloat(String(p.price_eur_mwh)),
+      forecast_low: fh?.low ?? null,
+      forecast_band: fh?.band ?? null,
+      forecast_avg: fh?.avg ?? null,
+      forecast_top: fh ? (fh.low ?? 0) + fh.band : null,
+      lgbm_forecast: lgbmByHour[hour]?.avg ?? null,
+      lgbm_low: lgbmByHour[hour]?.low ?? null,
+      lgbm_band:
+        lgbmByHour[hour]?.low != null && lgbmByHour[hour]?.high != null
+          ? (lgbmByHour[hour].high as number) - (lgbmByHour[hour].low as number)
+          : null,
+      lgbm_top: lgbmByHour[hour]?.high ?? null,
+      imb_short: imbShortByTs[key] ?? null,
+      imb_long: imbLongByTs[key] ?? null,
+      retro_lgbm: retroByModel["lgbm"]?.[hour] ?? null,
+      retro_weekday: retroByModel["same_weekday_avg"]?.[hour] ?? null,
+      shap_top: shapByHour[hour] ?? null,
+    };
+  });
 
   const avg =
     chartData.reduce((s, d) => s + d.price_sek_kwh, 0) / chartData.length;
