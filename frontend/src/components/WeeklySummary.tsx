@@ -68,7 +68,10 @@ export function WeeklySummary({
     <div className="space-y-2">
       {/* Header with color legend */}
       <div className="flex items-center justify-between flex-wrap gap-1">
-        <h3 className="text-sm font-medium text-gray-400">Weekly forecast</h3>
+        <h3 className="text-sm font-medium text-gray-400">
+          Weekly forecast{" "}
+          <span className="text-xs font-normal text-gray-600">· daily avg</span>
+        </h3>
         <div className="flex items-center gap-3 text-xs text-gray-500">
           <span className="flex items-center gap-1">
             <span className="inline-block w-2 h-2 rounded-full bg-cyan-400" />
