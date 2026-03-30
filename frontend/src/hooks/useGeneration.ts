@@ -2,8 +2,7 @@ import { useEffect, useState } from "react";
 import { apiFetch } from "../utils/api";
 import type { Area, GenerationResponse } from "../types/index";
 
-const API_BASE: string =
-  (import.meta.env.VITE_API_BASE as string | undefined) ?? "/api/v1";
+const API_BASE: string = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
 interface UseGenerationReturn {
   data: GenerationResponse | null;

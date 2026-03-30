@@ -14,11 +14,14 @@ htmlcov/
 
 # Environment
 .env
+.env*.local
 !.env.example
 
 # Node
 frontend/node_modules/
 frontend/dist/
+frontend/.next/
+frontend/next-env.d.ts
 
 # Terraform
 infra/.terraform/

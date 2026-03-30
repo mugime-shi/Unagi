@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Analytics } from "@vercel/analytics/react";
 import { CheapHoursWidget } from "./components/CheapHoursWidget";
 import { ForecastAccuracy } from "./components/ForecastAccuracy";
 import { GenerationChart } from "./components/GenerationChart";
@@ -761,7 +760,6 @@ export default function App() {
           .
         </span>
       </footer>
-      <Analytics />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-const API_KEY: string = import.meta.env.VITE_API_KEY ?? "";
+const API_KEY: string = process.env.NEXT_PUBLIC_API_KEY ?? "";
 
 export async function apiFetch(
   url: string,
