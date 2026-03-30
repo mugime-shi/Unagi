@@ -336,7 +336,12 @@ export function PriceChart({
   const avg =
     chartData.reduce((s, d) => s + d.price_sek_kwh, 0) / chartData.length;
 
-  // Show only HH:00 labels on desktop, and every 2 hours on mobile to avoid overlap
+  // Determine tick interval: for 15-min data (>30 pts), show every Nth point
+  // so that only :00 labels appear. For hourly data (<=30), show every point.
+  const pointsPerHour =
+    chartData.length > 30 ? Math.round(chartData.length / 24) : 1;
+  const tickInterval = isMobile ? pointsPerHour * 2 : pointsPerHour;
+
   const tickFormatter = (value: string): string => {
     if (!value.endsWith(":00")) return "";
     if (!isMobile) return value;
@@ -521,7 +526,7 @@ export function PriceChart({
           />
           <XAxis
             dataKey="hour"
-            interval={0}
+            interval={tickInterval - 1}
             tickFormatter={tickFormatter}
             tick={{ fill: "#9ca3af", fontSize: 11, dy: 4 }}
             angle={-45}
