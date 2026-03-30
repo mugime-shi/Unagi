@@ -43,7 +43,7 @@ The model is retrained daily on 365 days of data from ENTSO-E, SMHI, eSett, and 
 ```bash
 git clone git@github.com:mugime-shi/Unagi.git && cd Unagi
 docker compose up                                  # API on :8100
-cd frontend && npm install && npm run dev          # React on :5173
+cd frontend && npm install && npm run dev          # Next.js on :3000
 ```
 
 Requires a `.env` file — see `.env.example` for required keys.
@@ -61,7 +61,7 @@ Full details: **[System Design](docs/SYSTEM_DESIGN.md)** · **[API Reference](do
 
 ## Tech stack
 
-Python 3.12 · FastAPI · LightGBM · Optuna · React 19 · Tailwind CSS · Recharts · AWS Lambda (arm64) · Terraform · GitHub Actions
+Python 3.12 · FastAPI · LightGBM · Optuna · Next.js 16 · React 19 · TypeScript · Tailwind CSS · Recharts · AWS Lambda (arm64) · Terraform · GitHub Actions
 
 ## Contributing
 
