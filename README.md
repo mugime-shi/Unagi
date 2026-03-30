@@ -1,32 +1,44 @@
-# Unagi — Swedish Electricity Price Dashboard
+# Unagi — Swedish Electricity Price Forecast
 
 > *Catch an E[el] for now and then.*
 
-**[Live demo → unagieel.net](https://unagieel.net)** — zero-cost, fully automated
+**[unagieel.net](https://unagieel.net)**
 
 ![Unagi dashboard](docs/unagi_top.png)
 
-## Features
+## What is this?
 
-- **Spot prices** — 15-min ENTSO-E data with cheapest-window recommendations
-- **ML forecast** — LightGBM next-day prediction with quantile regression
-- **Energy analytics** — generation mix, renewable %, multi-zone (SE1–SE4)
-- **Simulators** — fixed vs dynamic cost, solar PV revenue estimation
-- **Notifications** — Telegram + browser push (VAPID)
-- **Monitoring** — CloudWatch → SNS → Telegram failure alerting
+Unagi forecasts Swedish electricity spot prices up to 7 days ahead using machine learning, and shows you how accurate those forecasts actually are.
 
-## Tech stack
+- **Hourly spot prices** for all four zones (SE1–SE4) with cheapest-window highlights
+- **7-day ML forecast** — LightGBM trained on 365 days of price, weather, generation, and market data
+- **Prediction accuracy on display** — MAE, prediction vs actual overlays, 80% confidence intervals with calibration tracking
+- **Generation mix** — hydro, wind, nuclear, solar breakdown with carbon intensity
+- **Cost simulators** — compare fixed vs dynamic contracts, estimate solar PV revenue
 
-| | |
-|---|---|
-| **Backend** | Python 3.12 · FastAPI · SQLAlchemy · Mangum |
-| **Frontend** | React 19 · Vite · Tailwind CSS · Recharts |
-| **ML** | LightGBM · Optuna · quantile regression |
-| **Infra** | AWS Lambda (arm64) · API Gateway · EventBridge · Terraform |
-| **Data** | PostgreSQL (Supabase) · Alembic migrations |
-| **CI/CD** | GitHub Actions → ECR → Lambda (auto-deploy on push) |
+No account required. No ads. Open source.
 
-## Quick start
+## How accurate is it?
+
+Unagi publishes its forecast accuracy publicly — something [no other Swedish electricity tool does](https://unagieel.net).
+
+| Model | MAE | vs Baseline |
+|-------|-----|-------------|
+| LightGBM (59 features, Huber loss) | **0.20 SEK/kWh** | 58% better than weekday average |
+| Weekday Average (baseline) | 0.48 SEK/kWh | — |
+
+The model is retrained daily on 365 days of data from ENTSO-E, SMHI, eSett, and Riksbank. Prediction intervals are calibrated using conformal quantile regression.
+
+## Data sources
+
+| Source | What | Update |
+|--------|------|--------|
+| [ENTSO-E](https://transparency.entsoe.eu/) | Day-ahead prices, generation mix | Hourly |
+| [SMHI](https://www.smhi.se/) | Solar irradiance, temperature, wind | Hourly |
+| [eSett](https://www.esett.com/) | Imbalance / balancing prices | 15-min |
+| [Riksbank](https://www.riksbank.se/) | EUR/SEK exchange rate | Daily |
+
+## Run locally
 
 ```bash
 git clone git@github.com:mugime-shi/Unagi.git && cd Unagi
@@ -34,11 +46,27 @@ docker compose up                                  # API on :8100
 cd frontend && npm install && npm run dev          # React on :5173
 ```
 
-## Docs
+Requires a `.env` file — see `.env.example` for required keys.
 
-- **[System Design](docs/SYSTEM_DESIGN.md)** — architecture, decisions, cost analysis, ML details
-- **[API Reference](docs/API.md)** — endpoint documentation
+## Architecture
 
-## Contact
+```
+React 19 (Vercel) → API Gateway → Lambda (FastAPI) → PostgreSQL (Supabase)
+                                       ↑
+                    EventBridge crons: price fetch, ML predictions, notifications
+                    CloudWatch → SNS → Telegram alerts
+```
 
-mugimeishi@gmail.com
+Full details: **[System Design](docs/SYSTEM_DESIGN.md)** · **[API Reference](docs/API.md)**
+
+## Tech stack
+
+Python 3.12 · FastAPI · LightGBM · Optuna · React 19 · Tailwind CSS · Recharts · AWS Lambda (arm64) · Terraform · GitHub Actions
+
+## Contributing
+
+Issues and PRs welcome. The ML model, feature engineering, and training pipeline are all in `backend/app/services/` and `backend/scripts/`.
+
+## Author
+
+**Shin** — Gothenburg, Sweden

@@ -55,20 +55,20 @@ All handlers are idempotent — re-running them is safe and expected.
 
 Gradient boosting on tabular features outperforms deep learning for this data volume (~8,760 hourly samples/year). LightGBM fits Lambda's 512 MB / 30s constraints. Quantile regression (α=0.10/0.90) provides calibrated prediction intervals.
 
-**37 features** across 6 categories: calendar cycles, price lags (multi-day + 7d rolling stats), weather (temperature + solar radiation), generation mix ratios, balancing price spreads, and interaction terms (wind×hour, temp×month).
+**59 features** across 9 categories: calendar cycles, price lags (multi-day + 7d rolling stats), weather (temperature + solar radiation + wind), generation mix ratios, balancing price spreads, load forecasts, DE-LU cross-border prices, gas prices, holidays, solar position, and interaction terms.
 
-**Optuna tuning**: 100 trials with 4-fold walk-forward cross-validation. Walk-forward (not random k-fold) prevents future data leakage in time-series.
+**Optuna tuning**: 100 trials with 4-fold walk-forward cross-validation. Walk-forward (not random k-fold) prevents future data leakage in time-series. Huber loss for robustness to price spikes.
 
 ### Monitoring pipeline
 
-CloudWatch Alarms detect Lambda errors or missing data → SNS topic → dedicated alarm_handler Lambda → Telegram message. This avoids polling and provides sub-minute alerting at zero cost.
+CloudWatch Alarms detect Lambda errors or missing data → SNS topic → dedicated alarm_handler Lambda → Telegram message. This avoids polling and provides sub-minute alerting.
 
 ## Tech stack
 
 | Layer | Technology | Why |
 |---|---|---|
 | Backend | Python 3.12, FastAPI | Auto-docs, Pydantic validation, async-ready |
-| Runtime | AWS Lambda (arm64 Docker) | Zero cost at this scale; same image local and prod |
+| Runtime | AWS Lambda (arm64 Docker) | Same image local and prod; arm64 for lower cold-start |
 | ASGI adapter | Mangum | Lambda integration without modifying app code |
 | Database | PostgreSQL on Supabase | Full SQL, free tier with no expiry |
 | ML | LightGBM + Optuna | Tabular-optimized; fits Lambda memory/time constraints |
@@ -76,7 +76,7 @@ CloudWatch Alarms detect Lambda errors or missing data → SNS topic → dedicat
 | Hosting | Vercel | Free, auto-deploy on push |
 | IaC | Terraform | Declarative, reproducible infrastructure |
 | CI/CD | GitHub Actions | pytest → build → deploy → smoke test on every push |
-| Monitoring | CloudWatch → SNS → Lambda → Telegram | Zero-cost automated failure alerting |
+| Monitoring | CloudWatch → SNS → Lambda → Telegram | Automated failure alerting |
 
 ## Infrastructure (Terraform-managed)
 
@@ -92,7 +92,7 @@ CloudWatch Alarms detect Lambda errors or missing data → SNS topic → dedicat
 
 ```
 git push main
-  → pytest (142 tests, SQLite in-memory)
+  → pytest (200+ tests, SQLite in-memory)
   → alembic migrate (Supabase)
   → Docker build --platform linux/arm64
   → ECR push (API + scheduler images)
@@ -100,26 +100,16 @@ git push main
   → Smoke test (health endpoint)
 ```
 
-## Cost analysis
+## Cost
 
-Everything runs on permanent free tiers — no 12-month expiry.
-
-| Resource | Service | Monthly cost |
-|---|---|---|
-| Backend | Lambda (1M req/month free) | 0 SEK |
-| Routing | API Gateway (1M calls/month free) | 0 SEK |
-| Scheduler | EventBridge | 0 SEK |
-| Monitoring | CloudWatch + SNS + alarm Lambda | 0 SEK |
-| Frontend | Vercel | 0 SEK |
-| Database | Supabase (500 MB, no expiry) | 0 SEK |
-| Data | ENTSO-E + SMHI + eSett + Riksbank | 0 SEK |
+Runs entirely on permanent free tiers (no 12-month expiry): Lambda, API Gateway, EventBridge, CloudWatch/SNS, Vercel, Supabase. All external data APIs (ENTSO-E, SMHI, eSett, Riksbank) are free.
 
 ## ML performance
 
 | Metric | Value |
 |---|---|
-| MAE improvement vs baseline | 46.3% (0.44 → 0.24 SEK/kWh) |
-| Features | 37 (calendar, lags, weather, generation, balancing, interactions) |
+| MAE improvement vs baseline | 58% (0.48 → 0.20 SEK/kWh) |
+| Features | 59 (calendar, lags, weather, generation, balancing, load, DE-LU, gas, holidays, solar) |
 | Training window | 365 days (full seasonal cycle) |
 | Tuning | Optuna 100 trials, 4-fold walk-forward CV |
 | Prediction intervals | Quantile regression (α=0.10/0.90) |
