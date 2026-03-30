@@ -422,7 +422,20 @@ def test_dst_spring_forward_day_has_23_hourly_slots(client, db):
     """
     from datetime import timedelta
 
-    base = datetime(2025, 3, 29, 23, 0, tzinfo=timezone.utc)  # midnight CET Mar 30
+    # Use a recent spring-forward date that is always within the 365-day history window.
+    # CET spring-forward: last Sunday of March. We pick a date relative to "today"
+    # so the test never drifts out of range.
+    today = datetime.now(timezone.utc).date()
+    # Find the most recent last-Sunday-of-March that is within 364 days of today
+    for yr in (today.year, today.year - 1):
+        mar31 = date(yr, 3, 31)
+        spring_fwd = mar31 - timedelta(days=(mar31.weekday() + 1) % 7)  # last Sunday
+        if (today - spring_fwd).days < 364:
+            break
+    spring_fwd_str = spring_fwd.isoformat()
+    next_day_str = (spring_fwd + timedelta(days=1)).isoformat()
+
+    base = datetime(spring_fwd.year, spring_fwd.month, spring_fwd.day - 1, 23, 0, tzinfo=timezone.utc)
     points = [
         PricePoint(
             timestamp_utc=base + timedelta(hours=h),
@@ -438,13 +451,12 @@ def test_dst_spring_forward_day_has_23_hourly_slots(client, db):
     assert response.status_code == 200
     by_date = {d["date"]: d for d in response.json()["daily"] if d.get("avg_sek_kwh") is not None}
 
-    # Spring-forward day: only 23 of the 24 slots fall on Mar 30
-    assert "2025-03-30" in by_date, "Spring-forward day must appear in history"
-    # The 24th slot (22:00 UTC = 00:00 CEST) crosses into Mar 31
-    assert "2025-03-31" in by_date, "Slot at 22:00 UTC must bucket to next day"
-    # Verify the price split: Mar 30 avg ≈ 0.55, Mar 31 avg ≈ 0.55 (same price — we're checking buckets, not values)
-    assert abs(by_date["2025-03-30"]["avg_sek_kwh"] - 0.55) < 0.01
-    assert abs(by_date["2025-03-31"]["avg_sek_kwh"] - 0.55) < 0.01
+    # Spring-forward day: only 23 of the 24 slots fall on the spring-forward date
+    assert spring_fwd_str in by_date, "Spring-forward day must appear in history"
+    # The 24th slot (22:00 UTC = 00:00 CEST) crosses into the next day
+    assert next_day_str in by_date, "Slot at 22:00 UTC must bucket to next day"
+    assert abs(by_date[spring_fwd_str]["avg_sek_kwh"] - 0.55) < 0.01
+    assert abs(by_date[next_day_str]["avg_sek_kwh"] - 0.55) < 0.01
 
 
 def test_dst_fall_back_day_has_25_hourly_slots(client, db):
