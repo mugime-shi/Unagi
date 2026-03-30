@@ -502,6 +502,9 @@ export default function App() {
                               <p className="text-lg font-semibold">
                                 {value != null ? value.toFixed(2) : "\u2014"}
                               </p>
+                              <p className="text-[10px] text-gray-600">
+                                SEK/kWh
+                              </p>
                             </div>
                           ))}
                         </div>
@@ -631,6 +634,9 @@ export default function App() {
                                   {primary != null
                                     ? primary.toFixed(2)
                                     : "\u2014"}
+                                </p>
+                                <p className="text-[10px] text-gray-600">
+                                  SEK/kWh
                                 </p>
                                 {isLgbmPrimary && (
                                   <p className="text-xs text-amber-500/60 mt-0.5">

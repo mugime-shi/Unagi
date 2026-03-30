@@ -264,6 +264,7 @@ export function PriceHistory({
           <div key={label} className="bg-sea-800 rounded-xl py-3">
             <p className="text-xs text-gray-500 mb-1">{label}</p>
             <p className="text-base font-semibold">{value}</p>
+            <p className="text-[10px] text-gray-600">SEK/kWh</p>
           </div>
         ))}
       </div>

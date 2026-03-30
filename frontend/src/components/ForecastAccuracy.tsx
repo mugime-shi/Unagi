@@ -219,7 +219,7 @@ export function ForecastAccuracy({
                   className={`text-sm font-semibold ${isBest ? "text-amber-400" : "text-gray-300"}`}
                 >
                   MAE {maeSek}{" "}
-                  <span className="text-gray-500 text-sm font-normal">
+                  <span className="text-gray-500 text-[10px] font-normal">
                     SEK/kWh
                   </span>
                 </span>
