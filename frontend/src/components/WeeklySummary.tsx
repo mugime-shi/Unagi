@@ -90,48 +90,51 @@ export function WeeklySummary({
         </div>
       </div>
 
-      {/* Cards */}
-      <div className="no-scrollbar flex gap-2 overflow-x-auto snap-x snap-mandatory pb-2 sm:grid sm:grid-cols-7 sm:gap-1.5 sm:overflow-visible sm:pb-0">
-        {data.days.map((day) => {
-          const cfg = CLASS_CONFIG[day.classification] || CLASS_CONFIG.normal;
-          const isTomorrow = day.horizon === 1;
-          const pctDiff = refAvg
-            ? Math.round(((day.daily_avg - refAvg) / refAvg) * 100)
-            : null;
-          const d = new Date(day.date + "T12:00:00");
-          const shortDate = d.toLocaleDateString("en-GB", {
-            day: "numeric",
-            month: "short",
-          });
-          const conf = Math.round(day.confidence * 100);
+      {/* Cards — d+2 onwards (d+1 is shown in the main chart above) */}
+      <div className="no-scrollbar flex gap-2 overflow-x-auto snap-x snap-mandatory pb-2 sm:grid sm:grid-cols-6 sm:gap-1.5 sm:overflow-visible sm:pb-0">
+        {data.days
+          .filter((day) => day.horizon >= 2)
+          .map((day) => {
+            const cfg = CLASS_CONFIG[day.classification] || CLASS_CONFIG.normal;
+            const pctDiff = refAvg
+              ? Math.round(((day.daily_avg - refAvg) / refAvg) * 100)
+              : null;
+            const d = new Date(day.date + "T12:00:00");
+            const shortDate = d.toLocaleDateString("en-GB", {
+              day: "numeric",
+              month: "short",
+            });
+            const conf = Math.round(day.confidence * 100);
 
-          return (
-            <div
-              key={day.date}
-              onClick={() => onDateSelect?.(day.date)}
-              className={`min-w-[5.5rem] snap-center sm:min-w-0 rounded-xl border px-1.5 py-3 text-center ${cfg.bg} ${
-                isTomorrow ? "ring-1 ring-amber-500/30" : ""
-              } ${onDateSelect ? "cursor-pointer hover:brightness-110 transition-all" : ""}`}
-            >
-              <p className="text-[0.65rem] text-gray-500 truncate">
-                {SHORT_WEEKDAYS[day.weekday] || day.weekday} {shortDate}
-              </p>
-              <p className={`text-xl sm:text-2xl font-bold ${cfg.color} mt-1`}>
-                {day.daily_avg.toFixed(2)}
-              </p>
-              <p className="text-[0.55rem] text-gray-600">SEK/kWh</p>
-              {pctDiff !== null && (
-                <p
-                  className={`text-xs mt-1 font-medium ${pctDiff < 0 ? "text-cyan-400" : pctDiff > 0 ? "text-orange-400" : "text-gray-400"}`}
-                >
-                  {pctDiff < 0 ? "\u2193" : pctDiff > 0 ? "\u2191" : ""}
-                  {Math.abs(pctDiff)}%
+            return (
+              <div
+                key={day.date}
+                onClick={() => onDateSelect?.(day.date)}
+                className={`min-w-[5.5rem] snap-center sm:min-w-0 rounded-xl border px-1.5 py-3 text-center ${cfg.bg} ${onDateSelect ? "cursor-pointer hover:brightness-110 transition-all" : ""}`}
+              >
+                <p className="text-[0.65rem] text-gray-500 truncate">
+                  {SHORT_WEEKDAYS[day.weekday] || day.weekday} {shortDate}
                 </p>
-              )}
-              <p className="text-[0.6rem] text-gray-600 mt-1">conf. {conf}%</p>
-            </div>
-          );
-        })}
+                <p
+                  className={`text-xl sm:text-2xl font-bold ${cfg.color} mt-1`}
+                >
+                  {day.daily_avg.toFixed(2)}
+                </p>
+                <p className="text-[0.55rem] text-gray-600">SEK/kWh</p>
+                {pctDiff !== null && (
+                  <p
+                    className={`text-xs mt-1 font-medium ${pctDiff < 0 ? "text-cyan-400" : pctDiff > 0 ? "text-orange-400" : "text-gray-400"}`}
+                  >
+                    {pctDiff < 0 ? "\u2193" : pctDiff > 0 ? "\u2191" : ""}
+                    {Math.abs(pctDiff)}%
+                  </p>
+                )}
+                <p className="text-[0.6rem] text-gray-600 mt-1">
+                  conf. {conf}%
+                </p>
+              </div>
+            );
+          })}
       </div>
     </div>
   );
