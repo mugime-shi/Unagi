@@ -69,7 +69,7 @@ export function WeeklySummary({
       {/* Header with color legend */}
       <div className="flex items-center justify-between flex-wrap gap-1">
         <h3 className="text-sm font-medium text-gray-400">Weekly forecast</h3>
-        <div className="flex items-center gap-3 text-[0.6rem] text-gray-500">
+        <div className="flex items-center gap-3 text-xs text-gray-500">
           <span className="flex items-center gap-1">
             <span className="inline-block w-2 h-2 rounded-full bg-cyan-400" />
             Cheap
@@ -112,7 +112,7 @@ export function WeeklySummary({
                 onClick={() => onDateSelect?.(day.date)}
                 className={`min-w-[5.5rem] snap-center sm:min-w-0 rounded-xl border px-1.5 py-3 text-center ${cfg.bg} ${onDateSelect ? "cursor-pointer hover:brightness-110 transition-all" : ""}`}
               >
-                <p className="text-[0.65rem] text-gray-500 truncate">
+                <p className="text-xs text-gray-500 truncate">
                   {SHORT_WEEKDAYS[day.weekday] || day.weekday} {shortDate}
                 </p>
                 <p
@@ -120,7 +120,6 @@ export function WeeklySummary({
                 >
                   {day.daily_avg.toFixed(2)}
                 </p>
-                <p className="text-[0.55rem] text-gray-600">SEK/kWh</p>
                 {pctDiff !== null && (
                   <p
                     className={`text-xs mt-1 font-medium ${pctDiff < 0 ? "text-cyan-400" : pctDiff > 0 ? "text-orange-400" : "text-gray-400"}`}
@@ -129,9 +128,7 @@ export function WeeklySummary({
                     {Math.abs(pctDiff)}%
                   </p>
                 )}
-                <p className="text-[0.6rem] text-gray-600 mt-1">
-                  conf. {conf}%
-                </p>
+                <p className="text-xs text-gray-600 mt-1">{conf}% likely</p>
               </div>
             );
           })}

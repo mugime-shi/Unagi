@@ -21,7 +21,7 @@ import type { Area } from "../types/index";
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const MODEL_COLORS: Record<string, string> = {
-  lgbm: "#34d399", // emerald-400
+  lgbm: "#fbbf24", // amber-400
   same_weekday_avg: "#94a3b8", // slate-400
 };
 
@@ -202,7 +202,7 @@ export function ForecastAccuracy({
               key={m.name}
               className={`flex items-center justify-between px-3 py-2 rounded-lg ${
                 isBest
-                  ? "bg-emerald-900/20 border border-emerald-800"
+                  ? "bg-amber-900/20 border border-amber-800"
                   : "bg-sea-800"
               }`}
             >
@@ -216,9 +216,12 @@ export function ForecastAccuracy({
               </div>
               <div className="text-right">
                 <span
-                  className={`text-sm font-semibold ${isBest ? "text-emerald-400" : "text-gray-300"}`}
+                  className={`text-sm font-semibold ${isBest ? "text-amber-400" : "text-gray-300"}`}
                 >
-                  MAE {maeSek} SEK/kWh
+                  MAE {maeSek}{" "}
+                  <span className="text-gray-500 text-sm font-normal">
+                    SEK/kWh
+                  </span>
                 </span>
               </div>
             </div>
