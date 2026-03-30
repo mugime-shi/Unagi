@@ -60,15 +60,15 @@ export interface BalancingResponse {
 
 export interface GenerationPoint {
   timestamp_utc: string;
-  hour: number;
-  wind_mw: number | null;
-  hydro_mw: number | null;
-  nuclear_mw: number | null;
-  thermal_mw: number | null;
-  solar_mw?: number | null;
-  other_mw: number | null;
   total_mw: number;
-  carbon_intensity_gco2_kwh?: number | null;
+  renewable_pct?: number | null;
+  carbon_intensity?: number | null;
+  hydro?: number | null;
+  wind?: number | null;
+  nuclear?: number | null;
+  solar?: number | null;
+  fossil?: number | null;
+  other?: number | null;
 }
 
 export interface GenerationResponse {

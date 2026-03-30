@@ -38,6 +38,7 @@ interface GenChartRow {
   nuclear: number | null;
   solar: number | null;
   other: number | null;
+  fossil: number | null;
   carbon_intensity: number | null;
   [key: string]: string | number | null;
 }
@@ -148,12 +149,13 @@ export function GenerationChart({
     const d = genByHour[hour];
     return {
       hour,
-      hydro: d?.hydro_mw ?? null,
-      wind: d?.wind_mw ?? null,
-      nuclear: d?.nuclear_mw ?? null,
-      solar: d?.solar_mw ?? null,
-      other: d?.other_mw ?? null,
-      carbon_intensity: d?.carbon_intensity_gco2_kwh ?? null,
+      hydro: d?.hydro ?? null,
+      wind: d?.wind ?? null,
+      nuclear: d?.nuclear ?? null,
+      solar: d?.solar ?? null,
+      other: d?.other ?? null,
+      fossil: d?.fossil ?? null,
+      carbon_intensity: d?.carbon_intensity ?? null,
     };
   });
 
