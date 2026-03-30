@@ -22,6 +22,7 @@ from app.models.generation_mix import GenerationMix
 from app.models.spot_price import SpotPrice
 from app.models.weather_data import WeatherData
 from app.models.weather_forecast import WeatherForecast
+from app.utils.timezone import stockholm_day_range_utc
 
 _STOCKHOLM = ZoneInfo("Europe/Stockholm")
 _STOCKHOLM_LOC = LocationInfo("Stockholm", "Sweden", "Europe/Stockholm", 59.3293, 18.0686)
@@ -109,9 +110,8 @@ def _solar_features(d: date, hour: int) -> dict[str, float]:
 
 
 def _cet_window(target_date: date) -> tuple[datetime, datetime]:
-    """Return UTC range for one CET calendar day."""
-    start = datetime(target_date.year, target_date.month, target_date.day, tzinfo=timezone.utc) - timedelta(hours=1)
-    return start, start + timedelta(hours=24)
+    """Return UTC range for one Stockholm time (CET/CEST) calendar day."""
+    return stockholm_day_range_utc(target_date)
 
 
 def _load_hourly_prices(

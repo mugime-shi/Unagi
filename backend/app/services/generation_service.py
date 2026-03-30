@@ -21,6 +21,7 @@ from app.services.entsoe_client import (
     GenerationPoint,
     fetch_generation_mix,
 )
+from app.utils.timezone import stockholm_midnight_utc
 
 # Direct combustion emission factors (gCO₂/kWh).
 # Source: IPCC AR5 WG3 Annex III (direct emissions only).
@@ -82,10 +83,10 @@ def get_generation_for_date(
 ) -> list[GenerationMix]:
     """
     Fetch generation rows for target_date from DB.
-    Window: previous day 23:00 UTC → same day 23:00 UTC (= CET calendar day).
+    Window: Stockholm midnight → next Stockholm midnight (handles CET/CEST transitions).
     """
-    day_start = datetime(target_date.year, target_date.month, target_date.day, tzinfo=timezone.utc) - timedelta(hours=1)
-    day_end = day_start + timedelta(hours=24)
+    day_start = stockholm_midnight_utc(target_date)
+    day_end = stockholm_midnight_utc(target_date + timedelta(days=1))
 
     return (
         db.query(GenerationMix)

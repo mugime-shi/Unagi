@@ -22,15 +22,16 @@ Market context:
 """
 
 import io
-import zipfile
 import xml.etree.ElementTree as ET
+import zipfile
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 import httpx
 
 from app.config import settings
+from app.utils.timezone import stockholm_midnight_utc
 
 ENTSOE_BASE = "https://web-api.tp.entsoe.eu/api"
 SE3_EIC = "10Y1001A1001A46L"
@@ -38,16 +39,16 @@ SE3_EIC = "10Y1001A1001A46L"
 # XML namespace in Balancing_MarketDocument (different from Publication_MarketDocument)
 NS_B = "urn:iec62325.351:tc57wg16:451-6:balancingdocument:4:4"
 
-CATEGORY_LONG = "A04"   # Excess supply (oversupply → price ≤ DA)
+CATEGORY_LONG = "A04"  # Excess supply (oversupply → price ≤ DA)
 CATEGORY_SHORT = "A05"  # Supply deficit (shortage → price ≥ DA, can spike)
 
 
 @dataclass
 class BalancingPoint:
-    timestamp_utc: datetime   # start of the 15-min slot
+    timestamp_utc: datetime  # start of the 15-min slot
     price_eur_mwh: float
     price_sek_kwh: float
-    category: str             # "A04" (Long) or "A05" (Short)
+    category: str  # "A04" (Long) or "A05" (Short)
     resolution: str = field(default="PT15M")
 
 
@@ -98,26 +99,28 @@ def _parse_zip_response(content: bytes, eur_to_sek: float) -> list[BalancingPoin
             slot_td = timedelta(minutes=15) if res_str == "PT15M" else timedelta(hours=1)
 
             for pt in period.findall(f"{{{NS_B}}}Point"):
-                pos_el   = pt.find(f"{{{NS_B}}}position")
+                pos_el = pt.find(f"{{{NS_B}}}position")
                 price_el = pt.find(f"{{{NS_B}}}imbalance_Price.amount")
-                cat_el   = pt.find(f"{{{NS_B}}}imbalance_Price.category")
+                cat_el = pt.find(f"{{{NS_B}}}imbalance_Price.category")
 
                 if pos_el is None or price_el is None or cat_el is None:
                     continue
 
-                position      = int(pos_el.text) - 1  # 1-based → 0-based offset
+                position = int(pos_el.text) - 1  # 1-based → 0-based offset
                 price_eur_mwh = float(price_el.text)
-                category      = cat_el.text
-                timestamp     = period_start + slot_td * position
+                category = cat_el.text
+                timestamp = period_start + slot_td * position
                 price_sek_kwh = round(price_eur_mwh * eur_to_sek / 1000, 6)
 
-                points.append(BalancingPoint(
-                    timestamp_utc=timestamp,
-                    price_eur_mwh=price_eur_mwh,
-                    price_sek_kwh=price_sek_kwh,
-                    category=category,
-                    resolution=res_str,
-                ))
+                points.append(
+                    BalancingPoint(
+                        timestamp_utc=timestamp,
+                        price_eur_mwh=price_eur_mwh,
+                        price_sek_kwh=price_sek_kwh,
+                        category=category,
+                        resolution=res_str,
+                    )
+                )
 
     return sorted(points, key=lambda p: (p.timestamp_utc, p.category))
 
@@ -146,14 +149,14 @@ def fetch_imbalance_prices(
 
     # Wide query window: day-1 00:00 UTC → day+1 00:00 UTC covers the full CET day
     period_start = target_date - timedelta(days=1)
-    period_end   = target_date + timedelta(days=1)
+    period_end = target_date + timedelta(days=1)
 
     params = {
-        "securityToken":    key,
-        "documentType":     "A85",
+        "securityToken": key,
+        "documentType": "A85",
         "controlArea_Domain": area,
-        "periodStart":      _period_param(period_start),
-        "periodEnd":        _period_param(period_end),
+        "periodStart": _period_param(period_start),
+        "periodEnd": _period_param(period_end),
     }
 
     try:
@@ -163,18 +166,12 @@ def fetch_imbalance_prices(
         raise BalancingError(f"Network error contacting ENTSO-E: {exc}") from exc
 
     if response.status_code != 200:
-        raise BalancingError(
-            f"ENTSO-E returned HTTP {response.status_code}: {response.content[:200]}"
-        )
+        raise BalancingError(f"ENTSO-E returned HTTP {response.status_code}: {response.content[:200]}")
 
     all_points = _parse_zip_response(response.content, rate)
 
-    # Filter to slots that fall within the requested CET calendar day
-    # CET midnight = UTC 23:00 on the previous calendar day
-    day_start_utc = (
-        datetime(target_date.year, target_date.month, target_date.day, tzinfo=timezone.utc)
-        - timedelta(hours=1)
-    )
+    # Filter to slots that fall within the requested Stockholm time (CET/CEST) calendar day
+    day_start_utc = stockholm_midnight_utc(target_date)
     day_end_utc = day_start_utc + timedelta(hours=24)
 
     filtered = [p for p in all_points if day_start_utc <= p.timestamp_utc < day_end_utc]

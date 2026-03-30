@@ -10,18 +10,15 @@ Design decisions:
 import math
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
-from typing import Optional, Sequence
-from zoneinfo import ZoneInfo
-
-_STOCKHOLM = ZoneInfo("Europe/Stockholm")
+from typing import Optional
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.models.spot_price import SpotPrice
-from app.services.entsoe_client import SE3_AREA, EntsoEError, PricePoint, fetch_day_ahead_prices
+from app.services.entsoe_client import EntsoEError, PricePoint, fetch_day_ahead_prices
 from app.services.riksbank_client import get_eur_sek_rate as _get_eur_sek
+from app.utils.timezone import stockholm_day_range_utc, stockholm_midnight_utc
 
 # Map friendly area names (used in DB/API) to ENTSO-E EIC codes
 _AREA_TO_EIC = {
@@ -35,6 +32,7 @@ _AREA_TO_EIC = {
 # ---------------------------------------------------------------------------
 # UPSERT
 # ---------------------------------------------------------------------------
+
 
 def upsert_prices(db: Session, points: list[PricePoint], area: str = "SE3") -> int:
     """
@@ -54,8 +52,7 @@ def upsert_prices(db: Session, points: list[PricePoint], area: str = "SE3") -> i
     """)
 
     params = [
-        {"area": area, "ts": p.timestamp_utc, "eur": p.price_eur_mwh,
-         "sek": p.price_sek_kwh, "res": p.resolution}
+        {"area": area, "ts": p.timestamp_utc, "eur": p.price_eur_mwh, "sek": p.price_sek_kwh, "res": p.resolution}
         for p in points
     ]
     db.execute(stmt, params)
@@ -67,6 +64,7 @@ def upsert_prices(db: Session, points: list[PricePoint], area: str = "SE3") -> i
 # READ
 # ---------------------------------------------------------------------------
 
+
 def get_prices_for_date(
     db: Session,
     target_date: date,
@@ -74,11 +72,9 @@ def get_prices_for_date(
 ) -> list[SpotPrice]:
     """
     Fetch spot prices for target_date from DB.
-    Window: previous day 23:00 UTC → same day 23:00 UTC  (= CET calendar day)
+    Window: Stockholm midnight → next Stockholm midnight (handles CET/CEST).
     """
-    day_start = datetime(target_date.year, target_date.month, target_date.day,
-                         tzinfo=timezone.utc) - timedelta(hours=1)
-    day_end = day_start + timedelta(hours=24)
+    day_start, day_end = stockholm_day_range_utc(target_date)
 
     return (
         db.query(SpotPrice)
@@ -95,6 +91,7 @@ def get_prices_for_date(
 # ---------------------------------------------------------------------------
 # Fetch + store (used by the scheduler task and the router's cache-miss path)
 # ---------------------------------------------------------------------------
+
 
 def fetch_and_store(
     db: Session,
@@ -120,6 +117,7 @@ def fetch_and_store(
 # READ: date range
 # ---------------------------------------------------------------------------
 
+
 def get_prices_for_date_range(
     db: Session,
     start_date: date,
@@ -128,12 +126,10 @@ def get_prices_for_date_range(
 ) -> list[SpotPrice]:
     """
     Fetch spot prices for a date range [start_date, end_date] inclusive.
-    Uses CET-window per date: start_date CET midnight → end_date CET midnight + 24h.
+    Window: start_date Stockholm midnight → end_date+1 Stockholm midnight (handles CET/CEST).
     """
-    range_start = datetime(start_date.year, start_date.month, start_date.day,
-                           tzinfo=timezone.utc) - timedelta(hours=1)
-    range_end = datetime(end_date.year, end_date.month, end_date.day,
-                         tzinfo=timezone.utc) - timedelta(hours=1) + timedelta(hours=24)
+    range_start = stockholm_midnight_utc(start_date)
+    range_end = stockholm_midnight_utc(end_date + timedelta(days=1))
 
     return (
         db.query(SpotPrice)
@@ -151,6 +147,7 @@ def get_prices_for_date_range(
 # Cheapest consecutive hours finder
 # ---------------------------------------------------------------------------
 
+
 def find_cheapest_window(prices_data: list[dict], duration_hours: int) -> dict | None:
     """
     Find the cheapest consecutive block of `duration_hours` hours.
@@ -162,6 +159,7 @@ def find_cheapest_window(prices_data: list[dict], duration_hours: int) -> dict |
 
     # Group by hour: key = UTC hour truncated, value = list of sek prices
     from collections import defaultdict
+
     hourly: dict[datetime, list[float]] = defaultdict(list)
     for p in prices_data:
         ts = datetime.fromisoformat(p["timestamp_utc"])
@@ -194,16 +192,14 @@ def find_cheapest_window(prices_data: list[dict], duration_hours: int) -> dict |
         "end_utc": end_ts.isoformat(),
         "duration_hours": duration_hours,
         "avg_sek_kwh": round(best_avg, 4),
-        "slots": [
-            {"hour_utc": h.isoformat(), "avg_sek_kwh": round(p, 4)}
-            for h, p in best_window
-        ],
+        "slots": [{"hour_utc": h.isoformat(), "avg_sek_kwh": round(p, 4)} for h, p in best_window],
     }
 
 
 # ---------------------------------------------------------------------------
 # Fallback data (development fallback when no API key or DB is empty)
 # ---------------------------------------------------------------------------
+
 
 def _generate_fallback_prices(target_date: date) -> list[dict]:
     """
@@ -213,30 +209,51 @@ def _generate_fallback_prices(target_date: date) -> list[dict]:
     """
     # Typical hourly shape (index = CET hour 0-23), SEK/kWh
     shape = [
-        0.28, 0.25, 0.22, 0.21, 0.22, 0.35,  # 00-05 cheap overnight
-        0.72, 0.95, 1.05, 0.88, 0.70, 0.60,  # 06-11 morning peak
-        0.55, 0.52, 0.50, 0.53, 0.65, 0.95,  # 12-17 mid-day / afternoon
-        1.10, 1.05, 0.85, 0.65, 0.48, 0.32,  # 18-23 evening peak → night
+        0.28,
+        0.25,
+        0.22,
+        0.21,
+        0.22,
+        0.35,  # 00-05 cheap overnight
+        0.72,
+        0.95,
+        1.05,
+        0.88,
+        0.70,
+        0.60,  # 06-11 morning peak
+        0.55,
+        0.52,
+        0.50,
+        0.53,
+        0.65,
+        0.95,  # 12-17 mid-day / afternoon
+        1.10,
+        1.05,
+        0.85,
+        0.65,
+        0.48,
+        0.32,  # 18-23 evening peak → night
     ]
-    # CET midnight = UTC 23:00 previous day
-    base_utc = datetime(target_date.year, target_date.month, target_date.day,
-                        tzinfo=timezone.utc) - timedelta(hours=1)
+    base_utc = stockholm_midnight_utc(target_date)
     result = []
     for hour, sek in enumerate(shape):
         ts = base_utc + timedelta(hours=hour)
-        result.append({
-            "timestamp_utc": ts.isoformat(),
-            "price_eur_mwh": round(sek / _get_eur_sek() * 1000, 2),
-            "price_sek_kwh": sek,
-            "resolution": "PT60M",
-            "is_estimate": True,
-        })
+        result.append(
+            {
+                "timestamp_utc": ts.isoformat(),
+                "price_eur_mwh": round(sek / _get_eur_sek() * 1000, 2),
+                "price_sek_kwh": sek,
+                "resolution": "PT60M",
+                "is_estimate": True,
+            }
+        )
     return result
 
 
 # ---------------------------------------------------------------------------
 # High-level: get today's prices (DB → ENTSO-E fallback → mock fallback)
 # ---------------------------------------------------------------------------
+
 
 def get_or_fetch_prices(
     db: Session,
@@ -288,6 +305,7 @@ def get_or_fetch_prices(
 # Same-weekday price forecast
 # ---------------------------------------------------------------------------
 
+
 def build_forecast(rows: list, target_date: date) -> dict:
     """
     Build an hourly price forecast for target_date using same-weekday historical data.
@@ -309,7 +327,9 @@ def build_forecast(rows: list, target_date: date) -> dict:
         ts = r.timestamp_utc
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=timezone.utc)
-        local = ts.astimezone(_STOCKHOLM)
+        from zoneinfo import ZoneInfo
+
+        local = ts.astimezone(ZoneInfo("Europe/Stockholm"))
         if local.date().weekday() != target_weekday:
             continue
         date_hour_prices[(local.date(), local.hour)].append(float(r.price_sek_kwh))
@@ -327,22 +347,23 @@ def build_forecast(rows: list, target_date: date) -> dict:
             continue
         n = len(samples)
         avg = sum(samples) / n
-        low_idx  = max(0, int(n * 0.10))
+        low_idx = max(0, int(n * 0.10))
         high_idx = min(n - 1, int(n * 0.90))
-        slots.append({
-            "hour": hour,
-            "avg_sek_kwh":  round(avg, 4),
-            "low_sek_kwh":  round(samples[low_idx], 4),
-            "high_sek_kwh": round(samples[high_idx], 4),
-        })
+        slots.append(
+            {
+                "hour": hour,
+                "avg_sek_kwh": round(avg, 4),
+                "low_sek_kwh": round(samples[low_idx], 4),
+                "high_sek_kwh": round(samples[high_idx], 4),
+            }
+        )
 
-    valid = [(s["low_sek_kwh"], s["avg_sek_kwh"], s["high_sek_kwh"])
-             for s in slots if s["avg_sek_kwh"] is not None]
+    valid = [(s["low_sek_kwh"], s["avg_sek_kwh"], s["high_sek_kwh"]) for s in slots if s["avg_sek_kwh"] is not None]
     return {
         "slots": slots,
         "summary": {
-            "predicted_avg_sek_kwh":  round(sum(v[1] for v in valid) / len(valid), 4) if valid else None,
-            "predicted_low_sek_kwh":  round(min(v[0] for v in valid), 4) if valid else None,
+            "predicted_avg_sek_kwh": round(sum(v[1] for v in valid) / len(valid), 4) if valid else None,
+            "predicted_low_sek_kwh": round(min(v[0] for v in valid), 4) if valid else None,
             "predicted_high_sek_kwh": round(max(v[2] for v in valid), 4) if valid else None,
         },
     }

@@ -7,25 +7,25 @@ Design mirrors price_service.py:
 - Caller decides whether to fall back to a live fetch or return nothing
 """
 
-from datetime import date, datetime, timedelta, timezone
-from typing import Optional
+from datetime import date
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.models.balancing_price import BalancingPrice
 from app.services.esett_client import (
-    BalancingError,
-    BalancingPoint,
-    fetch_imbalance_prices,
     _AREA_TO_MBA as _AREA_TO_EIC,
 )
-
+from app.services.esett_client import (
+    BalancingPoint,
+    fetch_imbalance_prices,
+)
+from app.utils.timezone import stockholm_day_range_utc
 
 # ---------------------------------------------------------------------------
 # UPSERT
 # ---------------------------------------------------------------------------
+
 
 def upsert_balancing(db: Session, points: list[BalancingPoint], area: str = "SE3") -> int:
     """
@@ -46,8 +46,14 @@ def upsert_balancing(db: Session, points: list[BalancingPoint], area: str = "SE3
     """)
 
     params = [
-        {"area": area, "ts": p.timestamp_utc, "eur": p.price_eur_mwh,
-         "sek": p.price_sek_kwh, "cat": p.category, "res": p.resolution}
+        {
+            "area": area,
+            "ts": p.timestamp_utc,
+            "eur": p.price_eur_mwh,
+            "sek": p.price_sek_kwh,
+            "cat": p.category,
+            "res": p.resolution,
+        }
         for p in points
     ]
     db.execute(stmt, params)
@@ -59,6 +65,7 @@ def upsert_balancing(db: Session, points: list[BalancingPoint], area: str = "SE3
 # READ
 # ---------------------------------------------------------------------------
 
+
 def get_balancing_for_date(
     db: Session,
     target_date: date,
@@ -66,14 +73,10 @@ def get_balancing_for_date(
 ) -> list[BalancingPrice]:
     """
     Fetch balancing prices for target_date from DB.
-    Window: previous day 23:00 UTC → same day 23:00 UTC (= CET calendar day).
+    Window: Stockholm time (CET/CEST) calendar day.
     Returns both categories (A04 Long + A05 Short), ordered by time then category.
     """
-    day_start = (
-        datetime(target_date.year, target_date.month, target_date.day, tzinfo=timezone.utc)
-        - timedelta(hours=1)
-    )
-    day_end = day_start + timedelta(hours=24)
+    day_start, day_end = stockholm_day_range_utc(target_date)
 
     return (
         db.query(BalancingPrice)
@@ -90,6 +93,7 @@ def get_balancing_for_date(
 # ---------------------------------------------------------------------------
 # Fetch + store
 # ---------------------------------------------------------------------------
+
 
 def fetch_and_store_balancing(
     db: Session,

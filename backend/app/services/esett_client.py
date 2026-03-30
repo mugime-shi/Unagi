@@ -21,12 +21,12 @@ Mapping to BalancingPoint.category (keeps DB/frontend interface unchanged):
 """
 
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 import httpx
 
-from app.config import settings
+from app.utils.timezone import stockholm_midnight_utc
 
 ESETT_BASE = "https://api.opendata.esett.com"
 
@@ -38,8 +38,8 @@ _AREA_TO_MBA = {
     "SE4": "10Y1001A1001A47J",
 }
 
-CATEGORY_LONG  = "A04"   # down-regulation (excess supply)
-CATEGORY_SHORT = "A05"   # up-regulation   (supply deficit)
+CATEGORY_LONG = "A04"  # down-regulation (excess supply)
+CATEGORY_SHORT = "A05"  # up-regulation   (supply deficit)
 
 
 @dataclass
@@ -47,7 +47,7 @@ class BalancingPoint:
     timestamp_utc: datetime
     price_eur_mwh: float
     price_sek_kwh: float
-    category: str            # "A04" (Long / downReg) or "A05" (Short / upReg)
+    category: str  # "A04" (Long / downReg) or "A05" (Short / upReg)
     resolution: str = field(default="PT15M")
 
 
@@ -79,17 +79,17 @@ def fetch_imbalance_prices(
         rate = eur_to_sek
     else:
         from app.services.riksbank_client import get_eur_sek_rate
+
         rate = get_eur_sek_rate()
 
-    # Query the full UTC day — eSett returns CET-labelled timestamps so we
-    # widen the window by one day on each side to capture the CET calendar day.
-    start_utc = datetime(target_date.year, target_date.month, target_date.day, tzinfo=timezone.utc) - timedelta(hours=1)
-    end_utc   = start_utc + timedelta(hours=25)
+    # Query window covers the full Stockholm time (CET/CEST) calendar day + margin.
+    start_utc = stockholm_midnight_utc(target_date)
+    end_utc = start_utc + timedelta(hours=25)
 
     params = {
-        "mba":   mba,
+        "mba": mba,
         "start": _fmt(start_utc),
-        "end":   _fmt(end_utc),
+        "end": _fmt(end_utc),
     }
 
     try:
@@ -99,9 +99,7 @@ def fetch_imbalance_prices(
         raise BalancingError(f"Network error contacting eSett: {exc}") from exc
 
     if resp.status_code != 200:
-        raise BalancingError(
-            f"eSett returned HTTP {resp.status_code}: {resp.text[:200]}"
-        )
+        raise BalancingError(f"eSett returned HTTP {resp.status_code}: {resp.text[:200]}")
 
     try:
         raw = resp.json()
@@ -124,7 +122,7 @@ def fetch_imbalance_prices(
         except ValueError:
             continue
 
-        up   = row.get("upRegPrice")
+        up = row.get("upRegPrice")
         down = row.get("downRegPrice")
 
         # Skip slots where both prices are absent (future / not yet settled)
@@ -132,20 +130,24 @@ def fetch_imbalance_prices(
             continue
 
         if up is not None:
-            points.append(BalancingPoint(
-                timestamp_utc=ts,
-                price_eur_mwh=float(up),
-                price_sek_kwh=round(float(up) * rate / 1000, 6),
-                category=CATEGORY_SHORT,   # A05
-            ))
+            points.append(
+                BalancingPoint(
+                    timestamp_utc=ts,
+                    price_eur_mwh=float(up),
+                    price_sek_kwh=round(float(up) * rate / 1000, 6),
+                    category=CATEGORY_SHORT,  # A05
+                )
+            )
 
         if down is not None:
-            points.append(BalancingPoint(
-                timestamp_utc=ts,
-                price_eur_mwh=float(down),
-                price_sek_kwh=round(float(down) * rate / 1000, 6),
-                category=CATEGORY_LONG,    # A04
-            ))
+            points.append(
+                BalancingPoint(
+                    timestamp_utc=ts,
+                    price_eur_mwh=float(down),
+                    price_sek_kwh=round(float(down) * rate / 1000, 6),
+                    category=CATEGORY_LONG,  # A04
+                )
+            )
 
     if not points:
         raise BalancingError(

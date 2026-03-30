@@ -6,7 +6,7 @@ Design mirrors generation_service.py:
 - Returns empty list when DB has no rows for a date
 """
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -18,6 +18,7 @@ from app.services.entsoe_client import (
     LoadForecastPoint,
     fetch_load_forecast,
 )
+from app.utils.timezone import stockholm_midnight_utc
 
 # ---------------------------------------------------------------------------
 # UPSERT
@@ -59,9 +60,9 @@ def get_load_forecast_for_date(
 ) -> list[LoadForecast]:
     """
     Fetch load forecast rows for target_date from DB.
-    Window: previous day 23:00 UTC → same day 23:00 UTC (= CET calendar day).
+    Window: Stockholm time (CET/CEST) calendar day.
     """
-    day_start = datetime(target_date.year, target_date.month, target_date.day, tzinfo=timezone.utc) - timedelta(hours=1)
+    day_start = stockholm_midnight_utc(target_date)
     day_end = day_start + timedelta(hours=24)
 
     return (

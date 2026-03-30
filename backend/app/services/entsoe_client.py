@@ -8,12 +8,13 @@ API docs: https://transparency.entsoe.eu/content/static_content/Static%20content
 
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 import httpx
 
 from app.config import settings
+from app.utils.timezone import stockholm_day_range_utc
 
 ENTSOE_BASE = "https://web-api.tp.entsoe.eu/api"
 SE3_AREA = "10Y1001A1001A46L"
@@ -151,7 +152,7 @@ def fetch_day_ahead_prices(
     Fetch SE3 day-ahead prices for `target_date` from ENTSO-E.
 
     ENTSO-E publishes the next day's prices at ~13:00 CET.
-    The query window must cover the full day in UTC (previous day 23:00 → current day 23:00 CET).
+    The query window must cover the full day in UTC (Stockholm time, CET/CEST).
 
     Returns a list of PricePoint sorted by timestamp_utc.
     Raises EntsoEError on API or parse failure.
@@ -192,13 +193,9 @@ def fetch_day_ahead_prices(
 
     all_points = _parse_xml(response.text, rate)
 
-    # Filter to only slots that fall within the requested calendar date (UTC+1 CET proxy)
-    # We keep slots where the CET date matches target_date.
-    # Simple approach: filter by UTC hour 23:00 previous day to 23:00 same day.
-    day_start_utc = datetime(
-        target_date.year, target_date.month, target_date.day, 0, 0, tzinfo=timezone.utc
-    ) - timedelta(hours=1)  # 23:00 UTC prev day = 00:00 CET
-    day_end_utc = day_start_utc + timedelta(hours=24)
+    # Filter to only slots that fall within the requested Stockholm calendar day.
+    # stockholm_day_range_utc handles CET (UTC+1) and CEST (UTC+2) automatically.
+    day_start_utc, day_end_utc = stockholm_day_range_utc(target_date)
 
     filtered = [p for p in all_points if day_start_utc <= p.timestamp_utc < day_end_utc]
 
@@ -363,7 +360,7 @@ def fetch_load_forecast(
     """
     Fetch day-ahead total load forecast (A65/A01) for target_date.
 
-    Returns LoadForecastPoint list (one row per hour) filtered to the CET
+    Returns LoadForecastPoint list (one row per hour) filtered to the Stockholm time (CET/CEST)
     calendar day, sorted by timestamp_utc. Raises EntsoEError on failure.
     """
     key = api_key or settings.entsoe_api_key
@@ -393,11 +390,8 @@ def fetch_load_forecast(
 
     all_points = _parse_load_forecast_xml(response.text)
 
-    # Filter to CET calendar day
-    day_start_utc = datetime(target_date.year, target_date.month, target_date.day, tzinfo=timezone.utc) - timedelta(
-        hours=1
-    )
-    day_end_utc = day_start_utc + timedelta(hours=24)
+    # Filter to Stockholm calendar day (handles CET/CEST automatically)
+    day_start_utc, day_end_utc = stockholm_day_range_utc(target_date)
 
     filtered = [p for p in all_points if day_start_utc <= p.timestamp_utc < day_end_utc]
 
@@ -452,11 +446,8 @@ def fetch_de_day_ahead_prices(
     # Reuse existing XML parser with dummy rate — we only use price_eur_mwh
     all_points = _parse_xml(response.text, eur_to_sek=1.0)
 
-    # Filter to CET calendar day
-    day_start_utc = datetime(target_date.year, target_date.month, target_date.day, tzinfo=timezone.utc) - timedelta(
-        hours=1
-    )
-    day_end_utc = day_start_utc + timedelta(hours=24)
+    # Filter to Stockholm calendar day (handles CET/CEST automatically)
+    day_start_utc, day_end_utc = stockholm_day_range_utc(target_date)
 
     filtered = [
         DePricePoint(
@@ -483,7 +474,7 @@ def fetch_generation_mix(
     Fetch actual generation per production type (A75/A16) for target_date.
 
     Returns GenerationPoint list (one row per psr_type per 15-min slot)
-    filtered to the CET calendar day, sorted by (timestamp_utc, psr_type).
+    filtered to the Stockholm time (CET/CEST) calendar day, sorted by (timestamp_utc, psr_type).
     Raises EntsoEError on failure.
     """
     key = api_key or settings.entsoe_api_key
@@ -513,11 +504,8 @@ def fetch_generation_mix(
 
     all_points = _parse_generation_xml(response.text)
 
-    # Filter to CET calendar day (same window as day-ahead prices)
-    day_start_utc = datetime(target_date.year, target_date.month, target_date.day, tzinfo=timezone.utc) - timedelta(
-        hours=1
-    )
-    day_end_utc = day_start_utc + timedelta(hours=24)
+    # Filter to Stockholm calendar day (handles CET/CEST automatically)
+    day_start_utc, day_end_utc = stockholm_day_range_utc(target_date)
 
     filtered = [p for p in all_points if day_start_utc <= p.timestamp_utc < day_end_utc]
 

@@ -6,7 +6,7 @@ Design mirrors load_forecast_service.py:
 - Returns empty list when DB has no rows for a date
 """
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.de_spot_price import DeSpotPrice
 from app.services.entsoe_client import DePricePoint, fetch_de_day_ahead_prices
+from app.utils.timezone import stockholm_midnight_utc
 
 # ---------------------------------------------------------------------------
 # UPSERT
@@ -49,8 +50,8 @@ def get_de_prices_for_date(
     db: Session,
     target_date: date,
 ) -> list[DeSpotPrice]:
-    """Fetch DE-LU spot price rows for target_date from DB (CET calendar day)."""
-    day_start = datetime(target_date.year, target_date.month, target_date.day, tzinfo=timezone.utc) - timedelta(hours=1)
+    """Fetch DE-LU spot price rows for target_date from DB (Stockholm time, CET/CEST calendar day)."""
+    day_start = stockholm_midnight_utc(target_date)
     day_end = day_start + timedelta(hours=24)
 
     return (
