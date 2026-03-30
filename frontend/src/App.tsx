@@ -640,8 +640,8 @@ export default function App() {
                                   </p>
                                 )}
                                 {showLgbmComparison && lgbm != null && (
-                                  <p className="text-[10px] text-amber-400/70 mt-0.5">
-                                    LGBM: {lgbm.toFixed(2)}
+                                  <p className="text-xs text-amber-400/80 mt-0.5">
+                                    LGBM {lgbm.toFixed(2)}
                                   </p>
                                 )}
                               </div>

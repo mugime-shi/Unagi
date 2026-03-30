@@ -119,6 +119,7 @@ export function WeeklySummary({
               <p className={`text-xl sm:text-2xl font-bold ${cfg.color} mt-1`}>
                 {day.daily_avg.toFixed(2)}
               </p>
+              <p className="text-[0.55rem] text-gray-600">SEK/kWh</p>
               {pctDiff !== null && (
                 <p
                   className={`text-xs mt-1 font-medium ${pctDiff < 0 ? "text-cyan-400" : pctDiff > 0 ? "text-orange-400" : "text-gray-400"}`}
