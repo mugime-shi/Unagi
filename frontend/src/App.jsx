@@ -208,37 +208,42 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-sea-950 text-gray-100 flex flex-col">
-      <header className="sticky top-0 z-50 bg-sea-950 border-b border-sea-800 px-4 sm:px-6 py-3 flex items-center gap-3">
-        <img
-          src="/logo/unagi_log.png"
-          alt="Unagi"
-          className="h-12 w-auto -my-1"
-        />
-        <span className="hidden sm:inline text-[11px] text-[#8a919c] tracking-wide self-end mb-0">
+      <header className="sticky top-0 z-50 bg-sea-950 border-b border-sea-800 px-4 sm:px-6 py-3">
+        <div className="flex items-center gap-3">
+          <img
+            src="/logo/unagi_log.png"
+            alt="Unagi"
+            className="h-12 w-auto -my-1 shrink-0"
+          />
+          <span className="hidden sm:inline text-[11px] text-[#8a919c] tracking-wide self-end mb-0">
+            Catch an E[el] for now and then.
+          </span>
+
+          {/* Layer selector */}
+          <nav className="ml-auto flex gap-1">
+            {[
+              { id: "prices", label: "Prices" },
+              { id: "simulators", label: "Simulators" },
+            ].map(({ id, label }) => (
+              <button
+                key={id}
+                onClick={() => setLayer(id)}
+                className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                  layer === id
+                    ? "bg-sea-700 text-white"
+                    : "text-gray-500 hover:text-gray-300"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+
+          <NotificationBell area={area} />
+        </div>
+        <p className="sm:hidden text-[11px] text-[#8a919c] tracking-wide mt-1">
           Catch an E[el] for now and then.
-        </span>
-
-        {/* Layer selector */}
-        <nav className="ml-auto flex gap-1">
-          {[
-            { id: "prices", label: "Prices" },
-            { id: "simulators", label: "Simulators" },
-          ].map(({ id, label }) => (
-            <button
-              key={id}
-              onClick={() => setLayer(id)}
-              className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-                layer === id
-                  ? "bg-sea-700 text-white"
-                  : "text-gray-500 hover:text-gray-300"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
-
-        <NotificationBell area={area} />
+        </p>
       </header>
 
       <main className="w-full max-w-3xl mx-auto px-4 py-6 space-y-4 flex-1">
