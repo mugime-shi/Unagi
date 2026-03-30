@@ -38,24 +38,13 @@ infra/alarm_handler.zip
 .idea/
 
 # Internal working documents (local only)
-TASKS.md
-ARCHITECTURE.md
-DOMAIN_KNOWLEDGE.md
-PROJECT_BRIEF.md
-PROJECT_BRIEF_V2.md
-FEATURES.md
-INTERVIEW_PREP.md
-EVALUATION.md
-IDEAS.md
+work/
+tasks/
+CLAUDE.md
 
 # Environment helpers
 .envrc
 
 # Claude Code
 .claude/
-
-# Local working documents
-tasks/
-
-# Original brief
-PROJECT_BRIEF_ORIGINAL.md
+*.tfplan
