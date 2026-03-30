@@ -480,7 +480,7 @@ export default function App() {
                                 value: todayData.summary.avg_sek_kwh,
                               },
                               {
-                                label: "Monthly",
+                                label: "Monthly avg",
                                 value: todayData.summary.month_avg_sek_kwh,
                               },
                               {
