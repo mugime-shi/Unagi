@@ -97,10 +97,14 @@ export function WeeklySummary({
         </div>
       </div>
 
-      {/* Cards — d+2 onwards (d+1 is shown in the main chart above) */}
+      {/* Cards — skip tomorrow (shown in the main chart above) */}
       <div className="no-scrollbar flex gap-2 overflow-x-auto snap-x snap-mandatory pb-2 sm:grid sm:grid-cols-6 sm:gap-1.5 sm:overflow-visible sm:pb-0">
         {data.days
-          .filter((day) => day.horizon >= 2)
+          .filter((day) => {
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            return day.date !== tomorrow.toISOString().split("T")[0];
+          })
           .map((day) => {
             const cfg = CLASS_CONFIG[day.classification] || CLASS_CONFIG.normal;
             const pctDiff = refAvg
