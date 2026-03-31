@@ -6,7 +6,7 @@
 ┌──────────────────────────────────────────────────────┐
 │  React 19 + Tailwind CSS  (Vercel)                   │
 │  Prices │ History │ Simulators (Cost + Solar)         │
-│  10 components  │  16 data hooks                     │
+│  11 components  │  18 data hooks                     │
 └──────────────────────┬───────────────────────────────┘
                        │ /api/*  (Vercel rewrite proxy)
                        ▼
@@ -15,9 +15,11 @@
 │  FastAPI + Mangum   │   22 endpoints, 5 routers      │
 │                                                      │
 │  EventBridge crons (Scheduler Lambda):                │
-│    01:05 CET  Data completion + ML predictions       │
+│    01:05 CET  Data collection                        │
+│    01:20 CET  ML predictions (SHAP → DB)             │
 │    05:05 CET  Nightly retry (idempotent)             │
 │    13:30 CET  Price fetch + actuals + notifications   │
+│    14:30/15:30/16:30 CET  Price retry (idempotent)   │
 │                                                      │
 │  CloudWatch Alarms → SNS → alarm_handler Lambda      │
 │                           → Telegram failure alert    │
@@ -44,12 +46,14 @@ Spot prices are inherently relational (time-series with zone/area dimensions, jo
 
 ### EventBridge scheduling strategy
 
-Three cron windows reflect the ENTSO-E publication lifecycle:
-- **13:30 CET** — Day-ahead prices published ~12:45 CET. Fetch + store + trigger notifications.
-- **01:05 CET** — Data completion. Backfill any missing slots, run ML predictions for tomorrow.
-- **05:05 CET** — Idempotent retry. Catches transient failures from the 01:05 run.
+Six cron windows reflect the ENTSO-E publication lifecycle:
+- **01:05 CET** — Data collection (generation, balancing, load forecast, weather, gas).
+- **01:20 CET** — ML predictions for tomorrow (d+1~d+7). SHAP explanations persisted to DB.
+- **05:05 / 05:20 CET** — Idempotent retry for data + predictions.
+- **13:30 CET** — Full pipeline: price fetch + actuals + notifications.
+- **14:30, 15:30, 16:30 CET** — Price-only retry (no notifications). Covers Nord Pool delays.
 
-All handlers are idempotent — re-running them is safe and expected.
+All handlers are idempotent — re-running them is safe and expected. CET times shift +1h during CEST (summer).
 
 ### LightGBM for price forecasting
 
@@ -82,7 +86,7 @@ CloudWatch Alarms detect Lambda errors or missing data → SNS topic → dedicat
 
 - **Lambda × 3**: API handler, scheduler, alarm handler
 - **API Gateway v2** (HTTP API): routes to API Lambda
-- **EventBridge**: 3 cron rules for data pipeline
+- **EventBridge**: 8 cron rules for data pipeline
 - **ECR × 2**: API image + scheduler image
 - **CloudWatch Alarms × 2**: error rate + missing data detection
 - **SNS**: alarm fan-out topic
@@ -92,7 +96,7 @@ CloudWatch Alarms detect Lambda errors or missing data → SNS topic → dedicat
 
 ```
 git push main
-  → pytest (200+ tests, SQLite in-memory)
+  → pytest (214 tests, SQLite in-memory)
   → alembic migrate (Supabase)
   → Docker build --platform linux/arm64
   → ECR push (API + scheduler images)
@@ -129,9 +133,9 @@ Unagi/
 │       └── tasks/fetch_prices.py       # EventBridge scheduler handler
 ├── frontend/
 │   └── src/
-│       ├── components/                 # 10 components
-│       ├── hooks/                      # 16 data hooks
-│       └── utils/formatters.js         # CET/CEST timezone helpers
+│       ├── components/                 # 11 components
+│       ├── hooks/                      # 18 data hooks
+│       └── utils/formatters.ts         # CET/CEST timezone helpers
 ├── infra/                              # Terraform (9 .tf files)
 ├── docs/                               # Documentation
 ├── Dockerfile                          # Multi-stage: dev / lambda / scheduler
