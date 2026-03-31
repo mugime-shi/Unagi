@@ -405,7 +405,7 @@ export default function App() {
             {/* ── Today tab ── */}
             {tab === "today" && (
               <>
-                {todayLoading && (
+                {todayLoading && !todayData && (
                   <div className="animate-pulse space-y-4">
                     {/* PriceIndicator skeleton */}
                     <div className="bg-sea-900 rounded-2xl p-4 flex items-center gap-4">
@@ -532,7 +532,7 @@ export default function App() {
             {/* ── Tomorrow tab ── */}
             {tab === "tomorrow" && (
               <>
-                {forecastLoading && (
+                {forecastLoading && !forecastPriceData && (
                   <div className="animate-pulse space-y-4">
                     <div className="bg-sea-900 rounded-2xl p-4">
                       <div className="flex items-center justify-between mb-4">
