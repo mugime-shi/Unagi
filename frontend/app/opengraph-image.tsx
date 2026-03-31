@@ -6,11 +6,15 @@ export const alt = "Unagi — ML-powered Swedish electricity price forecast";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-// Stylized price curve points (decorative, not real data)
-const CHART_POINTS = [
+// Stylized price curve — 48 points (30-min resolution) for smoother curve
+const CHART_RAW = [
   0.32, 0.28, 0.25, 0.22, 0.2, 0.19, 0.21, 0.3, 0.52, 0.65, 0.72, 0.78, 0.8,
   0.76, 0.7, 0.62, 0.68, 0.82, 0.88, 0.75, 0.58, 0.45, 0.38, 0.34,
 ];
+// Linearly interpolate between each pair to double the resolution
+const CHART_POINTS = CHART_RAW.flatMap((v, i) =>
+  i < CHART_RAW.length - 1 ? [v, (v + CHART_RAW[i + 1]) / 2] : [v],
+);
 
 function chartPath(): { fill: string; line: string } {
   const w = 1200;
@@ -27,7 +31,7 @@ function chartPath(): { fill: string; line: string } {
   }));
 
   // Build smooth cubic bezier path (Catmull-Rom → Bezier conversion)
-  const tension = 0.3;
+  const tension = 0.4;
   let line = `M${pts[0].x},${pts[0].y}`;
   for (let i = 0; i < pts.length - 1; i++) {
     const p0 = pts[Math.max(i - 1, 0)];

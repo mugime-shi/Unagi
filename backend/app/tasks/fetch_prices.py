@@ -442,6 +442,21 @@ def lambda_handler(event: dict, context) -> dict:
             "failures": [f["error"] for f in failures],
         }
 
+    # Price-only retry (13:30, 14:30, 15:30 UTC).
+    # Idempotent — skips if prices already fetched at 12:30.
+    if event.get("price_retry"):
+        today = date.today()
+        tomorrow = today + timedelta(days=1)
+        log.info("price_retry — fetching today+tomorrow prices for %s", areas)
+        all_results = []
+        for area in areas:
+            all_results.extend(fetch_dates([today, tomorrow], area))
+        return {
+            "statusCode": 200,
+            "mode": "price_retry",
+            "results": all_results,
+        }
+
     all_results = []
     for area in areas:
         if "backfill_days" in event:

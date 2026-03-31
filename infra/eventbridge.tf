@@ -61,7 +61,8 @@ resource "aws_cloudwatch_event_target" "retry_predict_lambda" {
 }
 
 # ── Daily price fetch (12:30 UTC = 13:30 CET / 14:30 CEST) ──────────────────
-# ENTSO-E publishes next-day prices at ~13:00 CET.
+# ENTSO-E publishes next-day prices at ~12:00-13:00 CET (11:00-12:00 UTC).
+# Full pipeline: prices + balancing + generation + weather + gas + notifications.
 resource "aws_cloudwatch_event_rule" "daily_fetch" {
   name                = "${var.project}-daily-fetch"
   description         = "Fetch ENTSO-E spot prices daily at 12:30 UTC (13:30 CET)"
@@ -72,4 +73,22 @@ resource "aws_cloudwatch_event_target" "scheduler_lambda" {
   rule      = aws_cloudwatch_event_rule.daily_fetch.name
   target_id = "${var.project}-scheduler"
   arn       = aws_lambda_function.scheduler.arn
+}
+
+# ── Price retry (13:30, 14:30, 15:30 UTC) ───────────────────────────────────
+# Idempotent: skips if prices already fetched. Covers Nord Pool delays up to
+# ~16:30 CET (winter) / ~17:30 CEST (summer). No notifications, prices only.
+resource "aws_cloudwatch_event_rule" "price_retry" {
+  for_each            = toset(["30 13", "30 14", "30 15"])
+  name                = "${var.project}-price-retry-${replace(each.key, " ", "")}"
+  description         = "Retry tomorrow price fetch at ${each.key} UTC"
+  schedule_expression = "cron(${each.key} * * ? *)"
+}
+
+resource "aws_cloudwatch_event_target" "price_retry_lambda" {
+  for_each  = aws_cloudwatch_event_rule.price_retry
+  rule      = each.value.name
+  target_id = "${var.project}-price-retry"
+  arn       = aws_lambda_function.scheduler.arn
+  input     = jsonencode({ price_retry = true })
 }

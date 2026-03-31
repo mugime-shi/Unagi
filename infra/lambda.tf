@@ -109,3 +109,13 @@ resource "aws_lambda_permission" "eventbridge_retry_predict" {
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.retry_predict.arn
 }
+
+# Allow EventBridge to invoke the Scheduler Lambda (price retry)
+resource "aws_lambda_permission" "eventbridge_price_retry" {
+  for_each      = aws_cloudwatch_event_rule.price_retry
+  statement_id  = "AllowEventBridgePriceRetry-${each.key}"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.scheduler.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = each.value.arn
+}
