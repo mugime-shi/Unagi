@@ -201,13 +201,13 @@ export function ForecastAccuracy({
             <div
               key={m.name}
               className={`flex items-center justify-between px-3 py-2 rounded-lg ${
-                isBest
-                  ? "bg-cyan-950/30 border border-cyan-800/40"
-                  : "bg-sea-800"
+                isBest ? "bg-sea-800 border border-sea-600/50" : "bg-sea-800"
               }`}
             >
               <div>
-                <span className="text-sm font-medium text-gray-200">
+                <span
+                  className={`text-sm font-medium ${isBest ? "text-gray-100" : "text-gray-200"}`}
+                >
                   {modelLabel(m.name)}
                 </span>
                 <span className="text-xs text-gray-500 ml-2">
@@ -216,7 +216,7 @@ export function ForecastAccuracy({
               </div>
               <div className="text-right">
                 <span
-                  className={`text-sm font-semibold ${isBest ? "text-cyan-400" : "text-gray-300"}`}
+                  className={`text-sm font-semibold ${isBest ? "text-white" : "text-gray-300"}`}
                 >
                   MAE {maeSek}{" "}
                   <span className="text-gray-500 text-[10px] font-normal">
