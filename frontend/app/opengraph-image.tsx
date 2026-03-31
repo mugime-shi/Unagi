@@ -12,7 +12,7 @@ const CHART_POINTS = [
   0.76, 0.7, 0.62, 0.68, 0.82, 0.88, 0.75, 0.58, 0.45, 0.38, 0.34,
 ];
 
-function chartPath(): string {
+function chartPath(): { fill: string; line: string } {
   const w = 1200;
   const h = 160;
   const yBase = 630;
@@ -21,13 +21,29 @@ function chartPath(): string {
   const min = Math.min(...CHART_POINTS);
   const max = Math.max(...CHART_POINTS);
 
-  const points = CHART_POINTS.map((v, i) => {
-    const x = padX + (i / (CHART_POINTS.length - 1)) * plotW;
-    const y = yBase - 10 - ((v - min) / (max - min)) * (h - 20);
-    return `${x},${y}`;
-  });
+  const pts = CHART_POINTS.map((v, i) => ({
+    x: padX + (i / (CHART_POINTS.length - 1)) * plotW,
+    y: yBase - 10 - ((v - min) / (max - min)) * (h - 20),
+  }));
 
-  return `M${points.join(" L")} L${padX + plotW},${yBase} L${padX},${yBase} Z`;
+  // Build smooth cubic bezier path (Catmull-Rom → Bezier conversion)
+  const tension = 0.3;
+  let line = `M${pts[0].x},${pts[0].y}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(i - 1, 0)];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[Math.min(i + 2, pts.length - 1)];
+    const cp1x = p1.x + (p2.x - p0.x) * tension;
+    const cp1y = p1.y + (p2.y - p0.y) * tension;
+    const cp2x = p2.x - (p3.x - p1.x) * tension;
+    const cp2y = p2.y - (p3.y - p1.y) * tension;
+    line += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
+  }
+
+  const last = pts[pts.length - 1];
+  const fill = `${line} L${last.x},${yBase} L${pts[0].x},${yBase} Z`;
+  return { fill, line };
 }
 
 export default async function OgImage() {
@@ -69,9 +85,9 @@ export default async function OgImage() {
             <stop offset="100%" stopColor="#22d3ee" stopOpacity="0.3" />
           </linearGradient>
         </defs>
-        <path d={chartPath()} fill="url(#chartFill)" />
+        <path d={chartPath().fill} fill="url(#chartFill)" />
         <path
-          d={chartPath().split(" L" + (1200 - 80))[0]}
+          d={chartPath().line}
           fill="none"
           stroke="url(#chartLine)"
           strokeWidth="2.5"
