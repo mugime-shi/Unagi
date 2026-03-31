@@ -686,7 +686,9 @@ def _record_predictions(areas: list[str], target_date: date | None = None) -> li
                     model_name = "lgbm" if h == 1 else f"lgbm_d{h}"
 
                     if forecast.get("slots") and forecast["slots"][0].get("avg_sek_kwh") is not None:
-                        n = record_predictions(db, t_date, area, model_name, forecast["slots"])
+                        # Persist SHAP explanations for d+1 only (d+2+ uses recursive features)
+                        shap = forecast.get("explanations") if h == 1 else None
+                        n = record_predictions(db, t_date, area, model_name, forecast["slots"], shap_explanations=shap)
                         log.info("Recorded %d %s predictions for %s %s", n, model_name, t_date, area)
                     else:
                         failures.append({"market": f"{model_name} {area}", "status": "error", "error": "no slots"})

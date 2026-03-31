@@ -258,3 +258,56 @@ class TestHistorySchema:
         day = data["daily"][0]
         assert "date" in day
         assert "avg_sek_kwh" in day
+
+
+# ---------------------------------------------------------------------------
+# SHAP persistence via record_predictions + get_retrospective
+# ---------------------------------------------------------------------------
+
+
+class TestShapPersistence:
+    """Verify SHAP explanations are stored and returned via retrospective."""
+
+    def test_record_predictions_with_shap(self, db):
+        from app.services.backtest_service import get_retrospective, record_predictions
+
+        target = datetime.now(timezone.utc).date()
+        slots = [{"hour": h, "avg_sek_kwh": 0.5 + h * 0.01} for h in range(24)]
+        shap = {
+            "base_value": 0.55,
+            "hours": [{"hour": h, "top": [{"group": "Wind", "impact": 0.1, "direction": "higher"}]} for h in range(24)],
+        }
+
+        n = record_predictions(db, target, "SE3", "lgbm", slots, shap_explanations=shap)
+        assert n == 24
+
+        result = get_retrospective(db, target, "SE3")
+        assert "lgbm" in result["models"]
+        assert result["shap_explanations"] is not None
+        assert result["shap_explanations"]["base_value"] == 0.55
+        assert len(result["shap_explanations"]["hours"]) == 24
+
+    def test_record_predictions_without_shap(self, db):
+        from app.services.backtest_service import get_retrospective, record_predictions
+
+        target = datetime.now(timezone.utc).date()
+        slots = [{"hour": h, "avg_sek_kwh": 0.5} for h in range(24)]
+
+        record_predictions(db, target, "SE3", "same_weekday_avg", slots)
+        result = get_retrospective(db, target, "SE3")
+        assert result["shap_explanations"] is None
+
+    def test_retrospective_endpoint_includes_shap(self, client, db):
+        from app.services.backtest_service import record_predictions
+
+        target = datetime.now(timezone.utc).date()
+        slots = [{"hour": h, "avg_sek_kwh": 0.5} for h in range(24)]
+        shap = {"base_value": 0.42, "hours": [{"hour": 0, "top": []}]}
+
+        record_predictions(db, target, "SE3", "lgbm", slots, shap_explanations=shap)
+
+        resp = client.get(f"/api/v1/prices/forecast/retrospective?date={target.isoformat()}&area=SE3")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "shap_explanations" in data
+        assert data["shap_explanations"]["base_value"] == 0.42

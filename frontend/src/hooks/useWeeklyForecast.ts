@@ -8,12 +8,19 @@ interface UseWeeklyForecastReturn {
   error: Error | null;
 }
 
-export function useWeeklyForecast(area: Area = "SE3"): UseWeeklyForecastReturn {
+export function useWeeklyForecast(
+  area: Area = "SE3",
+  enabled: boolean = true,
+): UseWeeklyForecastReturn {
   const [data, setData] = useState<WeeklyClassifiedResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     apiFetch(`/api/v1/prices/forecast/weekly?area=${area}`)
@@ -24,7 +31,7 @@ export function useWeeklyForecast(area: Area = "SE3"): UseWeeklyForecastReturn {
       .then(setData)
       .catch(setError)
       .finally(() => setLoading(false));
-  }, [area]);
+  }, [area, enabled]);
 
   return { data, loading, error };
 }

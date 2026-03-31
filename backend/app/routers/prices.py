@@ -497,12 +497,15 @@ def get_forecast_retrospective(
 
     result = get_retrospective(db, date, area)
 
-    return {
+    response = {
         "area": area,
         "date": date.isoformat(),
         "models": result["models"],
         "predicted_at": result["predicted_at"],
     }
+    if result.get("shap_explanations"):
+        response["shap_explanations"] = result["shap_explanations"]
+    return response
 
 
 @router.get("/forecast/weekly")
@@ -522,7 +525,6 @@ def get_weekly_forecast(
 
     from sqlalchemy import text
 
-    from app.services.ml_forecast_service import build_multi_horizon_forecast
 
     today = date.today()
 
@@ -575,15 +577,8 @@ def get_weekly_forecast(
             }
         )
 
-    # If no stored predictions, generate on-the-fly
-    if not days_data:
-        horizon_results = build_multi_horizon_forecast(db, today, area=area, max_horizon=7)
-        for hr in horizon_results:
-            days_data[hr["target_date"]] = {
-                "horizon": hr["horizon"],
-                "model": "lgbm" if hr["horizon"] == 1 else f"lgbm_d{hr['horizon']}",
-                "slots": hr["forecast"]["slots"],
-            }
+    # No on-demand fallback — cron at 00:20 + 04:20 UTC pre-computes predictions.
+    # If empty, return empty days instead of blocking for 10-30s training.
 
     # Build response with classification
     threshold = 0.18

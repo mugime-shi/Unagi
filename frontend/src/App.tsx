@@ -15,7 +15,6 @@ import { useGeneration } from "./hooks/useGeneration";
 import { useGenerationDate } from "./hooks/useGenerationDate";
 import { useRetrospective } from "./hooks/useRetrospective";
 import { usePrices } from "./hooks/usePrices";
-import { useLgbmForecast } from "./hooks/useLgbmForecast";
 import { useWeeklyForecast } from "./hooks/useWeeklyForecast";
 import { WeeklySummary } from "./components/WeeklySummary";
 import { dateWithWeekday } from "./utils/formatters";
@@ -125,7 +124,7 @@ export default function App() {
     area,
   );
   const { data: retrospective } = useRetrospective(
-    tab === "tomorrow" ? forecastDate : null,
+    tab === "tomorrow" && !isFutureDate ? forecastDate : null,
     area,
   );
   const { data: forecastGeneration } = useGenerationDate(
@@ -133,15 +132,14 @@ export default function App() {
     area,
   );
 
-  // Weekly forecast for future dates (d+2 onwards)
-  const { data: weeklyData } = useWeeklyForecast(area);
-
-  // SHAP explanations from live LGBM forecast endpoint
-  const { data: lgbmLive } = useLgbmForecast(
-    tab === "tomorrow" ? forecastDate : null,
+  // Weekly forecast for future dates (d+2 onwards) — only fetch on Tomorrow tab
+  const { data: weeklyData, loading: weeklyLoading } = useWeeklyForecast(
     area,
+    tab === "tomorrow",
   );
-  const shapExplanations = lgbmLive?.explanations ?? null;
+
+  // SHAP explanations from retrospective (pre-computed by EventBridge cron)
+  const shapExplanations = retrospective?.shap_explanations ?? null;
 
   // Extract LGBM forecast (center line + 80% CI band) from retrospective — tomorrow and past dates
   // Also check for lgbm_d* models (multi-horizon predictions)
@@ -666,6 +664,8 @@ export default function App() {
                     {/* Weekly forecast */}
                     <WeeklySummary
                       area={area}
+                      data={weeklyData}
+                      loading={weeklyLoading}
                       onDateSelect={(d: string) => {
                         setTab("tomorrow");
                         setForecastDate(d);

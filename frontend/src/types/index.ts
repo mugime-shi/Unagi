@@ -132,6 +132,7 @@ export interface RetrospectiveResponse {
   area: string;
   predicted_at: string | null;
   models: Record<string, RetrospectiveEntry[]>;
+  shap_explanations?: ShapExplanations | null;
 }
 
 // ─── Weekly Forecast ──────────────────────────────────────────────────────────

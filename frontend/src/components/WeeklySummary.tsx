@@ -1,5 +1,8 @@
-import { useWeeklyForecast } from "../hooks/useWeeklyForecast";
-import type { Area, WeeklyDayClassified } from "../types/index";
+import type {
+  Area,
+  WeeklyClassifiedResponse,
+  WeeklyDayClassified,
+} from "../types/index";
 
 interface ClassConfig {
   color: string;
@@ -38,15 +41,16 @@ const SHORT_WEEKDAYS: Record<string, string> = {
 
 interface WeeklySummaryProps {
   area?: Area;
+  data: WeeklyClassifiedResponse | null;
+  loading: boolean;
   onDateSelect?: (date: string) => void;
 }
 
 export function WeeklySummary({
-  area = "SE3",
+  data,
+  loading,
   onDateSelect,
 }: WeeklySummaryProps) {
-  const { data, loading, error } = useWeeklyForecast(area);
-
   if (loading) {
     return (
       <div className="no-scrollbar flex gap-2 overflow-x-auto snap-x snap-mandatory pb-2 sm:grid sm:grid-cols-7 sm:gap-1.5 sm:overflow-visible sm:pb-0">
@@ -60,7 +64,7 @@ export function WeeklySummary({
     );
   }
 
-  if (error || !data?.days?.length) return null;
+  if (!data?.days?.length) return null;
 
   const refAvg = data.reference_avg_30d;
 

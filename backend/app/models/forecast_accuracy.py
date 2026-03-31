@@ -1,6 +1,6 @@
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Date, DateTime, Index, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy import JSON, Date, DateTime, Index, Integer, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.database import Base
@@ -26,6 +26,7 @@ class ForecastAccuracy(Base):
     predicted_low_sek_kwh: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
     predicted_high_sek_kwh: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
     actual_sek_kwh: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
+    shap_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=True,

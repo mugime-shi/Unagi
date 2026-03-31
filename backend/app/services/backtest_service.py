@@ -7,6 +7,7 @@ Workflow:
 3. score_forecast() / get_accuracy() → compute MAE/RMSE per model
 """
 
+import json
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from math import sqrt
@@ -31,12 +32,14 @@ def record_predictions(
     area: str,
     model_name: str,
     slots: list[dict],
+    shap_explanations: dict | None = None,
 ) -> int:
     """
     Upsert forecast predictions for 24 hours.
 
     slots: list of {"hour": 0-23, "avg_sek_kwh": float | None,
                      "low_sek_kwh": float | None, "high_sek_kwh": float | None}
+    shap_explanations: SHAP feature importance dict, stored on hour=0 row only.
     Returns the number of rows written.
 
     low/high are quantile prediction bounds (p10/p90) for coverage rate
@@ -45,19 +48,21 @@ def record_predictions(
     stmt = text("""
         INSERT INTO forecast_accuracy
             (target_date, area, model_name, hour, predicted_sek_kwh,
-             predicted_low_sek_kwh, predicted_high_sek_kwh)
-        VALUES (:date, :area, :model, :hour, :predicted, :low, :high)
+             predicted_low_sek_kwh, predicted_high_sek_kwh, shap_json)
+        VALUES (:date, :area, :model, :hour, :predicted, :low, :high, :shap)
         ON CONFLICT (target_date, area, model_name, hour)
         DO UPDATE SET
             predicted_sek_kwh      = EXCLUDED.predicted_sek_kwh,
             predicted_low_sek_kwh  = EXCLUDED.predicted_low_sek_kwh,
-            predicted_high_sek_kwh = EXCLUDED.predicted_high_sek_kwh
+            predicted_high_sek_kwh = EXCLUDED.predicted_high_sek_kwh,
+            shap_json              = EXCLUDED.shap_json
     """)
     count = 0
     for s in slots:
         if s.get("avg_sek_kwh") is not None:
             low = s.get("low_sek_kwh")
             high = s.get("high_sek_kwh")
+            shap = json.dumps(shap_explanations) if shap_explanations and s["hour"] == 0 else None
             db.execute(
                 stmt,
                 {
@@ -68,6 +73,7 @@ def record_predictions(
                     "predicted": round(s["avg_sek_kwh"], 4),
                     "low": round(low, 4) if low is not None else None,
                     "high": round(high, 4) if high is not None else None,
+                    "shap": shap,
                 },
             )
             count += 1
@@ -315,6 +321,7 @@ def get_retrospective(
 
     by_model: dict[str, list[dict]] = defaultdict(list)
     earliest_created: datetime | None = None
+    shap_explanations: dict | None = None
     for r in rows:
         by_model[r.model_name].append(
             {
@@ -332,10 +339,14 @@ def get_retrospective(
         if r.created_at is not None:
             if earliest_created is None or r.created_at < earliest_created:
                 earliest_created = r.created_at
+        # SHAP is stored on hour=0 of the lgbm model
+        if r.model_name == "lgbm" and r.hour == 0 and r.shap_json is not None:
+            shap_explanations = r.shap_json if isinstance(r.shap_json, dict) else json.loads(r.shap_json)
 
     return {
         "models": dict(by_model),
         "predicted_at": earliest_created.isoformat() if earliest_created else None,
+        "shap_explanations": shap_explanations,
     }
 
 
