@@ -407,13 +407,20 @@ export default function App() {
               <>
                 {todayLoading && (
                   <div className="animate-pulse space-y-4">
+                    {/* PriceIndicator skeleton */}
+                    <div className="bg-sea-900 rounded-2xl p-4 flex items-center gap-4">
+                      <div className="h-10 bg-sea-700 rounded w-24" />
+                      <div className="h-4 bg-sea-700 rounded w-32" />
+                    </div>
+                    {/* Chart skeleton */}
                     <div className="bg-sea-900 rounded-2xl p-4">
                       <div className="flex items-center justify-between mb-4">
                         <div className="h-4 bg-sea-700 rounded w-40" />
                         <div className="h-3 bg-sea-700 rounded w-12" />
                       </div>
-                      <div className="h-[300px] bg-sea-800 rounded-xl" />
+                      <div className="h-[260px] bg-sea-800 rounded-xl" />
                     </div>
+                    {/* Summary cards skeleton */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       {[0, 1, 2, 3].map((i) => (
                         <div
@@ -526,8 +533,25 @@ export default function App() {
             {tab === "tomorrow" && (
               <>
                 {forecastLoading && (
-                  <div className="animate-pulse bg-sea-900 rounded-2xl p-4">
-                    <div className="h-[300px] bg-sea-800 rounded-xl" />
+                  <div className="animate-pulse space-y-4">
+                    <div className="bg-sea-900 rounded-2xl p-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="h-4 bg-sea-700 rounded w-36" />
+                        <div className="h-3 bg-sea-700 rounded w-16" />
+                      </div>
+                      <div className="h-[260px] bg-sea-800 rounded-xl" />
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      {[0, 1, 2].map((i) => (
+                        <div
+                          key={i}
+                          className="bg-sea-900 rounded-xl py-3 px-4 space-y-2"
+                        >
+                          <div className="h-3 bg-sea-700 rounded w-12 mx-auto" />
+                          <div className="h-6 bg-sea-700 rounded w-14 mx-auto" />
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
                 {forecastError && !isFutureDate && (

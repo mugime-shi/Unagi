@@ -3,6 +3,7 @@ import { Analytics } from "@vercel/analytics/react";
 import "@/index.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://unagieel.net"),
   title: "Unagi — Swedish Electricity Price Forecast",
   description:
     "ML-powered 7-day electricity price forecast for Sweden (SE1–SE4). Free, open source, with published prediction accuracy.",
