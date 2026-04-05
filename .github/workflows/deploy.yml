@@ -35,19 +35,19 @@ jobs:
       - name: Install dependencies
         run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt
 
-      - name: Run tests
-        run: pytest backend/tests/ -v
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          ENTSOE_API_KEY: ${{ secrets.ENTSOE_API_KEY }}
-
       # ── 2. DB migration (Supabase) ────────────────────────────────────
-      # Runs before image push so the schema is ready when the new Lambda starts.
+      # Runs BEFORE tests: pipeline tests hit the real DB and need current schema.
       # alembic is idempotent — safe to run on every deploy.
       - name: Run database migrations
         run: cd backend && alembic upgrade head
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Run tests
+        run: pytest backend/tests/ -v
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ENTSOE_API_KEY: ${{ secrets.ENTSOE_API_KEY }}
 
       # ── 3. AWS auth ───────────────────────────────────────────────────
       - name: Configure AWS credentials
