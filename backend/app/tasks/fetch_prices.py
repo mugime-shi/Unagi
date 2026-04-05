@@ -525,7 +525,7 @@ def lambda_handler(event: dict, context) -> dict:
 
     # Fetch balancing (imbalance) prices, generation mix, and weather for today/yesterday.
     # Skip during backfill runs (use --generation flag for generation backfill).
-    is_daily_run = "backfill_days" not in event and "date" not in event
+    is_daily_run = "backfill_days" not in event and "date" not in event and "backfill_hydro" not in event
     if is_daily_run:
         today = date.today()
         yesterday = today - timedelta(days=1)
