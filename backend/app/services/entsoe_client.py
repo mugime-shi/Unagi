@@ -515,3 +515,100 @@ def fetch_generation_mix(
         )
 
     return filtered
+
+
+# ---------------------------------------------------------------------------
+# A72: Hydro reservoir stored energy (weekly)
+# ---------------------------------------------------------------------------
+
+# XML namespace for A72 generation/load documents
+NS_HYDRO = {"ns": "urn:iec62325.351:tc57wg16:451-6:generationloaddocument:3:0"}
+
+
+@dataclass
+class HydroReservoirPoint:
+    week_start: date  # Monday of the reporting week (CET)
+    stored_energy_mwh: float  # total stored energy in MWh
+
+
+def fetch_hydro_reservoir(
+    period_start: date,
+    period_end: date,
+    area: str = SE3_AREA,
+    api_key: str | None = None,
+) -> list[HydroReservoirPoint]:
+    """
+    Fetch weekly hydro reservoir stored energy from ENTSO-E A72.
+
+    Returns one HydroReservoirPoint per week in the requested range.
+    Data is published weekly (P7D resolution) in MWh.
+    """
+    api_key = api_key or settings.entsoe_api_key
+    params = {
+        "securityToken": api_key,
+        "documentType": "A72",
+        "processType": "A16",
+        "in_Domain": area,
+        "periodStart": _period_param(period_start),
+        "periodEnd": _period_param(period_end),
+    }
+
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            response = client.get(ENTSOE_BASE, params=params)
+    except httpx.HTTPError as exc:
+        raise EntsoEError(f"Network error contacting ENTSO-E: {exc}") from exc
+
+    if response.status_code != 200:
+        raise EntsoEError(f"ENTSO-E A72 returned HTTP {response.status_code}: {response.text[:200]}")
+
+    # Check for "no data" acknowledgement
+    if "Acknowledgement_MarketDocument" in response.text:
+        raise EntsoEError(f"No hydro reservoir data for {area} in {period_start}–{period_end}")
+
+    return _parse_hydro_xml(response.text)
+
+
+def _parse_hydro_xml(xml_text: str) -> list[HydroReservoirPoint]:
+    """Parse ENTSO-E A72 GL_MarketDocument XML into HydroReservoirPoint list."""
+    root = ET.fromstring(xml_text)
+    points: list[HydroReservoirPoint] = []
+
+    for ts in root.findall(".//ns:TimeSeries", NS_HYDRO):
+        period = ts.find("ns:Period", NS_HYDRO)
+        if period is None:
+            continue
+
+        interval = period.find("ns:timeInterval", NS_HYDRO)
+        if interval is None:
+            continue
+
+        start_text = interval.findtext("ns:start", default="", namespaces=NS_HYDRO)
+        if not start_text:
+            continue
+
+        # Parse period start (UTC) — e.g. "2024-12-29T23:00Z" = Monday 00:00 CET
+        period_start_utc = datetime.fromisoformat(start_text.replace("Z", "+00:00"))
+
+        resolution = period.findtext("ns:resolution", default="P7D", namespaces=NS_HYDRO)
+        if resolution != "P7D":
+            continue  # only handle weekly data
+
+        for point in period.findall("ns:Point", NS_HYDRO):
+            position = int(point.findtext("ns:position", default="0", namespaces=NS_HYDRO))
+            quantity = float(point.findtext("ns:quantity", default="0", namespaces=NS_HYDRO))
+
+            # Each position is one week from the period start
+            week_offset = timedelta(weeks=position - 1)
+            week_start_utc = period_start_utc + week_offset
+            # Convert to CET date (the Monday)
+            week_start_date = (week_start_utc + timedelta(hours=1)).date()  # UTC+1 (CET base)
+
+            points.append(
+                HydroReservoirPoint(
+                    week_start=week_start_date,
+                    stored_energy_mwh=quantity,
+                )
+            )
+
+    return sorted(points, key=lambda p: p.week_start)

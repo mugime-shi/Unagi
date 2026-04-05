@@ -54,7 +54,7 @@ SHAP_GROUPS: dict[str, list[str]] = {
     ],
     "Wind": ["gen_wind_mw", "wind_ratio", "wind_speed_10m_fc", "wind_speed_100m_fc", "wind_x_hour"],
     "Temperature": ["temperature_c", "temp_forecast", "daily_avg_temp_prev_day", "temp_deviation", "temp_x_month"],
-    "Hydro": ["gen_hydro_mw", "hydro_ratio"],
+    "Hydro": ["gen_hydro_mw", "hydro_ratio", "hydro_stored_gwh", "hydro_stored_change_gwh"],
     "Nuclear": ["gen_nuclear_mw", "nuclear_ratio"],
     "Solar & daylight": [
         "sun_elevation",

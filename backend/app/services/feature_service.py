@@ -409,6 +409,53 @@ def _load_gas_prices(
     return result
 
 
+def _load_hydro_reservoir(
+    db: Session,
+    start_date: date,
+    end_date: date,
+    area: str = "SE3",
+) -> dict[date, float]:
+    """
+    Load weekly hydro reservoir stored energy and forward-fill to daily.
+    Returns {date: stored_energy_mwh} for every date in range.
+    """
+    from app.models.hydro_reservoir import HydroReservoir
+
+    # Fetch with extra lookback for forward-fill
+    lookback_start = start_date - timedelta(weeks=4)
+    rows = (
+        db.query(HydroReservoir)
+        .filter(
+            HydroReservoir.area == area,
+            HydroReservoir.week_start >= lookback_start,
+            HydroReservoir.week_start <= end_date,
+        )
+        .order_by(HydroReservoir.week_start)
+        .all()
+    )
+
+    # Build raw map from weekly data
+    raw: dict[date, float] = {}
+    for r in rows:
+        raw[r.week_start] = float(r.stored_energy_mwh)
+
+    # Forward-fill: each date uses the most recent weekly value
+    result: dict[date, float] = {}
+    current = start_date
+    while current <= end_date:
+        if current in raw:
+            result[current] = raw[current]
+        else:
+            for lookback in range(1, 30):
+                prev = current - timedelta(days=lookback)
+                if prev in raw:
+                    result[current] = raw[prev]
+                    break
+        current += timedelta(days=1)
+
+    return result
+
+
 def _load_hourly_de_prices(
     db: Session,
     start_date: date,
@@ -488,6 +535,7 @@ def build_feature_matrix(
     load_fc = _load_hourly_load_forecast(db, hist_start, end_date, area)
     gas_prices = _load_gas_prices(db, hist_start, end_date)
     de_prices = _load_hourly_de_prices(db, hist_start, end_date)
+    hydro = _load_hydro_reservoir(db, hist_start, end_date, area)
 
     # Pre-compute daily aggregates
     daily_avg: dict[date, float] = {}
@@ -733,6 +781,13 @@ def build_feature_matrix(
                 "de_price_same_hour_prev_day": (
                     round(de_prices[(prev_day, hour)], 2) if (prev_day, hour) in de_prices else None
                 ),
+                # Hydro reservoir features (weekly, forward-filled to daily)
+                "hydro_stored_gwh": (round(hydro[current] / 1000, 1) if current in hydro else None),
+                "hydro_stored_change_gwh": (
+                    round((hydro[current] - hydro[prev_week]) / 1000, 1)
+                    if current in hydro and prev_week in hydro
+                    else None
+                ),
                 # Interaction features
                 "wind_x_hour": (
                     round(gen_prev.get("wind", 0) * math.sin(2 * math.pi * hour / 24), 4)
@@ -823,6 +878,9 @@ FEATURE_COLS = [
     "de_price_prev_day",
     "de_se3_spread_prev_day",
     "de_price_same_hour_prev_day",
+    # Hydro reservoir (2)
+    "hydro_stored_gwh",
+    "hydro_stored_change_gwh",
     # Interactions (2)
     "wind_x_hour",
     "temp_x_month",

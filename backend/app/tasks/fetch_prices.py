@@ -284,6 +284,57 @@ def backfill_load_forecast(days: int, area: str = "SE3") -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Hydro reservoir (ENTSO-E A72) fetch — weekly stored energy
+# ---------------------------------------------------------------------------
+
+
+def fetch_hydro_date(target_date: date, area: str = "SE3") -> dict:
+    """
+    Fetch and store hydro reservoir data for the period containing target_date.
+    A72 is weekly, so one API call covers ~3 months. Idempotent via upsert.
+    """
+    from app.services.hydro_service import fetch_and_store_hydro, get_hydro_for_date
+
+    db = SessionLocal()
+    try:
+        existing = get_hydro_for_date(db, target_date, area)
+        # Consider cached if we have data within the last 2 weeks
+        if existing and (target_date - existing.week_start).days < 14:
+            log.info("SKIP hydro %s %s — recent data from %s", target_date, area, existing.week_start)
+            return {"date": target_date.isoformat(), "market": "hydro", "status": "cached"}
+
+        try:
+            n = fetch_and_store_hydro(db, target_date, area)
+            log.info("OK   hydro %s %s — %d weeks saved", target_date, area, n)
+            return {"date": target_date.isoformat(), "market": "hydro", "status": "ok", "rows": n}
+        except EntsoEError as e:
+            log.warning("FAIL hydro %s %s: %s", target_date, area, e)
+            return {"date": target_date.isoformat(), "market": "hydro", "status": "error", "error": str(e)}
+    finally:
+        db.close()
+
+
+def backfill_hydro(days: int, area: str = "SE3") -> list[dict]:
+    """Backfill hydro reservoir data. One API call covers the entire period."""
+    from app.services.hydro_service import fetch_and_store_hydro
+
+    db = SessionLocal()
+    try:
+        today = date.today()
+        target = today - timedelta(days=days)
+        log.info("Backfill hydro: fetching %d days (%s → %s) for %s", days, target, today, area)
+        try:
+            n = fetch_and_store_hydro(db, target, area)
+            log.info("OK   hydro backfill — %d weeks saved for %s", n, area)
+            return [{"date": today.isoformat(), "market": "hydro", "status": "ok", "rows": n}]
+        except EntsoEError as e:
+            log.error("FAIL hydro backfill %s: %s", area, e)
+            return [{"date": today.isoformat(), "market": "hydro", "status": "error", "error": str(e)}]
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
 # DE-LU spot price (ENTSO-E A44) fetch
 # ---------------------------------------------------------------------------
 
@@ -413,6 +464,9 @@ def lambda_handler(event: dict, context) -> dict:
             # Tomorrow's A65 is not published until ~10:00 UTC; daily_fetch handles it.
             results.append(fetch_load_forecast_date(today, area))
 
+            # Hydro reservoir (A72, weekly) — idempotent, safe to call daily
+            results.append(fetch_hydro_date(today, area))
+
         results.append(_fetch_weather_forecast())
         results.append(_fetch_gas_prices())
 
@@ -513,6 +567,13 @@ def lambda_handler(event: dict, context) -> dict:
         for area in areas:
             lf_results = backfill_load_forecast(lf_days, area)
             all_results.extend(lf_results)
+
+    # Hydro reservoir backfill via Lambda event
+    if event.get("backfill_hydro"):
+        hydro_days = int(event["backfill_hydro"])
+        for area in areas:
+            hydro_results = backfill_hydro(hydro_days, area)
+            all_results.extend(hydro_results)
 
     failed = [r for r in all_results if r["status"] == "error"]
 
@@ -865,6 +926,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Fetch balancing/imbalance prices (eSett EXP14) instead of spot prices",
     )
+    parser.add_argument(
+        "--hydro",
+        action="store_true",
+        help="Fetch hydro reservoir stored energy (ENTSO-E A72)",
+    )
     return parser.parse_args()
 
 
@@ -917,6 +983,12 @@ def main() -> int:
             today = date.today()
             start = today - timedelta(days=7)
             results = [fetch_gas_prices_range(start, today)]
+    elif args.hydro:
+        # Hydro reservoir mode
+        if args.backfill:
+            results = backfill_hydro(args.backfill, args.area)
+        else:
+            results = [fetch_hydro_date(date.today(), args.area)]
     else:
         # Spot prices mode (default)
         if args.backfill:

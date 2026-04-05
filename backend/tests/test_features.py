@@ -16,6 +16,7 @@ from app.db.database import Base
 from app.models.de_spot_price import DeSpotPrice  # noqa: F401 — register model for create_all
 from app.models.gas_price import GasPrice  # noqa: F401 — register model for create_all
 from app.models.generation_mix import GenerationMix
+from app.models.hydro_reservoir import HydroReservoir  # noqa: F401 — register model for create_all
 from app.models.load_forecast import LoadForecast  # noqa: F401 — register model for create_all
 from app.models.spot_price import SpotPrice
 from app.services.feature_service import (
@@ -236,8 +237,8 @@ def test_feature_cols_match_output(db):
 
 
 def test_feature_cols_count(db):
-    """FEATURE_COLS has exactly 59 features (41 original + 6 Phase A + 6 Phase B + 6 Phase C)."""
-    assert len(FEATURE_COLS) == 59
+    """FEATURE_COLS has exactly 61 features (59 original + 2 hydro reservoir)."""
+    assert len(FEATURE_COLS) == 61
 
 
 def test_holiday_features_normal_weekday(db):
