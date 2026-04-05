@@ -1,4 +1,5 @@
 import { FormEvent, ReactElement, useState } from "react";
+import { formatPrice, PRICE_UNIT } from "../utils/formatters";
 import { useSolar } from "../hooks/useSolar";
 
 // Extended solar result from the API (richer than SolarResult in types/index.ts)
@@ -207,7 +208,8 @@ export function SolarSimulator(): ReactElement {
               {result.month} &middot; {result.panel_kwp} kWp
               {result.battery_kwh > 0 &&
                 ` \u00b7 ${result.battery_kwh} kWh battery`}
-              {" \u00b7 "}avg spot {result.avg_spot_sek_kwh.toFixed(2)} SEK/kWh
+              {" \u00b7 "}avg spot {formatPrice(result.avg_spot_sek_kwh)}{" "}
+              {PRICE_UNIT}
             </span>
           </div>
 
@@ -359,7 +361,8 @@ export function SolarSimulator(): ReactElement {
                   </div>
                 </div>
                 <p className="text-xs text-gray-600 text-center mt-2">
-                  Skattereduktion: {result.tax_credit.rate_sek_kwh} SEK/kWh
+                  Skattereduktion: {formatPrice(result.tax_credit.rate_sek_kwh)}{" "}
+                  {PRICE_UNIT}
                   {" \u00b7 "}
                   {result.tax_credit.eligible_kwh.toFixed(0)} kWh eligible
                   {" \u00b7 "}annual cap{" "}

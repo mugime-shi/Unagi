@@ -16,7 +16,12 @@ import type {
   ValueType,
 } from "recharts/types/component/DefaultTooltipContent";
 import type { TooltipContentProps } from "recharts";
-import { currentCETHour, toLocalHour } from "../utils/formatters";
+import {
+  currentCETHour,
+  formatPrice,
+  PRICE_UNIT,
+  toLocalHour,
+} from "../utils/formatters";
 import { computeClippedDomain } from "../utils/chartScale";
 import { useIsMobile } from "../hooks/useIsMobile";
 import type {
@@ -54,7 +59,7 @@ function NowPriceLabel({
 }: NowPriceLabelProps): ReactElement | null {
   if (!viewBox) return null;
   const { x, y } = viewBox;
-  const text = value.toFixed(2);
+  const text = formatPrice(value);
   const w = text.length * 7 + 8;
   const h = 18;
   const dotR = 5;
@@ -125,8 +130,8 @@ function CustomTooltip({
             className="font-semibold"
             style={{ color: priceColor(p.price_sek_kwh) }}
           >
-            {p.price_sek_kwh.toFixed(2)}{" "}
-            <span className="text-gray-400 font-normal">SEK/kWh</span>
+            {formatPrice(p.price_sek_kwh)}{" "}
+            <span className="text-gray-400 font-normal">{PRICE_UNIT}</span>
             <span className="text-gray-500 text-xs ml-2">Day-ahead</span>
           </p>
           <p className="text-gray-500 text-xs">
@@ -138,7 +143,7 @@ function CustomTooltip({
       {/* Balancing prices — only with published DA */}
       {!estimated && p.imb_short != null && (
         <p className="text-orange-400 text-xs mt-1">
-          Imbalance Short: {p.imb_short.toFixed(2)} SEK/kWh
+          Imbalance Short: {formatPrice(p.imb_short)} {PRICE_UNIT}
           {p.price_sek_kwh > 0 && (
             <span className="ml-1 text-orange-500">
               ({((p.imb_short / p.price_sek_kwh - 1) * 100).toFixed(0)}% vs DA)
@@ -148,15 +153,15 @@ function CustomTooltip({
       )}
       {!estimated && p.imb_long != null && (
         <p className="text-teal-400 text-xs">
-          Imbalance Long: {p.imb_long.toFixed(2)} SEK/kWh
+          Imbalance Long: {formatPrice(p.imb_long)} {PRICE_UNIT}
         </p>
       )}
 
       {/* Weekday Avg — forward forecast only */}
       {showWeekdayAvg && p.forecast_low != null && (
         <p className="text-gray-400 text-xs mt-1">
-          Weekday Avg {p.forecast_low.toFixed(2)}–
-          {((p.forecast_low ?? 0) + (p.forecast_band ?? 0)).toFixed(2)}
+          Weekday Avg {formatPrice(p.forecast_low)}–
+          {formatPrice((p.forecast_low ?? 0) + (p.forecast_band ?? 0))}
         </p>
       )}
 
@@ -165,15 +170,15 @@ function CustomTooltip({
         <p
           className={`text-xs mt-1 ${estimated ? "text-amber-400 font-semibold text-sm" : "text-amber-400"}`}
         >
-          LGBM {lgbmVal.toFixed(2)}
+          LGBM {formatPrice(lgbmVal)}
           {p.lgbm_low != null && p.lgbm_band != null && (
             <span className="text-amber-500/70 ml-1">
-              [{p.lgbm_low.toFixed(2)}–
-              {((p.lgbm_low ?? 0) + (p.lgbm_band ?? 0)).toFixed(2)}]
+              [{formatPrice(p.lgbm_low)}–
+              {formatPrice((p.lgbm_low ?? 0) + (p.lgbm_band ?? 0))}]
             </span>
           )}
           {estimated && (
-            <span className="text-gray-400 font-normal ml-1">SEK/kWh</span>
+            <span className="text-gray-400 font-normal ml-1">{PRICE_UNIT}</span>
           )}
         </p>
       )}
@@ -442,7 +447,7 @@ export function PriceChart({
               Day-ahead
               {legendDA?.price_sek_kwh != null && (
                 <span className="text-blue-400 font-medium">
-                  {legendDA.price_sek_kwh.toFixed(2)}
+                  {formatPrice(legendDA.price_sek_kwh)}
                 </span>
               )}
             </span>
@@ -456,7 +461,7 @@ export function PriceChart({
                 Imb Short
                 {legendImb?.imb_short != null && (
                   <span className="text-orange-400 font-medium">
-                    {legendImb.imb_short.toFixed(2)}
+                    {formatPrice(legendImb.imb_short)}
                   </span>
                 )}
               </span>
@@ -465,7 +470,7 @@ export function PriceChart({
                 Imb Long
                 {legendImb?.imb_long != null && (
                   <span className="text-teal-400 font-medium">
-                    {legendImb.imb_long.toFixed(2)}
+                    {formatPrice(legendImb.imb_long)}
                   </span>
                 )}
               </span>
@@ -501,7 +506,7 @@ export function PriceChart({
           )}
 
           {(legendDA || legendImb) && (
-            <span className="text-gray-500">SEK/kWh</span>
+            <span className="text-gray-500">{PRICE_UNIT}</span>
           )}
         </div>
       </div>
@@ -535,7 +540,7 @@ export function PriceChart({
           <YAxis
             yAxisId="price"
             domain={domain}
-            tickFormatter={(v: number) => `${v.toFixed(2)}`}
+            tickFormatter={(v: number) => formatPrice(v)}
             tick={{ fill: "#9ca3af", fontSize: 11 }}
             width={48}
             padding={{ top: 16 }}

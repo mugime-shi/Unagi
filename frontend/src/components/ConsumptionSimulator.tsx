@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useSimulate } from "../hooks/useSimulate";
+import { formatPrice, PRICE_UNIT } from "../utils/formatters";
 
 interface ResultCardProps {
   label: string;
@@ -142,13 +143,13 @@ export function ConsumptionSimulator() {
           {result.monthly_avg && (
             <p className="text-xs text-blue-400/80 text-center mb-1">
               This month&apos;s avg spot so far:{" "}
-              {result.monthly_avg.avg_spot_sek_kwh.toFixed(2)} SEK/kWh (
+              {formatPrice(result.monthly_avg.avg_spot_sek_kwh)} {PRICE_UNIT} (
               {result.period?.month_days_with_data} days)
             </p>
           )}
           <p className="text-xs text-gray-600 text-center">
             Based on {result.period?.days_with_data} days of SE3 real prices ·{" "}
-            avg spot {result.dynamic.avg_spot_sek_kwh.toFixed(2)} SEK/kWh
+            avg spot {formatPrice(result.dynamic.avg_spot_sek_kwh)} {PRICE_UNIT}
           </p>
         </>
       )}

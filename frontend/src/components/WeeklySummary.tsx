@@ -1,3 +1,4 @@
+import { formatPrice } from "../utils/formatters";
 import type {
   Area,
   WeeklyClassifiedResponse,
@@ -91,7 +92,7 @@ export function WeeklySummary({
           </span>
           {refAvg && (
             <span className="hidden sm:inline text-gray-600">
-              vs 30d avg {refAvg.toFixed(2)}
+              vs 30d avg {formatPrice(refAvg)}
             </span>
           )}
         </div>
@@ -129,7 +130,7 @@ export function WeeklySummary({
                 <p
                   className={`text-xl sm:text-2xl font-bold ${cfg.color} mt-1`}
                 >
-                  {day.daily_avg.toFixed(2)}
+                  {formatPrice(day.daily_avg)}
                 </p>
                 {pctDiff !== null && (
                   <p

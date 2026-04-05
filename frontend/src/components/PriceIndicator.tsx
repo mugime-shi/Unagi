@@ -1,6 +1,8 @@
 import {
   currentCETHour,
   currentCETTime15,
+  formatPrice,
+  PRICE_UNIT,
   toLocalHour,
 } from "../utils/formatters";
 import type { PricePoint } from "../types/index";
@@ -46,12 +48,14 @@ export function PriceIndicator({ prices }: PriceIndicatorProps) {
         Right now ({currentCETTime15()} CET)
       </p>
       <div className="flex items-baseline gap-2">
-        <span className={`text-3xl font-bold ${color}`}>{sek.toFixed(2)}</span>
-        <span className="text-gray-400 text-sm">SEK/kWh</span>
+        <span className={`text-3xl font-bold ${color}`}>
+          {formatPrice(sek)}
+        </span>
+        <span className="text-gray-400 text-sm">{PRICE_UNIT}</span>
       </div>
       <p className="text-xs text-gray-500 mt-1">
         <span className={`font-medium ${color}`}>{level}</span>
-        {" · "}avg {avg.toFixed(2)} SEK/kWh vs today
+        {" · "}avg {formatPrice(avg)} {PRICE_UNIT} vs today
       </p>
     </div>
   );

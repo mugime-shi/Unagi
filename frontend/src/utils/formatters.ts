@@ -37,6 +37,18 @@ export function dateWithWeekday(isoDate: string): string {
 }
 
 /**
+ * Format a price in SEK/kWh to öre/kWh for display.
+ * Swedish convention: prices are discussed in öre (1 SEK = 100 öre).
+ * e.g. 0.52 SEK/kWh → "52" öre/kWh
+ */
+export function formatPrice(sekKwh: number, decimals: number = 0): string {
+  return (sekKwh * 100).toFixed(decimals);
+}
+
+/** Display unit for electricity prices */
+export const PRICE_UNIT = "öre/kWh";
+
+/**
  * Current CET time floored to 15-minute intervals, e.g. "16:15"
  */
 export function currentCETTime15(): string {

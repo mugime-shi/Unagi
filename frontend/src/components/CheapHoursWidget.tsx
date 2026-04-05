@@ -1,5 +1,5 @@
 import { useCheapHours } from "../hooks/useCheapHours";
-import { toLocalHour } from "../utils/formatters";
+import { formatPrice, PRICE_UNIT, toLocalHour } from "../utils/formatters";
 import type { Area } from "../types/index";
 
 interface Appliance {
@@ -60,7 +60,7 @@ function ApplianceRow({
           {start}–{end}
         </span>
         <span className="text-xs text-gray-500">
-          {w.avg_sek_kwh.toFixed(2)}
+          {formatPrice(w.avg_sek_kwh)}
         </span>
       </div>
     </div>
@@ -85,7 +85,7 @@ export function CheapHoursWidget({
         Cheapest consecutive window per appliance
       </p>
       <div className="flex justify-end mb-1">
-        <span className="text-xs text-gray-600">SEK/kWh</span>
+        <span className="text-xs text-gray-600">{PRICE_UNIT}</span>
       </div>
       {APPLIANCES.map((a) => (
         <ApplianceRow key={a.name} {...a} date={date} area={area} />

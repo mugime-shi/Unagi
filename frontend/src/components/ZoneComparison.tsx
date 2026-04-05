@@ -9,6 +9,7 @@ import {
   YAxis,
 } from "recharts";
 import type { TooltipPayloadEntry } from "recharts";
+import { formatPrice, PRICE_UNIT } from "../utils/formatters";
 import { useMultiZone } from "../hooks/useMultiZone";
 import type { Area, ZoneDaily } from "../types/index";
 
@@ -80,7 +81,8 @@ function ZoneTooltip({ active, payload, label }: ZoneTooltipProps) {
       {payload.map((p) => (
         <p key={String(p.dataKey)} style={{ color: p.color }}>
           {String(p.dataKey)}:{" "}
-          {p.value != null ? Number(p.value).toFixed(3) : "\u2014"} SEK/kWh
+          {p.value != null ? formatPrice(Number(p.value), 1) : "\u2014"}{" "}
+          {PRICE_UNIT}
         </p>
       ))}
     </div>
@@ -183,7 +185,7 @@ python -m app.tasks.fetch_prices --backfill 90 --area SE4`}
         <h2 className="text-sm font-medium text-gray-300">
           Zone Comparison -- SE1-SE4
         </h2>
-        <span className="text-xs text-gray-500">SEK/kWh - daily avg</span>
+        <span className="text-xs text-gray-500">{PRICE_UNIT} - daily avg</span>
       </div>
 
       <ResponsiveContainer width="100%" height={300}>
@@ -209,7 +211,7 @@ python -m app.tasks.fetch_prices --backfill 90 --area SE4`}
             tick={{ fill: "#6b7280", fontSize: 10 }}
             axisLine={false}
             tickLine={false}
-            tickFormatter={(v: number) => v.toFixed(2)}
+            tickFormatter={(v: number) => formatPrice(v)}
           />
           <Tooltip content={<ZoneTooltip />} />
           <Legend
@@ -244,9 +246,9 @@ python -m app.tasks.fetch_prices --backfill 90 --area SE4`}
             </p>
             <p className="text-xs text-gray-500 mb-1">{city}</p>
             <p className="text-sm font-semibold">
-              {avg != null ? avg.toFixed(3) : "\u2014"}
+              {avg != null ? formatPrice(avg, 1) : "\u2014"}
             </p>
-            <p className="text-xs text-gray-600">SEK/kWh</p>
+            <p className="text-xs text-gray-600">{PRICE_UNIT}</p>
           </div>
         ))}
       </div>

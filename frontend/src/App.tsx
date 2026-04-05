@@ -17,7 +17,7 @@ import { useRetrospective } from "./hooks/useRetrospective";
 import { usePrices } from "./hooks/usePrices";
 import { useWeeklyForecast } from "./hooks/useWeeklyForecast";
 import { WeeklySummary } from "./components/WeeklySummary";
-import { dateWithWeekday } from "./utils/formatters";
+import { dateWithWeekday, formatPrice, PRICE_UNIT } from "./utils/formatters";
 import type {
   Area,
   Tab,
@@ -505,10 +505,10 @@ export default function App() {
                                 {label}
                               </p>
                               <p className="text-lg font-semibold">
-                                {value != null ? value.toFixed(2) : "\u2014"}
+                                {value != null ? formatPrice(value) : "\u2014"}
                               </p>
                               <p className="text-[10px] text-gray-600">
-                                SEK/kWh
+                                {PRICE_UNIT}
                               </p>
                             </div>
                           ))}
@@ -654,11 +654,11 @@ export default function App() {
                                   className={`text-lg font-semibold ${isLgbmPrimary ? "text-amber-400" : ""}`}
                                 >
                                   {primary != null
-                                    ? primary.toFixed(2)
+                                    ? formatPrice(primary)
                                     : "\u2014"}
                                 </p>
                                 <p className="text-[10px] text-gray-600">
-                                  SEK/kWh
+                                  {PRICE_UNIT}
                                 </p>
                                 {isLgbmPrimary && (
                                   <p className="text-xs text-amber-500/60 mt-0.5">
@@ -667,7 +667,7 @@ export default function App() {
                                 )}
                                 {showLgbmComparison && lgbm != null && (
                                   <p className="text-xs text-amber-400/80 mt-0.5">
-                                    LGBM {lgbm.toFixed(2)}
+                                    LGBM {formatPrice(lgbm)}
                                   </p>
                                 )}
                               </div>
@@ -742,7 +742,7 @@ export default function App() {
                                       : model.toUpperCase()}
                                   </span>
                                   <span className="text-sm text-gray-300">
-                                    MAE {mae.toFixed(2)} SEK/kWh ·{" "}
+                                    MAE {formatPrice(mae, 1)} {PRICE_UNIT} ·{" "}
                                     {pairs.length} hrs
                                   </span>
                                 </div>

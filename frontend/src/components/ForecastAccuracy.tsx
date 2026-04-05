@@ -13,6 +13,7 @@ import type {
   ValueType,
 } from "recharts/types/component/DefaultTooltipContent";
 import type { TooltipContentProps } from "recharts";
+import { formatPrice, PRICE_UNIT } from "../utils/formatters";
 import { useCoverage } from "../hooks/useCoverage";
 import { useForecastAccuracy } from "../hooks/useForecastAccuracy";
 import { useForecastBreakdown } from "../hooks/useForecastBreakdown";
@@ -79,7 +80,7 @@ function BreakdownTooltip({
       <p className="text-gray-400 mb-1">{label}</p>
       {payload.map((p) => (
         <p key={p.dataKey as string} style={{ color: p.fill }}>
-          {p.name}: {(p.value as number).toFixed(2)} SEK/kWh
+          {p.name}: {formatPrice(p.value as number)} {PRICE_UNIT}
         </p>
       ))}
     </div>
@@ -195,7 +196,7 @@ export function ForecastAccuracy({
       <div className="space-y-2">
         {sorted.map((m) => {
           const isBest = sorted.length > 1 && m.name === best.name;
-          const maeSek = m.mae_sek_kwh.toFixed(2);
+          const maeDisplay = formatPrice(m.mae_sek_kwh);
 
           return (
             <div
@@ -218,9 +219,9 @@ export function ForecastAccuracy({
                 <span
                   className={`text-sm font-semibold ${isBest ? "text-white" : "text-gray-300"}`}
                 >
-                  MAE {maeSek}{" "}
+                  MAE {maeDisplay}{" "}
                   <span className="text-gray-500 text-[10px] font-normal">
-                    SEK/kWh
+                    {PRICE_UNIT}
                   </span>
                 </span>
               </div>
@@ -258,8 +259,8 @@ export function ForecastAccuracy({
       {chartData && chartData.length > 0 && (
         <div className="mt-4">
           <p className="text-xs text-gray-500 mb-2">
-            MAE by {breakdownBy === "weekday" ? "day of week" : "hour of day"}{" "}
-            (SEK/kWh)
+            MAE by {breakdownBy === "weekday" ? "day of week" : "hour of day"} (
+            {PRICE_UNIT})
           </p>
           <ResponsiveContainer width="100%" height={160}>
             <BarChart
@@ -280,7 +281,7 @@ export function ForecastAccuracy({
                 height={breakdownBy === "hour" ? 40 : 24}
               />
               <YAxis
-                tickFormatter={(v: number) => v.toFixed(2)}
+                tickFormatter={(v: number) => formatPrice(v)}
                 tick={{ fill: "#9ca3af", fontSize: 10 }}
                 width={32}
               />

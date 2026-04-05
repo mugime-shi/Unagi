@@ -15,7 +15,7 @@ import type {
 } from "recharts/types/component/DefaultTooltipContent";
 import type { TooltipContentProps } from "recharts";
 import { ZoneComparison } from "./ZoneComparison";
-import { dateWithWeekday } from "../utils/formatters";
+import { dateWithWeekday, formatPrice, PRICE_UNIT } from "../utils/formatters";
 import { useHistory } from "../hooks/useHistory";
 import { useIsMobile } from "../hooks/useIsMobile";
 import type { Area as AreaType, HistoryDay } from "../types/index";
@@ -40,12 +40,13 @@ function CustomTooltip({
     <div className="bg-sea-800 border border-sea-700 rounded-lg px-3 py-2 text-xs">
       <p className="text-gray-400 mb-1">{dateWithWeekday(label as string)}</p>
       <p className="text-white font-semibold">
-        avg {d.avg_sek_kwh?.toFixed(3)} SEK/kWh
+        avg {d.avg_sek_kwh != null ? formatPrice(d.avg_sek_kwh, 1) : "\u2014"}{" "}
+        {PRICE_UNIT}
       </p>
       {d.min_sek_kwh != null && (
         <p className="text-gray-500">
-          min {d.min_sek_kwh.toFixed(3)} &middot; max{" "}
-          {d.max_sek_kwh!.toFixed(3)}
+          min {formatPrice(d.min_sek_kwh, 1)} &middot; max{" "}
+          {formatPrice(d.max_sek_kwh!, 1)}
         </p>
       )}
     </div>
@@ -226,7 +227,7 @@ export function PriceHistory({
               tick={{ fill: "#6b7280", fontSize: 10 }}
               axisLine={false}
               tickLine={false}
-              tickFormatter={(v: number) => v.toFixed(2)}
+              tickFormatter={(v: number) => formatPrice(v)}
               width={48}
             />
             <Tooltip content={(props) => <CustomTooltip {...props} />} />
@@ -257,14 +258,14 @@ export function PriceHistory({
       {/* Summary stats — outside chart container for visual separation */}
       <div className="grid grid-cols-3 gap-3 text-center">
         {[
-          { label: `${days}-day min`, value: overallMin.toFixed(3) },
-          { label: `${days}-day avg`, value: overallAvg.toFixed(3) },
-          { label: `${days}-day max`, value: overallMax.toFixed(3) },
+          { label: `${days}-day min`, value: formatPrice(overallMin, 1) },
+          { label: `${days}-day avg`, value: formatPrice(overallAvg, 1) },
+          { label: `${days}-day max`, value: formatPrice(overallMax, 1) },
         ].map(({ label, value }) => (
           <div key={label} className="bg-sea-800 rounded-xl py-3">
             <p className="text-xs text-gray-500 mb-1">{label}</p>
             <p className="text-base font-semibold">{value}</p>
-            <p className="text-[10px] text-gray-600">SEK/kWh</p>
+            <p className="text-[10px] text-gray-600">{PRICE_UNIT}</p>
           </div>
         ))}
       </div>
