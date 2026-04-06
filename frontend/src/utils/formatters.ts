@@ -42,7 +42,10 @@ export function dateWithWeekday(isoDate: string): string {
  * e.g. 0.52 SEK/kWh → "52" öre/kWh
  */
 export function formatPrice(sekKwh: number, decimals: number = 0): string {
-  return (sekKwh * 100).toFixed(decimals);
+  const ore = sekKwh * 100;
+  // Avoid "-0" display for tiny negative values that round to zero
+  const str = ore.toFixed(decimals);
+  return str === `-${(0).toFixed(decimals)}` ? (0).toFixed(decimals) : str;
 }
 
 /** Display unit for electricity prices */

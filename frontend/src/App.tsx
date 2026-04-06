@@ -568,7 +568,7 @@ export default function App() {
                       forecastPriceData.published === false && (
                         <p className="text-yellow-400 text-xs text-center bg-yellow-400/10 rounded-lg py-2 px-3">
                           Tomorrow&apos;s prices are typically published after
-                          13:00 Stockholm time
+                          13:00
                         </p>
                       )}
 
