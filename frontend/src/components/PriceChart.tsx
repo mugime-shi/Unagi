@@ -550,7 +550,7 @@ export function PriceChart({
               <CustomTooltip {...props} showWeekdayAvg={showWeekdayAvg} />
             )}
           />
-          {!isEstimate && (
+          {chartData.length > 0 && (
             <ReferenceLine
               yAxisId="price"
               y={avg}
@@ -724,6 +724,21 @@ export function PriceChart({
               strokeWidth={3}
               dot={<CustomDot />}
               activeDot={{ r: 4, fill: "#60a5fa" }}
+            />
+          )}
+
+          {/* Estimate line — dashed, for future dates using weekly forecast */}
+          {isEstimate && (
+            <Line
+              yAxisId="price"
+              type="monotone"
+              dataKey="price_sek_kwh"
+              stroke={PRED_LGBM_COLOR}
+              strokeWidth={2}
+              strokeDasharray="5 3"
+              dot={false}
+              activeDot={{ r: 4, fill: PRED_LGBM_COLOR }}
+              isAnimationActive={false}
             />
           )}
 
