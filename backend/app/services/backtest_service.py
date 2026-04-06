@@ -55,7 +55,8 @@ def record_predictions(
             predicted_sek_kwh      = EXCLUDED.predicted_sek_kwh,
             predicted_low_sek_kwh  = EXCLUDED.predicted_low_sek_kwh,
             predicted_high_sek_kwh = EXCLUDED.predicted_high_sek_kwh,
-            shap_json              = EXCLUDED.shap_json
+            shap_json              = EXCLUDED.shap_json,
+            created_at             = CURRENT_TIMESTAMP
     """)
     count = 0
     for s in slots:
