@@ -727,8 +727,8 @@ export function PriceChart({
             />
           )}
 
-          {/* Estimate line — dashed, for future dates using weekly forecast */}
-          {isEstimate && (
+          {/* Estimate line — fallback when no lgbmForecast is available */}
+          {isEstimate && !lgbmForecast && (
             <Line
               yAxisId="price"
               type="monotone"

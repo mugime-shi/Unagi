@@ -211,6 +211,19 @@ export default function App() {
         }
       : null;
 
+  // Build synthetic lgbmForecast from weekly slots (for d+2+ CI band)
+  const futureLgbmForecast: LgbmForecastLocal | null =
+    isFutureDate && weeklyDayData
+      ? {
+          slots: weeklyDayData.slots.map((s) => ({
+            hour: s.hour,
+            avg_sek_kwh: s.avg_sek_kwh,
+            low_sek_kwh: s.low_sek_kwh ?? null,
+            high_sek_kwh: s.high_sek_kwh ?? null,
+          })),
+        }
+      : null;
+
   // Resolved forecast tab price data
   const forecastPriceData: PricesResponse | null | undefined = isFutureDate
     ? futurePriceData
@@ -594,9 +607,13 @@ export default function App() {
                         prices={forecastPriceData.prices}
                         isEstimate={forecastPriceData.is_estimate}
                         forecast={forecast}
-                        lgbmForecast={lgbmForecast}
+                        lgbmForecast={
+                          isFutureDate ? futureLgbmForecast : lgbmForecast
+                        }
                         retrospective={retrospective}
-                        shapExplanations={shapExplanations}
+                        shapExplanations={
+                          isFutureDate ? null : shapExplanations
+                        }
                         defaultShowLgbm={true}
                         defaultShowWeekdayAvg={false}
                         predictedAt={
