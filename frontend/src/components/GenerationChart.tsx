@@ -24,11 +24,11 @@ interface SourceDef {
 }
 
 const SOURCES: SourceDef[] = [
+  { key: "nuclear", color: "#eab308", label: "Nuclear" },
+  { key: "other", color: "#6b7280", label: "Other" },
   { key: "hydro", color: "#3b82f6", label: "Hydro" },
   { key: "wind", color: "#22d3ee", label: "Wind" },
-  { key: "nuclear", color: "#eab308", label: "Nuclear" },
   { key: "solar", color: "#f97316", label: "Solar" },
-  { key: "other", color: "#6b7280", label: "Other" },
 ];
 
 interface GenChartRow {
