@@ -341,18 +341,15 @@ export function PriceChart({
   const avg =
     chartData.reduce((s, d) => s + d.price_sek_kwh, 0) / chartData.length;
 
-  // Determine tick interval: for 15-min data (>30 pts), show every Nth point
-  // so that only :00 labels appear. For hourly data (<=30), show every point.
-  const pointsPerHour =
-    chartData.length > 30 ? Math.round(chartData.length / 24) : 1;
-  const tickInterval = isMobile ? pointsPerHour * 2 : pointsPerHour;
+  // Build explicit tick values from :00 entries so labels survive irregular slot counts
+  const hourlyTicks: string[] = chartData
+    .map((d) => d.hour)
+    .filter((h) => h.endsWith(":00"));
+  const filteredTicks: string[] = isMobile
+    ? hourlyTicks.filter((_, i) => i % 2 === 0)
+    : hourlyTicks;
 
-  const tickFormatter = (value: string): string => {
-    if (!value.endsWith(":00")) return "";
-    if (!isMobile) return value;
-    const h = parseInt(value.slice(0, 2), 10);
-    return h % 2 === 0 ? value : "";
-  };
+  const tickFormatter = (value: string): string => value;
 
   const hasBalancing =
     balancing != null &&
@@ -531,7 +528,7 @@ export function PriceChart({
           />
           <XAxis
             dataKey="hour"
-            interval={tickInterval - 1}
+            ticks={filteredTicks}
             tickFormatter={tickFormatter}
             tick={{ fill: "#9ca3af", fontSize: 11, dy: 4 }}
             angle={-45}
