@@ -2,9 +2,50 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Dark theme (default) ── */
+:root,
+.dark {
+  --surface-page: #060e1f; /* sea-950 */
+  --surface-primary: #0a1628; /* sea-900 */
+  --surface-secondary: #122240; /* sea-800 */
+  --surface-tertiary: #1a3058; /* sea-700 */
+
+  --text-primary: #f3f4f6; /* gray-100 */
+  --text-secondary: #9ca3af; /* gray-400 */
+  --text-muted: #6b7280; /* gray-500 */
+  --text-faint: #4b5563; /* gray-600 */
+
+  --indicator-cheap-bg: rgba(8, 51, 68, 0.4); /* cyan-950/40 */
+  --indicator-cheap-border: rgba(21, 94, 117, 0.4); /* cyan-800/40 */
+  --indicator-expensive-bg: rgba(67, 20, 7, 0.4); /* orange-950/40 */
+  --indicator-expensive-border: rgba(154, 52, 18, 0.4); /* orange-800/40 */
+  --indicator-normal-bg: rgba(18, 34, 64, 0.5); /* sea-800/50 */
+  --indicator-normal-border: rgba(26, 48, 88, 0.4); /* sea-700/40 */
+}
+
+/* ── Light theme ── */
+.light {
+  --surface-page: #f8fafc; /* slate-50 */
+  --surface-primary: #ffffff;
+  --surface-secondary: #f1f5f9; /* slate-100 */
+  --surface-tertiary: #cbd5e1; /* slate-300 */
+
+  --text-primary: #0f172a; /* slate-900 */
+  --text-secondary: #475569; /* slate-600 */
+  --text-muted: #64748b; /* slate-500 */
+  --text-faint: #94a3b8; /* slate-400 */
+
+  --indicator-cheap-bg: #ecfeff; /* cyan-50 */
+  --indicator-cheap-border: #a5f3fc; /* cyan-200 */
+  --indicator-expensive-bg: #fff7ed; /* orange-50 */
+  --indicator-expensive-border: #fdba74; /* orange-300 */
+  --indicator-normal-bg: #f1f5f9; /* slate-100 */
+  --indicator-normal-border: #e2e8f0; /* slate-200 */
+}
+
 html,
 body {
-  background-color: #060e1f; /* sea-950 — prevents white flash on iOS overscroll */
+  background-color: var(--surface-page); /* prevents white flash on iOS overscroll */
 }
 
 .no-scrollbar::-webkit-scrollbar {

@@ -14,6 +14,7 @@ import type {
 } from "recharts/types/component/DefaultTooltipContent";
 import type { TooltipContentProps } from "recharts";
 import { formatPrice, PRICE_UNIT } from "../utils/formatters";
+import { useChartColors, type ChartColors } from "../hooks/useChartColors";
 import { useCoverage } from "../hooks/useCoverage";
 import { useForecastAccuracy } from "../hooks/useForecastAccuracy";
 import { useForecastBreakdown } from "../hooks/useForecastBreakdown";
@@ -21,10 +22,11 @@ import type { Area } from "../types/index";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-const MODEL_COLORS: Record<string, string> = {
-  lgbm: "#fbbf24", // amber-400
-  same_weekday_avg: "#94a3b8", // slate-400
-};
+function getModelColor(model: string, cc: ChartColors): string {
+  if (model === "lgbm") return cc.lgbm;
+  if (model === "same_weekday_avg") return cc.weekdayAvg;
+  return cc.fallback;
+}
 
 // The accuracy API returns per-model stats with these fields
 interface AccuracyModel {
@@ -73,11 +75,23 @@ function BreakdownTooltip({
   active,
   payload,
   label,
-}: TooltipContentProps<ValueType, NameType>): ReactElement | null {
+  cc,
+}: TooltipContentProps<ValueType, NameType> & {
+  cc: ChartColors;
+}): ReactElement | null {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-sea-800 border border-sea-700 rounded-lg px-3 py-2 text-xs">
-      <p className="text-gray-400 mb-1">{label}</p>
+    <div
+      className="rounded-lg px-3 py-2 text-xs border"
+      style={{
+        background: cc.tooltipBg,
+        borderColor: cc.tooltipBorder,
+        color: cc.tooltipText,
+      }}
+    >
+      <p style={{ color: cc.axis }} className="mb-1">
+        {label}
+      </p>
       {payload.map((p) => (
         <p key={p.dataKey as string} style={{ color: p.fill }}>
           {p.name}: {formatPrice(p.value as number)} {PRICE_UNIT}
@@ -94,6 +108,7 @@ function BreakdownTooltip({
 export function ForecastAccuracy({
   area,
 }: ForecastAccuracyProps): ReactElement | null {
+  const cc = useChartColors();
   const [breakdownBy, setBreakdownBy] = useState<"hour" | "weekday" | null>(
     null,
   );
@@ -113,8 +128,8 @@ export function ForecastAccuracy({
   const modelNames = Object.keys(models);
   if (modelNames.length === 0) {
     return (
-      <div className="bg-sea-900 rounded-xl p-3 text-center">
-        <p className="text-xs text-gray-500">
+      <div className="bg-surface-primary rounded-xl p-3 text-center">
+        <p className="text-xs text-content-muted">
           No forecast accuracy data yet — predictions need to be recorded first
         </p>
       </div>
@@ -166,9 +181,9 @@ export function ForecastAccuracy({
     : [];
 
   return (
-    <div className="bg-sea-900 rounded-xl p-4">
+    <div className="bg-surface-primary rounded-xl p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs text-gray-500">
+        <h3 className="text-xs text-content-muted">
           Forecast accuracy (last {accuracyData.days} days)
         </h3>
         {/* Breakdown toggle */}
@@ -182,8 +197,8 @@ export function ForecastAccuracy({
               onClick={() => setBreakdownBy(breakdownBy === id ? null : id)}
               className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
                 breakdownBy === id
-                  ? "border-sky-600 text-sky-400 bg-sky-900/20"
-                  : "border-sea-700 text-gray-500 hover:text-gray-400"
+                  ? "border-sky-600 text-sky-600 dark:text-sky-400 bg-sky-100/40 dark:bg-sky-900/20"
+                  : "border-surface-tertiary text-content-muted hover:text-content-secondary"
               }`}
             >
               {label}
@@ -202,25 +217,25 @@ export function ForecastAccuracy({
             <div
               key={m.name}
               className={`flex items-center justify-between px-3 py-2 rounded-lg ${
-                isBest ? "bg-sea-800 border border-sea-600/50" : "bg-sea-800"
+                isBest
+                  ? "bg-surface-secondary border border-surface-tertiary/60"
+                  : "bg-surface-secondary"
               }`}
             >
               <div>
-                <span
-                  className={`text-sm font-medium ${isBest ? "text-gray-100" : "text-gray-200"}`}
-                >
+                <span className="text-sm font-medium text-content-primary">
                   {modelLabel(m.name)}
                 </span>
-                <span className="text-xs text-gray-500 ml-2">
+                <span className="text-xs text-content-muted ml-2">
                   {m.n_days}d &middot; {m.n_samples} pts
                 </span>
               </div>
               <div className="text-right">
                 <span
-                  className={`text-sm font-semibold ${isBest ? "text-white" : "text-gray-300"}`}
+                  className={`text-sm font-semibold ${isBest ? "text-content-primary" : "text-content-secondary"}`}
                 >
                   MAE {maeDisplay}{" "}
-                  <span className="text-gray-500 text-[10px] font-normal">
+                  <span className="text-content-muted text-[10px] font-normal">
                     {PRICE_UNIT}
                   </span>
                 </span>
@@ -232,15 +247,17 @@ export function ForecastAccuracy({
 
       {/* Coverage rate badge */}
       {coverage && coverage.n_samples > 0 && (
-        <div className="mt-2 px-3 py-2 bg-sea-800 rounded-lg flex items-center justify-between">
-          <span className="text-xs text-gray-400">80% CI coverage</span>
+        <div className="mt-2 px-3 py-2 bg-surface-secondary rounded-lg flex items-center justify-between">
+          <span className="text-xs text-content-secondary">
+            80% CI coverage
+          </span>
           <span
             className={`text-xs font-semibold ${
               Math.abs(coverage.calibration_error) <= 5
-                ? "text-emerald-400"
+                ? "text-emerald-600 dark:text-emerald-400"
                 : Math.abs(coverage.calibration_error) <= 10
-                  ? "text-yellow-400"
-                  : "text-red-400"
+                  ? "text-yellow-600 dark:text-yellow-400"
+                  : "text-red-600 dark:text-red-400"
             }`}
           >
             {coverage.coverage_pct}% ({coverage.n_samples} pts)
@@ -248,8 +265,8 @@ export function ForecastAccuracy({
         </div>
       )}
       {coverage && coverage.n_samples === 0 && (
-        <div className="mt-2 px-3 py-2 bg-sea-800 rounded-lg">
-          <span className="text-xs text-gray-500">
+        <div className="mt-2 px-3 py-2 bg-surface-secondary rounded-lg">
+          <span className="text-xs text-content-muted">
             Coverage rate: collecting interval data...
           </span>
         </div>
@@ -258,7 +275,7 @@ export function ForecastAccuracy({
       {/* Breakdown bar chart */}
       {chartData && chartData.length > 0 && (
         <div className="mt-4">
-          <p className="text-xs text-gray-500 mb-2">
+          <p className="text-xs text-content-muted mb-2">
             MAE by {breakdownBy === "weekday" ? "day of week" : "hour of day"} (
             {PRICE_UNIT})
           </p>
@@ -269,12 +286,12 @@ export function ForecastAccuracy({
             >
               <CartesianGrid
                 strokeDasharray="3 3"
-                stroke="#374151"
+                stroke={cc.grid}
                 vertical={false}
               />
               <XAxis
                 dataKey="label"
-                tick={{ fill: "#9ca3af", fontSize: 10 }}
+                tick={{ fill: cc.axis, fontSize: 10 }}
                 interval={breakdownBy === "hour" ? 1 : 0}
                 angle={breakdownBy === "hour" ? -45 : 0}
                 textAnchor={breakdownBy === "hour" ? "end" : "middle"}
@@ -282,17 +299,19 @@ export function ForecastAccuracy({
               />
               <YAxis
                 tickFormatter={(v: number) => formatPrice(v)}
-                tick={{ fill: "#9ca3af", fontSize: 10 }}
+                tick={{ fill: cc.axis, fontSize: 10 }}
                 width={32}
               />
-              <Tooltip content={(props) => <BreakdownTooltip {...props} />} />
+              <Tooltip
+                content={(props) => <BreakdownTooltip {...props} cc={cc} />}
+              />
               {chartModels.map((model) => (
                 <Bar
                   key={model}
                   dataKey={model}
                   name={modelLabel(model)}
-                  fill={MODEL_COLORS[model] || "#6366f1"}
-                  opacity={0.8}
+                  fill={getModelColor(model, cc)}
+                  opacity={0.85}
                   radius={[2, 2, 0, 0]}
                 />
               ))}

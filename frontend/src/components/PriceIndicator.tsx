@@ -30,30 +30,33 @@ export function PriceIndicator({ prices }: PriceIndicatorProps) {
   let level: string, color: string, bg: string;
   if (sek <= avg * 0.82) {
     level = "Cheap";
-    color = "text-cyan-300";
-    bg = "bg-cyan-950/40 border-cyan-800/40";
+    color = "text-cyan-500 dark:text-cyan-300";
+    bg =
+      "bg-[var(--indicator-cheap-bg)] border-[var(--indicator-cheap-border)]";
   } else if (sek >= avg * 1.18) {
     level = "Expensive";
-    color = "text-orange-300";
-    bg = "bg-orange-950/40 border-orange-800/40";
+    color = "text-orange-600 dark:text-orange-300";
+    bg =
+      "bg-[var(--indicator-expensive-bg)] border-[var(--indicator-expensive-border)]";
   } else {
     level = "Normal";
-    color = "text-gray-200";
-    bg = "bg-sea-800/50 border-sea-700/40";
+    color = "text-content-primary";
+    bg =
+      "bg-[var(--indicator-normal-bg)] border-[var(--indicator-normal-border)]";
   }
 
   return (
     <div className={`rounded-xl border px-5 py-4 ${bg}`}>
-      <p className="text-xs text-gray-400 mb-1">
+      <p className="text-xs text-content-secondary mb-1">
         Right now ({currentCETTime15()} CET)
       </p>
       <div className="flex items-baseline gap-2">
         <span className={`text-3xl font-bold ${color}`}>
           {formatPrice(sek)}
         </span>
-        <span className="text-gray-400 text-sm">{PRICE_UNIT}</span>
+        <span className="text-content-secondary text-sm">{PRICE_UNIT}</span>
       </div>
-      <p className="text-xs text-gray-500 mt-1">
+      <p className="text-xs text-content-muted mt-1">
         <span className={`font-medium ${color}`}>{level}</span>
         {" · "}avg {formatPrice(avg)} {PRICE_UNIT} vs today
       </p>

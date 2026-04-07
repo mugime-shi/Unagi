@@ -30,7 +30,7 @@ export function NotificationBell({ area }: NotificationBellProps) {
           ? "text-blue-400 hover:text-blue-300"
           : status === "denied"
             ? "text-red-500 cursor-not-allowed opacity-50"
-            : "text-gray-500 hover:text-gray-300"
+            : "text-white/60 hover:text-white/90"
       }`}
     >
       {isSubscribed ? <BellFilledIcon /> : <BellOutlineIcon />}

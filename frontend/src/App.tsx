@@ -3,6 +3,7 @@ import { CheapHoursWidget } from "./components/CheapHoursWidget";
 import { ForecastAccuracy } from "./components/ForecastAccuracy";
 import { GenerationChart } from "./components/GenerationChart";
 import { NotificationBell } from "./components/NotificationBell";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { PriceChart } from "./components/PriceChart";
 import { PriceHistory } from "./components/PriceHistory";
 import { PriceIndicator } from "./components/PriceIndicator";
@@ -245,15 +246,16 @@ export default function App() {
   const areaCity: string = AREAS.find((a) => a.id === area)?.city ?? area;
 
   return (
-    <div className="min-h-screen bg-sea-950 text-gray-100 flex flex-col">
-      <header className="sticky top-0 z-50 bg-sea-950 border-b border-sea-800 px-4 sm:px-6 py-3">
+    <div className="min-h-screen bg-surface-page text-content-primary flex flex-col">
+      {/* Header — Marine Blue (light) / Deep Sea (dark). Always dark-toned so the white-text logo stays readable. */}
+      <header className="sticky top-0 z-50 bg-sky-700 dark:bg-sea-950 border-b border-sky-800 dark:border-sea-800 px-4 sm:px-6 py-3">
         <div className="flex items-center gap-3">
           <img
             src="/logo/unagi_log.png"
             alt="Unagi"
             className="h-12 w-auto -my-1 shrink-0"
           />
-          <span className="hidden sm:inline text-[11px] text-[#8a919c] tracking-wide self-end mb-0">
+          <span className="hidden sm:inline text-[11px] text-white/50 tracking-wide self-end mb-0">
             Catch an E[el] for now and then.
           </span>
 
@@ -270,8 +272,8 @@ export default function App() {
                 onClick={() => setLayer(id)}
                 className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
                   layer === id
-                    ? "bg-sea-700 text-white"
-                    : "text-gray-500 hover:text-gray-300"
+                    ? "bg-sky-500 dark:bg-sea-700 text-white"
+                    : "text-white/55 hover:text-white/90"
                 }`}
               >
                 {label}
@@ -279,9 +281,10 @@ export default function App() {
             ))}
           </nav>
 
+          <ThemeToggle />
           <NotificationBell area={area} />
         </div>
-        <p className="sm:hidden text-[11px] text-[#8a919c] tracking-wide mt-1">
+        <p className="sm:hidden text-[11px] text-white/50 tracking-wide mt-1">
           Catch an E[el] for now and then.
         </p>
       </header>
@@ -305,7 +308,7 @@ export default function App() {
                   className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
                     tab === id
                       ? "bg-sky-600 text-white"
-                      : "bg-sea-800 text-gray-400 hover:bg-sea-700"
+                      : "bg-surface-secondary text-content-secondary hover:bg-surface-tertiary"
                   }`}
                 >
                   {label}
@@ -321,7 +324,7 @@ export default function App() {
                       d.setDate(d.getDate() - 1);
                       setForecastDate(d.toISOString().split("T")[0]);
                     }}
-                    className="px-2 py-1 rounded-lg bg-sea-800 text-gray-400 hover:text-white hover:bg-sea-700 transition-colors text-sm"
+                    className="px-2 py-1 rounded-lg bg-surface-secondary text-content-secondary hover:text-content-primary hover:bg-surface-tertiary transition-colors text-sm"
                   >
                     &larr;
                   </button>
@@ -335,10 +338,10 @@ export default function App() {
                       }
                       className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                     />
-                    <div className="bg-sea-800 border border-sea-700 rounded-lg px-3 py-1 text-sm text-gray-300 pointer-events-none flex items-center gap-2">
+                    <div className="bg-surface-secondary border border-surface-tertiary rounded-lg px-3 py-1 text-sm text-content-primary pointer-events-none flex items-center gap-2">
                       <span>
                         {forecastDate}{" "}
-                        <span className="text-gray-500">
+                        <span className="text-content-muted">
                           (
                           {new Date(
                             forecastDate + "T12:00:00",
@@ -348,7 +351,7 @@ export default function App() {
                       </span>
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
-                        className="w-4 h-4 text-gray-500 shrink-0"
+                        className="w-4 h-4 text-content-muted shrink-0"
                         fill="none"
                         viewBox="0 0 24 24"
                         stroke="currentColor"
@@ -370,7 +373,7 @@ export default function App() {
                       if (next <= weekAheadISO()) setForecastDate(next);
                     }}
                     disabled={forecastDate >= weekAheadISO()}
-                    className="px-2 py-1 rounded-lg bg-sea-800 text-gray-400 hover:text-white hover:bg-sea-700 transition-colors text-sm disabled:opacity-30 disabled:pointer-events-none"
+                    className="px-2 py-1 rounded-lg bg-surface-secondary text-content-secondary hover:text-content-primary hover:bg-surface-tertiary transition-colors text-sm disabled:opacity-30 disabled:pointer-events-none"
                   >
                     &rarr;
                   </button>
@@ -389,22 +392,22 @@ export default function App() {
                     className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
                       area === id
                         ? "bg-sky-600 text-white"
-                        : "text-gray-500 hover:text-gray-300 border border-sea-700"
+                        : "text-content-muted hover:text-content-primary border border-surface-tertiary"
                     }`}
                   >
                     {label}
                   </button>
                 ))}
               </div>
-              <span className="text-gray-500 text-sm whitespace-nowrap">
+              <span className="text-content-muted text-sm whitespace-nowrap">
                 · {areaCity}
               </span>
               {tab === "today" && (
-                <span className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sea-800/50 border border-sea-700/40 shadow-[inset_0_1px_0_0_rgba(148,163,184,0.05)] whitespace-nowrap">
-                  <span className="text-sm font-mono text-gray-300 tabular-nums tracking-wide">
+                <span className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-secondary/50 border border-surface-tertiary/40 shadow-[inset_0_1px_0_0_rgba(148,163,184,0.05)] whitespace-nowrap">
+                  <span className="text-sm font-mono text-content-primary tabular-nums tracking-wide">
                     {todayISO()}
                   </span>
-                  <span className="text-xs text-cyan-400/60 font-medium">
+                  <span className="text-xs text-cyan-600 dark:text-cyan-400/60 font-medium">
                     (
                     {new Date().toLocaleDateString("en-US", {
                       weekday: "short",
@@ -421,35 +424,35 @@ export default function App() {
                 {todayLoading && !todayData && (
                   <div className="animate-pulse space-y-4">
                     {/* PriceIndicator skeleton */}
-                    <div className="bg-sea-900 rounded-2xl p-4 flex items-center gap-4">
-                      <div className="h-10 bg-sea-700 rounded w-24" />
-                      <div className="h-4 bg-sea-700 rounded w-32" />
+                    <div className="bg-surface-primary rounded-2xl p-4 flex items-center gap-4">
+                      <div className="h-10 bg-surface-tertiary rounded w-24" />
+                      <div className="h-4 bg-surface-tertiary rounded w-32" />
                     </div>
                     {/* Chart skeleton */}
-                    <div className="bg-sea-900 rounded-2xl p-4">
+                    <div className="bg-surface-primary rounded-2xl p-4">
                       <div className="flex items-center justify-between mb-4">
-                        <div className="h-4 bg-sea-700 rounded w-40" />
-                        <div className="h-3 bg-sea-700 rounded w-12" />
+                        <div className="h-4 bg-surface-tertiary rounded w-40" />
+                        <div className="h-3 bg-surface-tertiary rounded w-12" />
                       </div>
-                      <div className="h-[260px] bg-sea-800 rounded-xl" />
+                      <div className="h-[260px] bg-surface-secondary rounded-xl" />
                     </div>
                     {/* Summary cards skeleton */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       {[0, 1, 2, 3].map((i) => (
                         <div
                           key={i}
-                          className="bg-sea-900 rounded-xl py-3 px-4 space-y-2"
+                          className="bg-surface-primary rounded-xl py-3 px-4 space-y-2"
                         >
-                          <div className="h-3 bg-sea-700 rounded w-16 mx-auto" />
-                          <div className="h-6 bg-sea-700 rounded w-12 mx-auto" />
-                          <div className="h-3 bg-sea-700 rounded w-10 mx-auto" />
+                          <div className="h-3 bg-surface-tertiary rounded w-16 mx-auto" />
+                          <div className="h-6 bg-surface-tertiary rounded w-12 mx-auto" />
+                          <div className="h-3 bg-surface-tertiary rounded w-10 mx-auto" />
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
                 {todayError && (
-                  <p className="text-red-400 text-sm">
+                  <p className="text-red-500 text-sm">
                     Failed to load prices: {todayError.message}
                   </p>
                 )}
@@ -460,18 +463,18 @@ export default function App() {
 
                     {/* Price + Generation visual group */}
                     <div className="space-y-2">
-                      <div className="bg-sea-900 rounded-2xl p-4">
+                      <div className="bg-surface-primary rounded-2xl p-4">
                         <div className="flex items-center justify-between mb-4">
                           <div>
-                            <h2 className="text-sm font-medium text-gray-300">
+                            <h2 className="text-sm font-medium text-content-primary">
                               Spot price
-                              <span className="text-gray-500 ml-1.5">
+                              <span className="text-content-muted ml-1.5">
                                 {dateWithWeekday(todayData.date)} ·{" "}
                                 {todayData.count} slots
                               </span>
                             </h2>
                             {balancing && (
-                              <p className="text-xs text-gray-500 mt-0.5">
+                              <p className="text-xs text-content-muted mt-0.5">
                                 + Imbalance prices (eSett EXP14) ·{" "}
                                 {balancing.count} pts
                               </p>
@@ -512,15 +515,15 @@ export default function App() {
                           ).map(({ label, value }) => (
                             <div
                               key={label}
-                              className="bg-sea-800 rounded-xl py-3"
+                              className="bg-surface-secondary rounded-xl py-3"
                             >
-                              <p className="text-xs text-gray-500 mb-1">
+                              <p className="text-xs text-content-muted mb-1">
                                 {label}
                               </p>
                               <p className="text-lg font-semibold">
                                 {value != null ? formatPrice(value) : "\u2014"}
                               </p>
-                              <p className="text-[10px] text-gray-600">
+                              <p className="text-[10px] text-content-faint">
                                 {PRICE_UNIT}
                               </p>
                             </div>
@@ -547,28 +550,28 @@ export default function App() {
               <>
                 {forecastLoading && !forecastPriceData && (
                   <div className="animate-pulse space-y-4">
-                    <div className="bg-sea-900 rounded-2xl p-4">
+                    <div className="bg-surface-primary rounded-2xl p-4">
                       <div className="flex items-center justify-between mb-4">
-                        <div className="h-4 bg-sea-700 rounded w-36" />
-                        <div className="h-3 bg-sea-700 rounded w-16" />
+                        <div className="h-4 bg-surface-tertiary rounded w-36" />
+                        <div className="h-3 bg-surface-tertiary rounded w-16" />
                       </div>
-                      <div className="h-[260px] bg-sea-800 rounded-xl" />
+                      <div className="h-[260px] bg-surface-secondary rounded-xl" />
                     </div>
                     <div className="grid grid-cols-3 gap-3">
                       {[0, 1, 2].map((i) => (
                         <div
                           key={i}
-                          className="bg-sea-900 rounded-xl py-3 px-4 space-y-2"
+                          className="bg-surface-primary rounded-xl py-3 px-4 space-y-2"
                         >
-                          <div className="h-3 bg-sea-700 rounded w-12 mx-auto" />
-                          <div className="h-6 bg-sea-700 rounded w-14 mx-auto" />
+                          <div className="h-3 bg-surface-tertiary rounded w-12 mx-auto" />
+                          <div className="h-6 bg-surface-tertiary rounded w-14 mx-auto" />
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
                 {forecastError && !isFutureDate && (
-                  <p className="text-red-400 text-sm">
+                  <p className="text-red-500 text-sm">
                     Failed to load prices: {forecastError.message}
                   </p>
                 )}
@@ -579,25 +582,25 @@ export default function App() {
                     {isTomorrow &&
                       forecastPriceData.is_estimate &&
                       forecastPriceData.published === false && (
-                        <p className="text-yellow-400 text-xs text-center bg-yellow-400/10 rounded-lg py-2 px-3">
+                        <p className="text-yellow-600 dark:text-yellow-400 text-xs text-center bg-yellow-400/10 rounded-lg py-2 px-3">
                           Tomorrow&apos;s prices are typically published after
                           13:00
                         </p>
                       )}
 
-                    <div className="bg-sea-900 rounded-2xl p-4">
+                    <div className="bg-surface-primary rounded-2xl p-4">
                       <div className="flex items-center justify-between mb-4">
                         <div>
-                          <h2 className="text-sm font-medium text-gray-300">
+                          <h2 className="text-sm font-medium text-content-primary">
                             {isTomorrow ? "Forecast" : "Spot price"}
-                            <span className="text-gray-500 ml-1.5">
+                            <span className="text-content-muted ml-1.5">
                               {dateWithWeekday(forecastPriceData.date)} ·{" "}
                               {forecastPriceData.count} slots
                             </span>
                           </h2>
                           {retrospective?.models &&
                             Object.keys(retrospective.models).length > 0 && (
-                              <p className="text-xs text-gray-500 mt-0.5">
+                              <p className="text-xs text-content-muted mt-0.5">
                                 + Forecast predictions overlay
                               </p>
                             )}
@@ -662,28 +665,28 @@ export default function App() {
                             ).map(({ label, primary, lgbm }) => (
                               <div
                                 key={label}
-                                className="bg-sea-800 rounded-xl py-3"
+                                className="bg-surface-secondary rounded-xl py-3"
                               >
-                                <p className="text-xs text-gray-500 mb-1">
+                                <p className="text-xs text-content-muted mb-1">
                                   {label}
                                 </p>
                                 <p
-                                  className={`text-lg font-semibold ${isLgbmPrimary ? "text-amber-400" : ""}`}
+                                  className={`text-lg font-semibold ${isLgbmPrimary ? "text-amber-600 dark:text-amber-400" : "text-content-primary"}`}
                                 >
                                   {primary != null
                                     ? formatPrice(primary)
                                     : "\u2014"}
                                 </p>
-                                <p className="text-[10px] text-gray-600">
+                                <p className="text-[10px] text-content-faint">
                                   {PRICE_UNIT}
                                 </p>
                                 {isLgbmPrimary && (
-                                  <p className="text-xs text-amber-500/60 mt-0.5">
+                                  <p className="text-xs text-amber-600/80 dark:text-amber-500/60 mt-0.5">
                                     LGBM forecast
                                   </p>
                                 )}
                                 {showLgbmComparison && lgbm != null && (
-                                  <p className="text-xs text-amber-400/80 mt-0.5">
+                                  <p className="text-xs text-amber-600 dark:text-amber-400/80 mt-0.5">
                                     LGBM {formatPrice(lgbm)}
                                   </p>
                                 )}
@@ -720,8 +723,8 @@ export default function App() {
                     {isPastDate &&
                       retrospective?.models &&
                       Object.keys(retrospective.models).length > 0 && (
-                        <div className="bg-sea-900 rounded-xl p-4">
-                          <h3 className="text-xs text-gray-500 mb-3">
+                        <div className="bg-surface-primary rounded-xl p-4">
+                          <h3 className="text-xs text-content-muted mb-3">
                             Prediction accuracy — {forecastPriceData.date}
                           </h3>
                           <div className="space-y-2">
@@ -751,14 +754,14 @@ export default function App() {
                               .map(({ model, pairs, mae }) => (
                                 <div
                                   key={model}
-                                  className="flex items-center justify-between px-3 py-2 rounded-lg bg-sea-800"
+                                  className="flex items-center justify-between px-3 py-2 rounded-lg bg-surface-secondary"
                                 >
-                                  <span className="text-sm font-medium text-gray-200">
+                                  <span className="text-sm font-medium text-content-primary">
                                     {model === "same_weekday_avg"
                                       ? "Weekday Avg"
                                       : model.toUpperCase()}
                                   </span>
-                                  <span className="text-sm text-gray-300">
+                                  <span className="text-sm text-content-primary">
                                     MAE {formatPrice(mae, 1)} {PRICE_UNIT} ·{" "}
                                     {pairs.length} hrs
                                   </span>
@@ -771,7 +774,7 @@ export default function App() {
                 )}
 
                 {!forecastLoading && !forecastError && !forecastPriceData && (
-                  <p className="text-gray-500 text-sm text-center py-8">
+                  <p className="text-content-muted text-sm text-center py-8">
                     No price data available for this date
                   </p>
                 )}
@@ -791,14 +794,14 @@ export default function App() {
         )}
       </main>
 
-      <footer className="border-t border-sea-800 px-4 sm:px-6 py-4 text-right">
-        <span className="text-[11px] text-[#8a919c] italic">
+      <footer className="border-t border-surface-tertiary px-4 sm:px-6 py-4 text-right">
+        <span className="text-[11px] text-content-muted italic">
           A state of total awareness...{" "}
           <a
             href="https://github.com/mugime-shi/Unagi"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs font-bold underline hover:text-gray-400 transition-colors"
+            className="text-xs font-bold underline hover:text-content-secondary transition-colors"
           >
             Unagi
           </a>

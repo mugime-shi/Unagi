@@ -23,6 +23,7 @@ import {
   toLocalHour,
 } from "../utils/formatters";
 import { computeClippedDomain } from "../utils/chartScale";
+import { useChartColors, type ChartColors } from "../hooks/useChartColors";
 import { useIsMobile } from "../hooks/useIsMobile";
 import type {
   BalancingPrice,
@@ -38,10 +39,6 @@ import type {
 
 const NOW_HOUR: number = currentCETHour();
 
-// Unified prediction colors
-const PRED_WEEKDAY_COLOR = "#9ca3af"; // gray-400
-const PRED_LGBM_COLOR = "#fbbf24"; // amber-400 — complementary to blue DA
-
 function priceColor(sek: number): string {
   if (sek <= 0.4) return "#22d3ee"; // cyan — bioluminescent (cheap)
   if (sek <= 0.7) return "#fbbf24"; // amber — eel belly (moderate)
@@ -51,11 +48,13 @@ function priceColor(sek: number): string {
 interface NowPriceLabelProps {
   viewBox?: { x: number; y: number };
   value: number;
+  cc: ChartColors;
 }
 
 function NowPriceLabel({
   viewBox,
   value,
+  cc,
 }: NowPriceLabelProps): ReactElement | null {
   if (!viewBox) return null;
   const { x, y } = viewBox;
@@ -75,9 +74,9 @@ function NowPriceLabel({
         width={w}
         height={h}
         rx={4}
-        fill="#1e293b"
+        fill={cc.tooltipBg}
         fillOpacity={0.9}
-        stroke="#475569"
+        stroke={cc.tooltipBorder}
         strokeWidth={0.5}
       />
       <text
@@ -85,7 +84,7 @@ function NowPriceLabel({
         y={rectY + h / 2 + 1}
         textAnchor="middle"
         dominantBaseline="middle"
-        fill="#cbd5e1"
+        fill={cc.tooltipText}
         fontSize={11}
         fontWeight={600}
       >
@@ -104,6 +103,7 @@ interface PriceChartTooltipProps extends TooltipContentProps<
   NameType
 > {
   showWeekdayAvg: boolean;
+  cc: ChartColors;
 }
 
 function CustomTooltip({
@@ -111,6 +111,7 @@ function CustomTooltip({
   payload,
   label,
   showWeekdayAvg,
+  cc,
 }: PriceChartTooltipProps): ReactElement | null {
   if (!active || !payload?.length) return null;
   const p = payload[0].payload as ChartDataPoint;
@@ -120,8 +121,15 @@ function CustomTooltip({
   const lgbmVal = p.lgbm_forecast ?? p.retro_lgbm ?? null;
 
   return (
-    <div className="bg-sea-800 border border-sea-700 rounded-lg px-3 py-2 text-sm">
-      <p className="text-gray-400">{label}</p>
+    <div
+      className="rounded-lg px-3 py-2 text-sm border"
+      style={{
+        background: cc.tooltipBg,
+        borderColor: cc.tooltipBorder,
+        color: cc.tooltipText,
+      }}
+    >
+      <p style={{ color: cc.axis }}>{label}</p>
 
       {/* Day-ahead price — only when actually published */}
       {!estimated && (
@@ -131,10 +139,14 @@ function CustomTooltip({
             style={{ color: priceColor(p.price_sek_kwh) }}
           >
             {formatPrice(p.price_sek_kwh)}{" "}
-            <span className="text-gray-400 font-normal">{PRICE_UNIT}</span>
-            <span className="text-gray-500 text-xs ml-2">Day-ahead</span>
+            <span style={{ color: cc.axis }} className="font-normal">
+              {PRICE_UNIT}
+            </span>
+            <span style={{ color: cc.axisDim }} className="text-xs ml-2">
+              Day-ahead
+            </span>
           </p>
-          <p className="text-gray-500 text-xs">
+          <p style={{ color: cc.axisDim }} className="text-xs">
             {p.price_eur_mwh.toFixed(1)} EUR/MWh
           </p>
         </>
@@ -142,24 +154,24 @@ function CustomTooltip({
 
       {/* Balancing prices — only with published DA */}
       {!estimated && p.imb_short != null && (
-        <p className="text-orange-400 text-xs mt-1">
+        <p style={{ color: cc.imbShort }} className="text-xs mt-1">
           Imbalance Short: {formatPrice(p.imb_short)} {PRICE_UNIT}
           {p.price_sek_kwh > 0 && (
-            <span className="ml-1 text-orange-500">
+            <span className="ml-1 opacity-80">
               ({((p.imb_short / p.price_sek_kwh - 1) * 100).toFixed(0)}% vs DA)
             </span>
           )}
         </p>
       )}
       {!estimated && p.imb_long != null && (
-        <p className="text-teal-400 text-xs">
+        <p style={{ color: cc.imbLong }} className="text-xs">
           Imbalance Long: {formatPrice(p.imb_long)} {PRICE_UNIT}
         </p>
       )}
 
       {/* Weekday Avg — forward forecast only */}
       {showWeekdayAvg && p.forecast_low != null && (
-        <p className="text-gray-400 text-xs mt-1">
+        <p style={{ color: cc.weekdayAvg }} className="text-xs mt-1">
           Weekday Avg {formatPrice(p.forecast_low)}–
           {formatPrice((p.forecast_low ?? 0) + (p.forecast_band ?? 0))}
         </p>
@@ -168,17 +180,20 @@ function CustomTooltip({
       {/* LGBM — single unified line (forecast or retro, never both) */}
       {lgbmVal != null && (
         <p
-          className={`text-xs mt-1 ${estimated ? "text-amber-400 font-semibold text-sm" : "text-amber-400"}`}
+          style={{ color: cc.lgbm }}
+          className={`text-xs mt-1 ${estimated ? "font-semibold text-sm" : ""}`}
         >
           LGBM {formatPrice(lgbmVal)}
           {p.lgbm_low != null && p.lgbm_band != null && (
-            <span className="text-amber-500/70 ml-1">
+            <span className="ml-1 opacity-70">
               [{formatPrice(p.lgbm_low)}–
               {formatPrice((p.lgbm_low ?? 0) + (p.lgbm_band ?? 0))}]
             </span>
           )}
           {estimated && (
-            <span className="text-gray-400 font-normal ml-1">{PRICE_UNIT}</span>
+            <span style={{ color: cc.axis }} className="font-normal ml-1">
+              {PRICE_UNIT}
+            </span>
           )}
         </p>
       )}
@@ -189,9 +204,10 @@ function CustomTooltip({
           {p.shap_top.slice(0, 3).map((s: ShapFeature) => (
             <p
               key={s.group}
-              className={
-                s.impact > 0 ? "text-amber-500/80" : "text-cyan-500/80"
-              }
+              style={{
+                color: s.impact > 0 ? cc.lgbm : cc.imbLong,
+                opacity: 0.8,
+              }}
             >
               {s.impact > 0 ? "\u2191" : "\u2193"} {s.group} (
               {s.impact > 0 ? "+" : ""}
@@ -236,6 +252,10 @@ export function PriceChart({
   predictedAt = null,
   showNowMarker = true,
 }: PriceChartProps): ReactElement {
+  const cc = useChartColors();
+  const PRED_WEEKDAY_COLOR = cc.weekdayAvg;
+  const PRED_LGBM_COLOR = cc.lgbm;
+
   const [showLgbm, setShowLgbm] = useState<boolean>(defaultShowLgbm);
   const [showWeekdayAvg, setShowWeekdayAvg] = useState<boolean>(
     defaultShowWeekdayAvg,
@@ -408,11 +428,11 @@ export function PriceChart({
     <div className="w-full">
       {isEstimate && (
         <div className="text-center mb-2">
-          <p className="text-xs text-yellow-400">
+          <p className="text-xs text-yellow-600 dark:text-yellow-400">
             Prices not yet published — showing ML predictions
           </p>
           {predictedAt && (
-            <p className="text-[10px] text-gray-500 mt-0.5">
+            <p className="text-[10px] text-content-muted mt-0.5">
               Predicted{" "}
               {new Date(predictedAt).toLocaleDateString("sv-SE", {
                 timeZone: "Europe/Stockholm",
@@ -436,14 +456,17 @@ export function PriceChart({
 
       {/* Legend row */}
       <div className="flex items-center justify-end mb-2">
-        <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap">
+        <div className="flex items-center gap-3 text-xs text-content-secondary flex-wrap">
           {/* Day-ahead legend — only with published prices */}
           {!isEstimate && (
             <span className="flex items-center gap-1.5">
-              <span className="inline-block w-5 border-t-[3px] border-blue-400" />
+              <span
+                className="inline-block w-5 border-t-[3px]"
+                style={{ borderColor: cc.daLine }}
+              />
               Day-ahead
               {legendDA?.price_sek_kwh != null && (
-                <span className="text-blue-400 font-medium">
+                <span style={{ color: cc.daLine }} className="font-medium">
                   {formatPrice(legendDA.price_sek_kwh)}
                 </span>
               )}
@@ -454,19 +477,25 @@ export function PriceChart({
           {hasBalancing && (
             <>
               <span className="flex items-center gap-1.5">
-                <span className="inline-block w-5 border-t border-orange-400" />
+                <span
+                  className="inline-block w-5 border-t"
+                  style={{ borderColor: cc.imbShort }}
+                />
                 Imb Short
                 {legendImb?.imb_short != null && (
-                  <span className="text-orange-400 font-medium">
+                  <span style={{ color: cc.imbShort }} className="font-medium">
                     {formatPrice(legendImb.imb_short)}
                   </span>
                 )}
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="inline-block w-5 border-t border-teal-400" />
+                <span
+                  className="inline-block w-5 border-t"
+                  style={{ borderColor: cc.imbLong }}
+                />
                 Imb Long
                 {legendImb?.imb_long != null && (
-                  <span className="text-teal-400 font-medium">
+                  <span style={{ color: cc.imbLong }} className="font-medium">
                     {formatPrice(legendImb.imb_long)}
                   </span>
                 )}
@@ -480,8 +509,8 @@ export function PriceChart({
               onClick={() => setShowLgbm((v) => !v)}
               className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border transition-colors ${
                 showLgbm
-                  ? "border-amber-600 text-amber-400 bg-amber-900/20"
-                  : "border-sea-700 text-gray-500 hover:text-gray-400"
+                  ? "border-amber-600 text-amber-600 dark:text-amber-400 bg-amber-100/40 dark:bg-amber-900/20"
+                  : "border-surface-tertiary text-content-muted hover:text-content-secondary"
               }`}
             >
               <span className="inline-block w-4 border-t-2 border-dashed border-current" />
@@ -493,8 +522,8 @@ export function PriceChart({
               onClick={() => setShowWeekdayAvg((v) => !v)}
               className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border transition-colors ${
                 showWeekdayAvg
-                  ? "border-sea-700 text-gray-300 bg-sea-700/30"
-                  : "border-sea-700 text-gray-500 hover:text-gray-400"
+                  ? "border-surface-tertiary text-content-primary bg-surface-tertiary/30"
+                  : "border-surface-tertiary text-content-muted hover:text-content-secondary"
               }`}
             >
               <span className="inline-block w-4 border-t-2 border-dashed border-current" />
@@ -503,7 +532,7 @@ export function PriceChart({
           )}
 
           {(legendDA || legendImb) && (
-            <span className="text-gray-500">{PRICE_UNIT}</span>
+            <span className="text-content-muted">{PRICE_UNIT}</span>
           )}
         </div>
       </div>
@@ -523,14 +552,14 @@ export function PriceChart({
         >
           <CartesianGrid
             strokeDasharray="3 3"
-            stroke="#374151"
+            stroke={cc.grid}
             vertical={false}
           />
           <XAxis
             dataKey="hour"
             ticks={filteredTicks}
             tickFormatter={tickFormatter}
-            tick={{ fill: "#9ca3af", fontSize: 11, dy: 4 }}
+            tick={{ fill: cc.axis, fontSize: 11, dy: 4 }}
             angle={-45}
             textAnchor="end"
           />
@@ -538,22 +567,26 @@ export function PriceChart({
             yAxisId="price"
             domain={domain}
             tickFormatter={(v: number) => formatPrice(v)}
-            tick={{ fill: "#9ca3af", fontSize: 11 }}
+            tick={{ fill: cc.axis, fontSize: 11 }}
             width={48}
             padding={{ top: 16 }}
           />
           <Tooltip
             content={(props) => (
-              <CustomTooltip {...props} showWeekdayAvg={showWeekdayAvg} />
+              <CustomTooltip
+                {...props}
+                showWeekdayAvg={showWeekdayAvg}
+                cc={cc}
+              />
             )}
           />
           {chartData.length > 0 && (
             <ReferenceLine
               yAxisId="price"
               y={avg}
-              stroke="#6b7280"
+              stroke={cc.axisDim}
               strokeDasharray="4 4"
-              label={{ value: "avg", fill: "#6b7280", fontSize: 11 }}
+              label={{ value: "avg", fill: cc.axisDim, fontSize: 11 }}
             />
           )}
 
@@ -564,7 +597,7 @@ export function PriceChart({
                 yAxisId="price"
                 type="monotone"
                 dataKey="imb_long"
-                stroke="#2dd4bf"
+                stroke={cc.imbLong}
                 strokeWidth={1.5}
                 strokeOpacity={0.6}
                 dot={false}
@@ -576,7 +609,7 @@ export function PriceChart({
                 yAxisId="price"
                 type="monotone"
                 dataKey="imb_short"
-                stroke="#f97316"
+                stroke={cc.imbShort}
                 strokeWidth={1.5}
                 strokeOpacity={0.6}
                 dot={false}
@@ -717,10 +750,10 @@ export function PriceChart({
               yAxisId="price"
               type="monotone"
               dataKey="price_sek_kwh"
-              stroke="#60a5fa"
+              stroke={cc.daLine}
               strokeWidth={3}
               dot={<CustomDot />}
-              activeDot={{ r: 4, fill: "#60a5fa" }}
+              activeDot={{ r: 4, fill: cc.daLine }}
             />
           )}
 
@@ -744,7 +777,7 @@ export function PriceChart({
             <ReferenceLine
               yAxisId="price"
               x={nowEntry.hour}
-              stroke="#94a3b8"
+              stroke={cc.axis}
               strokeWidth={1}
               strokeDasharray="3 3"
               strokeOpacity={0.4}
@@ -758,8 +791,8 @@ export function PriceChart({
               y={nowEntry.price_sek_kwh}
               yAxisId="price"
               r={5}
-              fill="#60a5fa"
-              stroke="#0f172a"
+              fill={cc.daLine}
+              stroke={cc.nowDotRing}
               strokeWidth={2}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               {...({ isFront: true } as Record<string, unknown>)}
@@ -767,6 +800,7 @@ export function PriceChart({
                 <NowPriceLabel
                   value={nowEntry.price_sek_kwh}
                   viewBox={undefined}
+                  cc={cc}
                 />
               }
             />

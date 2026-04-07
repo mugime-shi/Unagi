@@ -13,14 +13,18 @@ function ResultCard({ label, cost, savings }: ResultCardProps) {
     savings === undefined
       ? ""
       : savings >= 0
-        ? "text-cyan-400"
-        : "text-orange-400";
+        ? "text-cyan-600 dark:text-cyan-400"
+        : "text-orange-600 dark:text-orange-400";
 
   return (
-    <div className="bg-sea-800 rounded-xl p-3 text-center">
-      <p className="text-xs text-gray-400 mb-1 leading-tight">{label}</p>
-      <p className="text-lg font-semibold">{cost.toFixed(0)}</p>
-      <p className="text-xs text-gray-500">SEK/mo</p>
+    <div className="bg-surface-secondary rounded-xl p-3 text-center">
+      <p className="text-xs text-content-secondary mb-1 leading-tight">
+        {label}
+      </p>
+      <p className="text-lg font-semibold text-content-primary">
+        {cost.toFixed(0)}
+      </p>
+      <p className="text-xs text-content-muted">SEK/mo</p>
       {savings !== undefined && (
         <p className={`text-xs mt-1 font-medium ${savingsColor}`}>
           {savings >= 0 ? "\u2212" : "+"}
@@ -45,11 +49,11 @@ export function ConsumptionSimulator() {
   };
 
   return (
-    <div className="bg-sea-900 rounded-2xl p-4">
-      <h2 className="text-sm font-medium text-gray-300 mb-1">
+    <div className="bg-surface-primary rounded-2xl p-4">
+      <h2 className="text-sm font-medium text-content-primary mb-1">
         Monthly cost comparison
       </h2>
-      <p className="text-xs text-gray-600 mb-3">
+      <p className="text-xs text-content-faint mb-3">
         Fixed contract vs dynamic (spot) pricing
       </p>
 
@@ -58,7 +62,9 @@ export function ConsumptionSimulator() {
         className="flex flex-wrap gap-3 mb-4 items-end"
       >
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-400">Monthly usage</label>
+          <label className="text-xs text-content-secondary">
+            Monthly usage
+          </label>
           <div className="relative">
             <input
               type="number"
@@ -66,19 +72,19 @@ export function ConsumptionSimulator() {
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                 setKwh(e.target.value)
               }
-              className="bg-sea-800 border border-sea-700 rounded-lg px-3 py-1.5 text-sm w-28 pr-10"
+              className="bg-surface-secondary border border-surface-tertiary text-content-primary rounded-lg px-3 py-1.5 text-sm w-28 pr-10"
               min="1"
               max="10000"
               step="1"
             />
-            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-content-muted">
               kWh
             </span>
           </div>
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-400">Fixed price</label>
+          <label className="text-xs text-content-secondary">Fixed price</label>
           <div className="relative">
             <input
               type="number"
@@ -89,9 +95,9 @@ export function ConsumptionSimulator() {
               step="0.01"
               min="0.1"
               max="10"
-              className="bg-sea-800 border border-sea-700 rounded-lg px-3 py-1.5 text-sm w-28 pr-14"
+              className="bg-surface-secondary border border-surface-tertiary text-content-primary rounded-lg px-3 py-1.5 text-sm w-28 pr-14"
             />
-            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-content-muted">
               SEK/kWh
             </span>
           </div>
@@ -141,13 +147,13 @@ export function ConsumptionSimulator() {
             />
           </div>
           {result.monthly_avg && (
-            <p className="text-xs text-blue-400/80 text-center mb-1">
+            <p className="text-xs text-blue-600 dark:text-blue-400/80 text-center mb-1">
               This month&apos;s avg spot so far:{" "}
               {formatPrice(result.monthly_avg.avg_spot_sek_kwh)} {PRICE_UNIT} (
               {result.period?.month_days_with_data} days)
             </p>
           )}
-          <p className="text-xs text-gray-600 text-center">
+          <p className="text-xs text-content-faint text-center">
             Based on {result.period?.days_with_data} days of SE3 real prices ·{" "}
             avg spot {formatPrice(result.dynamic.avg_spot_sek_kwh)} {PRICE_UNIT}
           </p>

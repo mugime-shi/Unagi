@@ -16,6 +16,7 @@ import type {
 import type { TooltipContentProps } from "recharts";
 import { ZoneComparison } from "./ZoneComparison";
 import { dateWithWeekday, formatPrice, PRICE_UNIT } from "../utils/formatters";
+import { useChartColors, type ChartColors } from "../hooks/useChartColors";
 import { useHistory } from "../hooks/useHistory";
 import { useIsMobile } from "../hooks/useIsMobile";
 import type { Area as AreaType, HistoryDay } from "../types/index";
@@ -33,18 +34,30 @@ function CustomTooltip({
   active,
   payload,
   label,
-}: TooltipContentProps<ValueType, NameType>): ReactElement | null {
+  cc,
+}: TooltipContentProps<ValueType, NameType> & {
+  cc: ChartColors;
+}): ReactElement | null {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload as HistoryDay;
   return (
-    <div className="bg-sea-800 border border-sea-700 rounded-lg px-3 py-2 text-xs">
-      <p className="text-gray-400 mb-1">{dateWithWeekday(label as string)}</p>
-      <p className="text-white font-semibold">
+    <div
+      className="rounded-lg px-3 py-2 text-xs border"
+      style={{
+        background: cc.tooltipBg,
+        borderColor: cc.tooltipBorder,
+        color: cc.tooltipText,
+      }}
+    >
+      <p style={{ color: cc.axis }} className="mb-1">
+        {dateWithWeekday(label as string)}
+      </p>
+      <p className="font-semibold">
         avg {d.avg_sek_kwh != null ? formatPrice(d.avg_sek_kwh, 1) : "\u2014"}{" "}
         {PRICE_UNIT}
       </p>
       {d.min_sek_kwh != null && (
-        <p className="text-gray-500">
+        <p style={{ color: cc.axisDim }}>
           min {formatPrice(d.min_sek_kwh, 1)} &middot; max{" "}
           {formatPrice(d.max_sek_kwh!, 1)}
         </p>
@@ -97,6 +110,7 @@ function getAdaptiveTicks(points: HistoryDay[], days: number): string[] {
 export function PriceHistory({
   area = "SE3",
 }: PriceHistoryProps): ReactElement {
+  const cc = useChartColors();
   const [tab, setTab] = useState<"history" | "zones">("history");
   const [days, setDays] = useState<number>(90);
   const isMobile = useIsMobile();
@@ -109,8 +123,8 @@ export function PriceHistory({
       onClick={() => setTab(id)}
       className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
         tab === id
-          ? "bg-sea-700 text-white"
-          : "text-gray-500 hover:text-gray-300"
+          ? "bg-surface-tertiary text-content-primary"
+          : "text-content-muted hover:text-content-secondary"
       }`}
     >
       {label}
@@ -130,8 +144,8 @@ export function PriceHistory({
             onClick={() => setDays(d)}
             className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
               days === d
-                ? "bg-sea-700 text-white"
-                : "text-gray-600 hover:text-gray-300"
+                ? "bg-surface-tertiary text-content-primary"
+                : "text-content-faint hover:text-content-secondary"
             }`}
           >
             {label}
@@ -154,14 +168,14 @@ export function PriceHistory({
     return (
       <div className="space-y-3">
         {subNav}
-        <p className="text-gray-500 text-sm">Loading history...</p>
+        <p className="text-content-muted text-sm">Loading history...</p>
       </div>
     );
   if (error)
     return (
       <div className="space-y-3">
         {subNav}
-        <p className="text-red-400 text-sm">
+        <p className="text-red-500 text-sm">
           Failed to load history: {error.message}
         </p>
       </div>
@@ -174,7 +188,7 @@ export function PriceHistory({
     return (
       <div className="space-y-3">
         {subNav}
-        <p className="text-gray-500 text-sm">
+        <p className="text-content-muted text-sm">
           No historical data available yet.
         </p>
       </div>
@@ -190,10 +204,10 @@ export function PriceHistory({
   return (
     <div className="space-y-3">
       {subNav}
-      <div className="bg-sea-900 rounded-2xl p-4 space-y-4">
-        <h2 className="text-sm font-medium text-gray-300">
+      <div className="bg-surface-primary rounded-2xl p-4 space-y-4">
+        <h2 className="text-sm font-medium text-content-primary">
           Spot price
-          <span className="text-gray-500 ml-1.5">
+          <span className="text-content-muted ml-1.5">
             last {days} days &middot; {area}
           </span>
         </h2>
@@ -205,51 +219,53 @@ export function PriceHistory({
           >
             <defs>
               <linearGradient id="histGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#60a5fa" stopOpacity={0} />
+                <stop offset="5%" stopColor={cc.daFill} stopOpacity={0.3} />
+                <stop offset="95%" stopColor={cc.daFill} stopOpacity={0} />
               </linearGradient>
             </defs>
             <CartesianGrid
               strokeDasharray="3 3"
-              stroke="#374151"
+              stroke={cc.grid}
               vertical={false}
             />
             <XAxis
               dataKey="date"
               ticks={ticks}
               tickFormatter={(iso: string) => formatTick(iso, days)}
-              tick={{ fill: "#6b7280", fontSize: 10 }}
+              tick={{ fill: cc.axisDim, fontSize: 10 }}
               axisLine={false}
               tickLine={false}
             />
             <YAxis
               domain={["auto", "auto"]}
-              tick={{ fill: "#6b7280", fontSize: 10 }}
+              tick={{ fill: cc.axisDim, fontSize: 10 }}
               axisLine={false}
               tickLine={false}
               tickFormatter={(v: number) => formatPrice(v)}
               width={48}
             />
-            <Tooltip content={(props) => <CustomTooltip {...props} />} />
+            <Tooltip
+              content={(props) => <CustomTooltip {...props} cc={cc} />}
+            />
             <ReferenceLine
               y={overallAvg}
-              stroke="#9ca3af"
+              stroke={cc.axis}
               strokeDasharray="4 4"
               strokeWidth={1}
             />
             <Area
               type="monotone"
               dataKey="avg_sek_kwh"
-              stroke="#60a5fa"
+              stroke={cc.daLine}
               strokeWidth={2}
               fill="url(#histGrad)"
               dot={false}
-              activeDot={{ r: 4, fill: "#60a5fa" }}
+              activeDot={{ r: 4, fill: cc.daLine }}
             />
           </AreaChart>
         </ResponsiveContainer>
 
-        <p className="text-xs text-gray-700 text-center">
+        <p className="text-xs text-content-faint text-center">
           {points.length} days with data out of last {days} &middot; dashed line
           = period average
         </p>
@@ -262,10 +278,12 @@ export function PriceHistory({
           { label: `${days}-day avg`, value: formatPrice(overallAvg, 1) },
           { label: `${days}-day max`, value: formatPrice(overallMax, 1) },
         ].map(({ label, value }) => (
-          <div key={label} className="bg-sea-800 rounded-xl py-3">
-            <p className="text-xs text-gray-500 mb-1">{label}</p>
-            <p className="text-base font-semibold">{value}</p>
-            <p className="text-[10px] text-gray-600">{PRICE_UNIT}</p>
+          <div key={label} className="bg-surface-secondary rounded-xl py-3">
+            <p className="text-xs text-content-muted mb-1">{label}</p>
+            <p className="text-base font-semibold text-content-primary">
+              {value}
+            </p>
+            <p className="text-[10px] text-content-faint">{PRICE_UNIT}</p>
           </div>
         ))}
       </div>

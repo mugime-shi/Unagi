@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Analytics } from "@vercel/analytics/react";
+import { ThemeProvider } from "next-themes";
 import "@/index.css";
 
 export const metadata: Metadata = {
@@ -23,9 +24,6 @@ export const metadata: Metadata = {
     icon: "/logo/favicon.png",
   },
   manifest: "/manifest.json",
-  other: {
-    "theme-color": "#030712",
-  },
 };
 
 export default function RootLayout({
@@ -34,9 +32,28 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <meta
+          name="theme-color"
+          media="(prefers-color-scheme: dark)"
+          content="#060e1f"
+        />
+        <meta
+          name="theme-color"
+          media="(prefers-color-scheme: light)"
+          content="#f8fafc"
+        />
+      </head>
       <body>
-        {children}
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="dark"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {children}
+        </ThemeProvider>
         <Analytics />
         <ServiceWorkerRegistrar />
       </body>

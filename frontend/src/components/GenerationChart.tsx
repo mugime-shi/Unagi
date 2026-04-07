@@ -14,21 +14,24 @@ import type {
 } from "recharts/types/component/DefaultTooltipContent";
 import type { TooltipContentProps } from "recharts";
 import { toLocalHour } from "../utils/formatters";
+import { useChartColors, type ChartColors } from "../hooks/useChartColors";
 import { useIsMobile } from "../hooks/useIsMobile";
 import type { GenerationPoint, PricePoint } from "../types/index";
 
 interface SourceDef {
-  key: string;
-  color: string;
+  key: keyof Pick<
+    ChartColors,
+    "nuclear" | "other" | "hydro" | "wind" | "solar"
+  >;
   label: string;
 }
 
 const SOURCES: SourceDef[] = [
-  { key: "nuclear", color: "#eab308", label: "Nuclear" },
-  { key: "other", color: "#6b7280", label: "Other" },
-  { key: "hydro", color: "#3b82f6", label: "Hydro" },
-  { key: "wind", color: "#22d3ee", label: "Wind" },
-  { key: "solar", color: "#f97316", label: "Solar" },
+  { key: "nuclear", label: "Nuclear" },
+  { key: "other", label: "Other" },
+  { key: "hydro", label: "Hydro" },
+  { key: "wind", label: "Wind" },
+  { key: "solar", label: "Solar" },
 ];
 
 interface GenChartRow {
@@ -87,7 +90,10 @@ function CustomTooltip({
   active,
   payload,
   label,
-}: TooltipContentProps<ValueType, NameType>): ReactElement | null {
+  cc,
+}: TooltipContentProps<ValueType, NameType> & {
+  cc: ChartColors;
+}): ReactElement | null {
   if (!active || !payload?.length) return null;
   const hasData = payload.some(
     (p) => p.value != null && (p.value as number) > 0,
@@ -95,8 +101,17 @@ function CustomTooltip({
   if (!hasData) return null;
   const ci = (payload[0]?.payload as GenChartRow)?.carbon_intensity;
   return (
-    <div className="bg-sea-800 border border-sea-700 rounded-lg px-3 py-2 text-sm">
-      <p className="text-gray-400 mb-1">{label}</p>
+    <div
+      className="rounded-lg px-3 py-2 text-sm border"
+      style={{
+        background: cc.tooltipBg,
+        borderColor: cc.tooltipBorder,
+        color: cc.tooltipText,
+      }}
+    >
+      <p style={{ color: cc.axis }} className="mb-1">
+        {label}
+      </p>
       {[...payload].reverse().map((p) =>
         (p.value as number) > 0 ? (
           <p key={p.dataKey as string} style={{ color: p.fill }}>
@@ -105,7 +120,10 @@ function CustomTooltip({
         ) : null,
       )}
       {ci != null && (
-        <p className="text-gray-400 mt-1 border-t border-sea-700 pt-1">
+        <p
+          style={{ color: cc.axis, borderTopColor: cc.tooltipBorder }}
+          className="mt-1 border-t pt-1"
+        >
           {Math.round(ci)} gCO&#x2082;/kWh
         </p>
       )}
@@ -117,9 +135,9 @@ export function GenerationChart({
   generation,
   prices,
 }: GenerationChartProps): ReactElement | null {
-  if (!generation?.time_series?.length) return null;
-
+  const cc = useChartColors();
   const isMobile = useIsMobile();
+  if (!generation?.time_series?.length) return null;
   const {
     time_series: timeSeries,
     renewable_pct,
@@ -178,21 +196,21 @@ export function GenerationChart({
   );
 
   return (
-    <div className="bg-sea-900 rounded-2xl p-4">
+    <div className="bg-surface-primary rounded-2xl p-4">
       <div className="mb-3">
         <div className="flex items-start justify-between">
-          <h2 className="text-sm font-medium text-gray-300">
+          <h2 className="text-sm font-medium text-content-primary">
             Generation mix &middot; MW
           </h2>
           <div className="flex gap-2 flex-wrap justify-end">
-            {activeSources.map(({ key, color, label }) => (
+            {activeSources.map(({ key, label }) => (
               <span
                 key={key}
-                className="flex items-center gap-1 text-xs text-gray-400"
+                className="flex items-center gap-1 text-xs text-content-secondary"
               >
                 <span
                   className="inline-block w-2.5 h-2.5 rounded-sm"
-                  style={{ backgroundColor: color + "99" }}
+                  style={{ backgroundColor: cc[key] + "99" }}
                 />
                 {label}
               </span>
@@ -200,20 +218,22 @@ export function GenerationChart({
           </div>
         </div>
         {(renewable_pct != null || carbon_free_pct != null) && (
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className="text-xs text-content-muted mt-0.5">
             {renewable_pct != null && (
-              <span className="text-green-400">Renewable {renewable_pct}%</span>
+              <span className="text-green-600 dark:text-green-400">
+                Renewable {renewable_pct}%
+              </span>
             )}
             {renewable_pct != null && carbon_free_pct != null && (
-              <span className="text-gray-600"> &middot; </span>
+              <span className="text-content-faint"> &middot; </span>
             )}
             {carbon_free_pct != null && (
               <span>Carbon-free {carbon_free_pct}%</span>
             )}
             {carbon_intensity != null && (
               <>
-                <span className="text-gray-600"> &middot; </span>
-                <span className="text-gray-400">
+                <span className="text-content-faint"> &middot; </span>
+                <span className="text-content-secondary">
                   {Math.round(carbon_intensity)} gCO&#x2082;/kWh
                 </span>
               </>
@@ -232,7 +252,7 @@ export function GenerationChart({
         >
           <CartesianGrid
             strokeDasharray="3 3"
-            stroke="#374151"
+            stroke={cc.grid}
             vertical={false}
           />
           <XAxis
@@ -244,12 +264,12 @@ export function GenerationChart({
               const h = parseInt(v.slice(0, 2), 10);
               return h % 2 === 0 ? v : "";
             }}
-            tick={{ fill: "#9ca3af", fontSize: 11, dy: 4 }}
+            tick={{ fill: cc.axis, fontSize: 11, dy: 4 }}
             angle={-45}
             textAnchor="end"
           />
           <YAxis
-            tick={{ fill: "#9ca3af", fontSize: 11 }}
+            tick={{ fill: cc.axis, fontSize: 11 }}
             width={48}
             domain={[0, maxTickK * 1000]}
             ticks={yTicks}
@@ -257,16 +277,16 @@ export function GenerationChart({
               v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)
             }
           />
-          <Tooltip content={(props) => <CustomTooltip {...props} />} />
-          {activeSources.map(({ key, color, label }) => (
+          <Tooltip content={(props) => <CustomTooltip {...props} cc={cc} />} />
+          {activeSources.map(({ key, label }) => (
             <Area
               key={key}
               type="monotone"
               dataKey={key}
               name={label}
               stackId="gen"
-              stroke={color}
-              fill={color + "60"}
+              stroke={cc[key]}
+              fill={cc[key] + "60"}
               strokeWidth={1.5}
               dot={false}
               connectNulls={false}

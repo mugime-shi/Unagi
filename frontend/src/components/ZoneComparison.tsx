@@ -1,3 +1,4 @@
+import { ReactElement } from "react";
 import {
   CartesianGrid,
   Legend,
@@ -8,8 +9,13 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { TooltipPayloadEntry } from "recharts";
+import type { TooltipContentProps } from "recharts";
+import type {
+  NameType,
+  ValueType,
+} from "recharts/types/component/DefaultTooltipContent";
 import { formatPrice, PRICE_UNIT } from "../utils/formatters";
+import { useChartColors, type ChartColors } from "../hooks/useChartColors";
 import { useMultiZone } from "../hooks/useMultiZone";
 import type { Area, ZoneDaily } from "../types/index";
 
@@ -52,13 +58,11 @@ function getAdaptiveTicks(points: ZoneDataPoint[], days: number): string[] {
     .map((d) => d.date);
 }
 
-// SE1 = cheapest (north), SE4 = most expensive (south)
-const ZONE_COLORS: Record<Area, string> = {
-  SE1: "#60a5fa", // blue
-  SE2: "#34d399", // green
-  SE3: "#fbbf24", // amber
-  SE4: "#f87171", // red
-};
+const ZONE_KEYS: Area[] = ["SE1", "SE2", "SE3", "SE4"];
+
+function getZoneColors(cc: ChartColors): Record<Area, string> {
+  return { SE1: cc.SE1, SE2: cc.SE2, SE3: cc.SE3, SE4: cc.SE4 };
+}
 
 const ZONE_CITIES: Record<Area, string> = {
   SE1: "Lule\u00e5",
@@ -67,17 +71,27 @@ const ZONE_CITIES: Record<Area, string> = {
   SE4: "Malm\u00f6",
 };
 
-interface ZoneTooltipProps {
-  active?: boolean;
-  payload?: TooltipPayloadEntry[];
-  label?: string;
-}
-
-function ZoneTooltip({ active, payload, label }: ZoneTooltipProps) {
+function ZoneTooltip({
+  active,
+  payload,
+  label,
+  cc,
+}: TooltipContentProps<ValueType, NameType> & {
+  cc: ChartColors;
+}): ReactElement | null {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-sea-800 border border-sea-700 rounded-lg px-3 py-2 text-xs space-y-1">
-      <p className="text-gray-400 mb-1">{label}</p>
+    <div
+      className="rounded-lg px-3 py-2 text-xs space-y-1 border"
+      style={{
+        background: cc.tooltipBg,
+        borderColor: cc.tooltipBorder,
+        color: cc.tooltipText,
+      }}
+    >
+      <p style={{ color: cc.axis }} className="mb-1">
+        {label}
+      </p>
       {payload.map((p) => (
         <p key={String(p.dataKey)} style={{ color: p.color }}>
           {String(p.dataKey)}:{" "}
@@ -107,7 +121,7 @@ function mergeZones(
       SE3: null,
       SE4: null,
     };
-    for (const area of Object.keys(ZONE_COLORS) as Area[]) {
+    for (const area of ZONE_KEYS) {
       const match = zones[area]?.find((d) => d.date === row.date);
       point[area] = match?.avg_sek_kwh ?? null;
     }
@@ -126,30 +140,34 @@ interface ZoneSummary {
 }
 
 export function ZoneComparison({ days = 90 }: ZoneComparisonProps) {
+  const cc = useChartColors();
+  const zoneColors = getZoneColors(cc);
   const { data, loading, error } = useMultiZone(days);
 
   if (loading)
-    return <p className="text-gray-500 text-sm">Loading zone comparison...</p>;
+    return (
+      <p className="text-content-muted text-sm">Loading zone comparison...</p>
+    );
   if (error)
     return (
-      <p className="text-red-400 text-sm">Failed to load: {error.message}</p>
+      <p className="text-red-500 text-sm">Failed to load: {error.message}</p>
     );
 
   const points = mergeZones(data?.zones).filter((d) =>
-    (Object.keys(ZONE_COLORS) as Area[]).some((z) => d[z] != null),
+    ZONE_KEYS.some((z) => d[z] != null),
   );
 
   if (points.length === 0) {
     return (
-      <div className="bg-sea-900 rounded-2xl p-4 space-y-2">
-        <h2 className="text-sm font-medium text-gray-300">
+      <div className="bg-surface-primary rounded-2xl p-4 space-y-2">
+        <h2 className="text-sm font-medium text-content-primary">
           Zone Comparison -- SE1-SE4
         </h2>
-        <p className="text-gray-500 text-sm">
+        <p className="text-content-muted text-sm">
           No multi-zone data yet. Run a backfill for SE1, SE2, SE4 to populate
           the chart.
         </p>
-        <pre className="text-xs text-gray-600 bg-sea-800 rounded p-3 overflow-x-auto">
+        <pre className="text-xs text-content-faint bg-surface-secondary rounded p-3 overflow-x-auto">
           {`# Backfill via Lambda invoke (once):
 aws lambda invoke --function-name unagi-scheduler \\
   --payload '{"backfill_days":90}' /dev/null
@@ -166,26 +184,26 @@ python -m app.tasks.fetch_prices --backfill 90 --area SE4`}
   const ticks = getAdaptiveTicks(points, days);
 
   // Overall avg per zone (for summary cards)
-  const summaries: ZoneSummary[] = (Object.keys(ZONE_COLORS) as Area[]).map(
-    (area) => {
-      const vals = points
-        .map((d) => d[area])
-        .filter((v): v is number => v != null);
-      return {
-        area,
-        city: ZONE_CITIES[area],
-        avg: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null,
-      };
-    },
-  );
+  const summaries: ZoneSummary[] = ZONE_KEYS.map((area) => {
+    const vals = points
+      .map((d) => d[area])
+      .filter((v): v is number => v != null);
+    return {
+      area,
+      city: ZONE_CITIES[area],
+      avg: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null,
+    };
+  });
 
   return (
-    <div className="bg-sea-900 rounded-2xl p-4 space-y-4">
+    <div className="bg-surface-primary rounded-2xl p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium text-gray-300">
+        <h2 className="text-sm font-medium text-content-primary">
           Zone Comparison -- SE1-SE4
         </h2>
-        <span className="text-xs text-gray-500">{PRICE_UNIT} - daily avg</span>
+        <span className="text-xs text-content-muted">
+          {PRICE_UNIT} - daily avg
+        </span>
       </div>
 
       <ResponsiveContainer width="100%" height={300}>
@@ -195,65 +213,63 @@ python -m app.tasks.fetch_prices --backfill 90 --area SE4`}
         >
           <CartesianGrid
             strokeDasharray="3 3"
-            stroke="#374151"
+            stroke={cc.grid}
             vertical={false}
           />
           <XAxis
             dataKey="date"
             ticks={ticks}
             tickFormatter={(iso: string) => formatTick(iso, days)}
-            tick={{ fill: "#6b7280", fontSize: 10 }}
+            tick={{ fill: cc.axisDim, fontSize: 10 }}
             axisLine={false}
             tickLine={false}
           />
           <YAxis
             domain={["auto", "auto"]}
-            tick={{ fill: "#6b7280", fontSize: 10 }}
+            tick={{ fill: cc.axisDim, fontSize: 10 }}
             axisLine={false}
             tickLine={false}
             tickFormatter={(v: number) => formatPrice(v)}
           />
-          <Tooltip content={<ZoneTooltip />} />
+          <Tooltip content={(props) => <ZoneTooltip {...props} cc={cc} />} />
           <Legend
-            wrapperStyle={{ fontSize: 11, color: "#9ca3af", paddingTop: 8 }}
+            wrapperStyle={{ fontSize: 11, color: cc.axis, paddingTop: 8 }}
             formatter={(value: string) =>
               `${value} \u00b7 ${ZONE_CITIES[value as Area]}`
             }
           />
-          {(Object.entries(ZONE_COLORS) as [Area, string][]).map(
-            ([area, color]) => (
-              <Line
-                key={area}
-                type="monotone"
-                dataKey={area}
-                stroke={color}
-                strokeWidth={1.5}
-                dot={false}
-                activeDot={{ r: 3 }}
-                connectNulls={false}
-              />
-            ),
-          )}
+          {ZONE_KEYS.map((area) => (
+            <Line
+              key={area}
+              type="monotone"
+              dataKey={area}
+              stroke={zoneColors[area]}
+              strokeWidth={1.5}
+              dot={false}
+              activeDot={{ r: 3 }}
+              connectNulls={false}
+            />
+          ))}
         </LineChart>
       </ResponsiveContainer>
 
       {/* Period avg per zone */}
       <div className="grid grid-cols-4 gap-2 text-center">
         {summaries.map(({ area, city, avg }) => (
-          <div key={area} className="bg-sea-800 rounded-xl py-3">
-            <p className="text-xs mb-0.5" style={{ color: ZONE_COLORS[area] }}>
+          <div key={area} className="bg-surface-secondary rounded-xl py-3">
+            <p className="text-xs mb-0.5" style={{ color: zoneColors[area] }}>
               {area}
             </p>
-            <p className="text-xs text-gray-500 mb-1">{city}</p>
-            <p className="text-sm font-semibold">
+            <p className="text-xs text-content-muted mb-1">{city}</p>
+            <p className="text-sm font-semibold text-content-primary">
               {avg != null ? formatPrice(avg, 1) : "\u2014"}
             </p>
-            <p className="text-xs text-gray-600">{PRICE_UNIT}</p>
+            <p className="text-xs text-content-faint">{PRICE_UNIT}</p>
           </div>
         ))}
       </div>
 
-      <p className="text-xs text-gray-700 text-center">
+      <p className="text-xs text-content-faint text-center">
         SE1 (north) is typically cheapest - SE4 (south) most expensive - gap
         reflects transmission constraints
       </p>
