@@ -15,6 +15,7 @@ from astral import LocationInfo
 from astral.sun import azimuth as _astral_azimuth
 from astral.sun import elevation as _astral_elevation
 from astral.sun import sun as _astral_sun
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models.balancing_price import BalancingPrice
@@ -114,6 +115,12 @@ def _cet_window(target_date: date) -> tuple[datetime, datetime]:
     return stockholm_day_range_utc(target_date)
 
 
+def _is_postgres(db: Session) -> bool:
+    """Detect PostgreSQL so we can use server-side hourly aggregation."""
+    dialect = getattr(db.bind, "dialect", None)
+    return dialect is not None and dialect.name == "postgresql"
+
+
 def _load_hourly_prices(
     db: Session,
     start_date: date,
@@ -123,7 +130,42 @@ def _load_hourly_prices(
     """
     Load spot prices and average into (stockholm_date, stockholm_hour) buckets.
     Returns {(date, hour): avg_sek_kwh}.
+
+    On PostgreSQL the aggregation happens server-side via
+    `date_trunc('hour', tstz AT TIME ZONE 'Europe/Stockholm')` to cut egress.
+    On SQLite (unit tests) the original Python aggregation is used.
     """
+    range_start, _ = _cet_window(start_date)
+    _, range_end = _cet_window(end_date)
+
+    if _is_postgres(db):
+        sql = text(
+            """
+            SELECT
+                date_trunc('hour', timestamp_utc AT TIME ZONE 'Europe/Stockholm')
+                    AS local_hour,
+                AVG(price_sek_kwh)::float AS avg_price
+            FROM spot_prices
+            WHERE area = :area
+              AND timestamp_utc >= :start
+              AND timestamp_utc <  :end
+              AND price_sek_kwh IS NOT NULL
+            GROUP BY local_hour
+            """
+        )
+        result = db.execute(sql, {"area": area, "start": range_start, "end": range_end})
+        return {(row.local_hour.date(), row.local_hour.hour): float(row.avg_price) for row in result}
+
+    return _load_hourly_prices_pylocal(db, start_date, end_date, area)
+
+
+def _load_hourly_prices_pylocal(
+    db: Session,
+    start_date: date,
+    end_date: date,
+    area: str,
+) -> dict[tuple[date, int], float]:
+    """Python-side reference implementation (kept for SQLite tests)."""
     range_start, _ = _cet_window(start_date)
     _, range_end = _cet_window(end_date)
 
@@ -158,6 +200,50 @@ def _load_hourly_generation(
     Load generation mix and average into hourly buckets.
     Returns {(date, hour): {hydro: MW, wind: MW, nuclear: MW, ...}}.
     """
+    if _is_postgres(db):
+        range_start, _ = _cet_window(start_date)
+        _, range_end = _cet_window(end_date)
+
+        # Server-side aggregation: 15-min rows × 6 psr_types → hourly per psr_type.
+        # PSR-group mapping (B04→gas etc.) stays in Python on the small result.
+        sql = text(
+            """
+            SELECT
+                date_trunc('hour', timestamp_utc AT TIME ZONE 'Europe/Stockholm')
+                    AS local_hour,
+                psr_type,
+                AVG(value_mw)::float AS avg_mw
+            FROM generation_mix
+            WHERE area = :area
+              AND timestamp_utc >= :start
+              AND timestamp_utc <  :end
+            GROUP BY local_hour, psr_type
+            """
+        )
+        rows_pg = db.execute(sql, {"area": area, "start": range_start, "end": range_end}).all()
+
+        # Multiple psr_types may map to the same group ("other") — average them
+        # together via sum/count, matching the Python path behaviour.
+        acc: dict[tuple[date, int, str], list[float]] = defaultdict(list)
+        for row in rows_pg:
+            group = _PSR_GROUP.get(row.psr_type, "other")
+            acc[(row.local_hour.date(), row.local_hour.hour, group)].append(float(row.avg_mw))
+
+        result: dict[tuple[date, int], dict[str, float]] = defaultdict(dict)
+        for (d, h, group), vals in acc.items():
+            result[(d, h)][group] = sum(vals) / len(vals)
+        return result
+
+    return _load_hourly_generation_pylocal(db, start_date, end_date, area)
+
+
+def _load_hourly_generation_pylocal(
+    db: Session,
+    start_date: date,
+    end_date: date,
+    area: str,
+) -> dict[tuple[date, int], dict[str, float]]:
+    """Python-side reference implementation (kept for SQLite tests)."""
     range_start, _ = _cet_window(start_date)
     _, range_end = _cet_window(end_date)
 
@@ -233,6 +319,43 @@ def _load_hourly_balancing(
     Load balancing prices and average into hourly buckets.
     Returns {(date, hour): {"up": avg_sek_kwh, "down": avg_sek_kwh}}.
     """
+    if _is_postgres(db):
+        range_start, _ = _cet_window(start_date)
+        _, range_end = _cet_window(end_date)
+
+        sql = text(
+            """
+            SELECT
+                date_trunc('hour', timestamp_utc AT TIME ZONE 'Europe/Stockholm')
+                    AS local_hour,
+                category,
+                AVG(price_sek_kwh)::float AS avg_price
+            FROM balancing_prices
+            WHERE area = :area
+              AND timestamp_utc >= :start
+              AND timestamp_utc <  :end
+              AND price_sek_kwh IS NOT NULL
+            GROUP BY local_hour, category
+            """
+        )
+        rows_pg = db.execute(sql, {"area": area, "start": range_start, "end": range_end}).all()
+
+        result: dict[tuple[date, int], dict[str, float]] = defaultdict(dict)
+        for row in rows_pg:
+            cat = "up" if row.category == "A05" else "down"
+            result[(row.local_hour.date(), row.local_hour.hour)][cat] = float(row.avg_price)
+        return result
+
+    return _load_hourly_balancing_pylocal(db, start_date, end_date, area)
+
+
+def _load_hourly_balancing_pylocal(
+    db: Session,
+    start_date: date,
+    end_date: date,
+    area: str,
+) -> dict[tuple[date, int], dict[str, float]]:
+    """Python-side reference implementation (kept for SQLite tests)."""
     range_start, _ = _cet_window(start_date)
     _, range_end = _cet_window(end_date)
 
@@ -339,6 +462,36 @@ def _load_hourly_load_forecast(
     Load ENTSO-E A65 day-ahead load forecasts and bucket into (date, hour).
     Returns {(date, hour): load_mw}.
     """
+    if _is_postgres(db):
+        range_start, _ = _cet_window(start_date)
+        _, range_end = _cet_window(end_date)
+
+        sql = text(
+            """
+            SELECT
+                date_trunc('hour', timestamp_utc AT TIME ZONE 'Europe/Stockholm')
+                    AS local_hour,
+                AVG(load_mw)::float AS avg_load
+            FROM load_forecast
+            WHERE area = :area
+              AND timestamp_utc >= :start
+              AND timestamp_utc <  :end
+            GROUP BY local_hour
+            """
+        )
+        rows_pg = db.execute(sql, {"area": area, "start": range_start, "end": range_end}).all()
+        return {(row.local_hour.date(), row.local_hour.hour): float(row.avg_load) for row in rows_pg}
+
+    return _load_hourly_load_forecast_pylocal(db, start_date, end_date, area)
+
+
+def _load_hourly_load_forecast_pylocal(
+    db: Session,
+    start_date: date,
+    end_date: date,
+    area: str,
+) -> dict[tuple[date, int], float]:
+    """Python-side reference implementation (kept for SQLite tests)."""
     from app.models.load_forecast import LoadForecast
 
     range_start, _ = _cet_window(start_date)
@@ -465,6 +618,34 @@ def _load_hourly_de_prices(
     Load DE-LU spot prices and average into (date, hour) buckets.
     Returns {(date, hour): price_eur_mwh}.
     """
+    if _is_postgres(db):
+        range_start, _ = _cet_window(start_date)
+        _, range_end = _cet_window(end_date)
+
+        sql = text(
+            """
+            SELECT
+                date_trunc('hour', timestamp_utc AT TIME ZONE 'Europe/Stockholm')
+                    AS local_hour,
+                AVG(price_eur_mwh)::float AS avg_price
+            FROM de_spot_price
+            WHERE timestamp_utc >= :start
+              AND timestamp_utc <  :end
+            GROUP BY local_hour
+            """
+        )
+        rows_pg = db.execute(sql, {"start": range_start, "end": range_end}).all()
+        return {(row.local_hour.date(), row.local_hour.hour): float(row.avg_price) for row in rows_pg}
+
+    return _load_hourly_de_prices_pylocal(db, start_date, end_date)
+
+
+def _load_hourly_de_prices_pylocal(
+    db: Session,
+    start_date: date,
+    end_date: date,
+) -> dict[tuple[date, int], float]:
+    """Python-side reference implementation (kept for SQLite tests)."""
     from app.models.de_spot_price import DeSpotPrice
 
     range_start, _ = _cet_window(start_date)
@@ -760,7 +941,10 @@ def build_feature_matrix(
                             for d in range(7)
                             if (current - timedelta(days=d)) in gas_prices
                         )
-                        / max(1, sum(1 for d in range(7) if (current - timedelta(days=d)) in gas_prices)),
+                        / max(
+                            1,
+                            sum(1 for d in range(7) if (current - timedelta(days=d)) in gas_prices),
+                        ),
                         2,
                     )
                     if any((current - timedelta(days=d)) in gas_prices for d in range(7))
@@ -795,7 +979,10 @@ def build_feature_matrix(
                     else None
                 ),
                 "temp_x_month": (
-                    round(weather_prev.get("temperature_c", 0) * math.sin(2 * math.pi * (current.month - 1) / 12), 4)
+                    round(
+                        weather_prev.get("temperature_c", 0) * math.sin(2 * math.pi * (current.month - 1) / 12),
+                        4,
+                    )
                     if weather_prev.get("temperature_c") is not None
                     else None
                 ),
