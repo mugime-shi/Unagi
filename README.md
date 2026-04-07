@@ -24,7 +24,7 @@ Unagi publishes its forecast accuracy publicly — something [no other Swedish e
 
 | Model | MAE | vs Baseline |
 |-------|-----|-------------|
-| LightGBM (59 features, Huber loss) | **0.20 SEK/kWh** | 58% better than weekday average |
+| LightGBM (61 features, Huber loss) | **0.21 SEK/kWh** | 53% better than weekday average |
 | Weekday Average (baseline) | 0.48 SEK/kWh | — |
 
 The model is retrained daily on 365 days of data from ENTSO-E, SMHI, eSett, and Riksbank. Prediction intervals are calibrated using conformal quantile regression.

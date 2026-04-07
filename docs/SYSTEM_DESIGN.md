@@ -113,7 +113,7 @@ Runs entirely on permanent free tiers (no 12-month expiry): Lambda, API Gateway,
 | Metric | Value |
 |---|---|
 | MAE improvement vs baseline | 58% (0.48 → 0.20 SEK/kWh) |
-| Features | 59 (calendar, lags, weather, generation, balancing, load, DE-LU, gas, holidays, solar) |
+| Features | 61 (calendar, lags, weather, generation, balancing, load, DE-LU, gas, hydro reservoir, holidays, solar) |
 | Training window | 365 days (full seasonal cycle) |
 | Tuning | Optuna 100 trials, 4-fold walk-forward CV |
 | Prediction intervals | Quantile regression (α=0.10/0.90) |
