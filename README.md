@@ -15,6 +15,7 @@ Unagi forecasts Swedish electricity spot prices up to 7 days ahead using machine
 - **Prediction accuracy on display** — MAE, prediction vs actual overlays, 80% confidence intervals with calibration tracking
 - **Generation mix** — hydro, wind, nuclear, solar breakdown with carbon intensity
 - **Cost simulators** — compare fixed vs dynamic contracts, estimate solar PV revenue
+- **Light & dark themes** — marine blue by day, deep sea by night
 
 No account required. No ads. Open source.
 

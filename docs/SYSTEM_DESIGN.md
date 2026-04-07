@@ -76,7 +76,7 @@ CloudWatch Alarms detect Lambda errors or missing data → SNS topic → dedicat
 | ASGI adapter | Mangum | Lambda integration without modifying app code |
 | Database | PostgreSQL on Supabase | Full SQL, free tier with no expiry |
 | ML | LightGBM + Optuna | Tabular-optimized; fits Lambda memory/time constraints |
-| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS | App Router + OGP metadata; Recharts for time-series |
+| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS, next-themes | App Router + OGP metadata; Recharts for time-series; CSS-variable themed light/dark |
 | Hosting | Vercel | Free, auto-deploy on push |
 | IaC | Terraform | Declarative, reproducible infrastructure |
 | CI/CD | GitHub Actions | pytest → build → deploy → smoke test on every push |
