@@ -270,7 +270,7 @@ export function GenerationChart({
           />
           <YAxis
             tick={{ fill: cc.axis, fontSize: 11 }}
-            width={48}
+            width={isMobile ? 36 : 48}
             domain={[0, maxTickK * 1000]}
             ticks={yTicks}
             tickFormatter={(v: number) =>

@@ -568,7 +568,7 @@ export function PriceChart({
             domain={domain}
             tickFormatter={(v: number) => formatPrice(v)}
             tick={{ fill: cc.axis, fontSize: 11 }}
-            width={48}
+            width={isMobile ? 32 : 48}
             padding={{ top: 16 }}
           />
           <Tooltip

@@ -242,7 +242,7 @@ export function PriceHistory({
               axisLine={false}
               tickLine={false}
               tickFormatter={(v: number) => formatPrice(v)}
-              width={48}
+              width={isMobile ? 32 : 48}
             />
             <Tooltip
               content={(props) => <CustomTooltip {...props} cc={cc} />}

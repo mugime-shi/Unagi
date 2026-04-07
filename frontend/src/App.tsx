@@ -248,19 +248,20 @@ export default function App() {
   return (
     <div className="min-h-screen bg-surface-page text-content-primary flex flex-col">
       {/* Header — Marine Blue (light) / Deep Sea (dark). Always dark-toned so the white-text logo stays readable. */}
-      <header className="sticky top-0 z-50 bg-sky-700 dark:bg-sea-950 border-b border-sky-800 dark:border-sea-800 px-4 sm:px-6 py-3">
+      <header className="sticky top-0 z-50 bg-sky-700 dark:bg-sea-950 border-b border-sky-800 dark:border-sea-800 px-4 sm:px-6 py-2 sm:py-3">
+        {/* Row 1: logo + caption (desktop) + nav (desktop) + utility icons */}
         <div className="flex items-center gap-3">
           <img
             src="/logo/unagi_log.png"
             alt="Unagi"
-            className="h-12 w-auto -my-1 shrink-0"
+            className="h-9 sm:h-12 w-auto -my-1 shrink-0"
           />
           <span className="hidden sm:inline text-[11px] text-white/50 tracking-wide self-end mb-0">
             Catch an E[el] for now and then.
           </span>
 
-          {/* Layer selector */}
-          <nav className="ml-auto flex gap-1">
+          {/* Layer selector — desktop only (mobile gets it on row 2) */}
+          <nav className="ml-auto hidden sm:flex gap-1">
             {(
               [
                 { id: "prices" as const, label: "Prices" },
@@ -281,12 +282,33 @@ export default function App() {
             ))}
           </nav>
 
-          <ThemeToggle />
-          <NotificationBell area={area} />
+          <div className="ml-auto sm:ml-0 flex items-center gap-1">
+            <ThemeToggle />
+            <NotificationBell area={area} />
+          </div>
         </div>
-        <p className="sm:hidden text-[11px] text-white/50 tracking-wide mt-1">
-          Catch an E[el] for now and then.
-        </p>
+
+        {/* Row 2 (mobile only): full-width nav tabs */}
+        <nav className="sm:hidden mt-2 flex gap-1.5">
+          {(
+            [
+              { id: "prices" as const, label: "Prices" },
+              { id: "simulators" as const, label: "Simulators" },
+            ] satisfies { id: Layer; label: string }[]
+          ).map(({ id, label }) => (
+            <button
+              key={id}
+              onClick={() => setLayer(id)}
+              className={`flex-1 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                layer === id
+                  ? "bg-sky-500 dark:bg-sea-700 text-white"
+                  : "bg-sky-800/50 dark:bg-sea-800/50 text-white/70 hover:text-white/90"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
       </header>
 
       <main className="w-full max-w-3xl mx-auto px-4 py-6 space-y-4 flex-1">
