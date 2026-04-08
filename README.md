@@ -70,4 +70,4 @@ Issues and PRs welcome. The ML model, feature engineering, and training pipeline
 
 ## Author
 
-**Shin** — Gothenburg, Sweden
+**Mugimeshi** — Gothenburg, Sweden
