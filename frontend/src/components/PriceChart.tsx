@@ -358,8 +358,21 @@ export function PriceChart({
     };
   });
 
-  const avg =
-    chartData.reduce((s, d) => s + d.price_sek_kwh, 0) / chartData.length;
+  // Average line — computed from the primary visible series so it matches the
+  // Min/Avg/Max cards. DA when published, LGBM forecast (or its retrospective)
+  // when the prices are still an estimate. The line picks up the main series
+  // color so users can tell at a glance which average it refers to.
+  const avgSource: number[] = chartData
+    .map((d) => {
+      if (!isEstimate) return d.price_sek_kwh;
+      return d.lgbm_forecast ?? d.retro_lgbm ?? null;
+    })
+    .filter((v): v is number => v != null);
+  const avgValid: boolean = avgSource.length > 0;
+  const avg: number = avgValid
+    ? avgSource.reduce((s, v) => s + v, 0) / avgSource.length
+    : 0;
+  const avgColor: string = isEstimate ? PRED_LGBM_COLOR : cc.daLine;
 
   // Build explicit tick values from :00 entries so labels survive irregular slot counts
   const hourlyTicks: string[] = chartData
@@ -580,13 +593,19 @@ export function PriceChart({
               />
             )}
           />
-          {chartData.length > 0 && (
+          {avgValid && (
             <ReferenceLine
               yAxisId="price"
               y={avg}
-              stroke={cc.axisDim}
+              stroke={avgColor}
+              strokeOpacity={0.55}
               strokeDasharray="4 4"
-              label={{ value: "avg", fill: cc.axisDim, fontSize: 11 }}
+              label={{
+                value: "avg",
+                fill: avgColor,
+                fontSize: 11,
+                fillOpacity: 0.85,
+              }}
             />
           )}
 
