@@ -25,7 +25,9 @@ TABLES = [
     "gas_price",
     "de_spot_price",
     "forecast_accuracy",
-    "alembic_version",
+    # alembic_version was added here in commit f1f1fa1 but that edit had no
+    # effect because the migration was already applied. RLS on alembic_version
+    # is now handled by the follow-up migration k8f9a0b1c2d3 instead.
 ]
 
 
