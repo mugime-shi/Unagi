@@ -356,6 +356,28 @@ export type NotificationStatus =
   | "denied"
   | "error";
 
+// ─── Grid Operators ──────────────────────────────────────────────────────────
+
+export interface GridOperatorEntry {
+  slug: string;
+  name: string;
+  city: string;
+  area: string;
+  dwelling_type: "apartment" | "house";
+  fast_fee_sek_year: number;
+  transfer_fee_ore: number;
+  effect_fee_sek_kw: number | null;
+  valid_from: string;
+  valid_to: string;
+  source_url: string | null;
+}
+
+export interface GridOperatorsResponse {
+  area: string;
+  count: number;
+  operators: GridOperatorEntry[];
+}
+
 // ─── Monthly Averages ────────────────────────────────────────────────────────
 
 export interface MonthlyAvg {
