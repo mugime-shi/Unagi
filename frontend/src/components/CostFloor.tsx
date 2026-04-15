@@ -44,10 +44,13 @@ const CUSTOM_SLUG = "__custom__";
 interface ChartRow {
   month: string;
   monthLabel: string;
-  spot: number;
+  // Elnät bill (fixed — can't change)
   elnat: number;
   skatt: number;
-  moms: number;
+  elnatVat: number;
+  // Elhandel bill (spot + retailer markup in Phase 2)
+  spot: number;
+  elhandelVat: number;
 }
 
 const MONTH_LABELS: Record<string, string> = {
@@ -90,6 +93,12 @@ function CustomTooltip({
   const fullLabel = row?.month
     ? `${MONTH_LABELS[row.month.slice(5)] ?? row.month.slice(5)} ${row.month.slice(0, 4)}`
     : "";
+  // Split into elnät and elhandel groups
+  const elnatKeys = new Set(["Grid fee", "Energy tax", "VAT (elnät)"]);
+  const elnatTotal = payload
+    .filter((p) => elnatKeys.has(p.name))
+    .reduce((s, p) => s + p.value, 0);
+  const elhandelTotal = total - elnatTotal;
   return (
     <div
       className="rounded-lg px-3 py-2 text-sm shadow-lg border"
@@ -100,20 +109,53 @@ function CustomTooltip({
       }}
     >
       <p className="font-medium mb-1">{fullLabel}</p>
-      {payload.map((p) => (
-        <div key={p.name} className="flex items-center gap-2 text-xs">
-          <span
-            className="inline-block w-2.5 h-2.5 rounded-sm"
-            style={{ backgroundColor: p.color }}
-          />
-          <span className="flex-1">{p.name}</span>
-          <span className="tabular-nums font-mono">
-            {p.value.toFixed(1)} {PRICE_UNIT}
-          </span>
-        </div>
-      ))}
+      {/* Elhandel group (top of chart → top of tooltip) */}
+      <p className="text-[10px] text-content-faint mt-1 mb-0.5">
+        Elhandel bill (min.)
+      </p>
+      {payload
+        .filter((p) => !elnatKeys.has(p.name))
+        .reverse()
+        .map((p) => (
+          <div key={p.name} className="flex items-center gap-2 text-xs">
+            <span
+              className="inline-block w-2.5 h-2.5 rounded-sm"
+              style={{ backgroundColor: p.color }}
+            />
+            <span className="flex-1">{p.name}</span>
+            <span className="tabular-nums font-mono">{p.value.toFixed(1)}</span>
+          </div>
+        ))}
+      <div className="flex justify-between text-xs text-content-muted mt-0.5">
+        <span>Subtotal</span>
+        <span className="tabular-nums font-mono">
+          {elhandelTotal.toFixed(1)}
+        </span>
+      </div>
+      {/* Elnät group (bottom of chart → bottom of tooltip) */}
+      <p className="text-[10px] text-content-faint mt-1.5 mb-0.5">
+        Elnät bill (fixed)
+      </p>
+      {payload
+        .filter((p) => elnatKeys.has(p.name))
+        .reverse()
+        .map((p) => (
+          <div key={p.name} className="flex items-center gap-2 text-xs">
+            <span
+              className="inline-block w-2.5 h-2.5 rounded-sm"
+              style={{ backgroundColor: p.color }}
+            />
+            <span className="flex-1">{p.name}</span>
+            <span className="tabular-nums font-mono">{p.value.toFixed(1)}</span>
+          </div>
+        ))}
+      <div className="flex justify-between text-xs text-content-muted mt-0.5">
+        <span>Subtotal</span>
+        <span className="tabular-nums font-mono">{elnatTotal.toFixed(1)}</span>
+      </div>
+      {/* Total */}
       <div
-        className="border-t mt-1 pt-1 text-xs font-medium flex justify-between"
+        className="border-t mt-1.5 pt-1 text-xs font-medium flex justify-between"
         style={{ borderColor: cc.tooltipBorder }}
       >
         <span>Total</span>
@@ -211,8 +253,11 @@ export function CostFloor({ area }: CostFloorProps) {
     if (!spotData?.months) return [];
     return spotData.months.map((m, i) => {
       const spotOre = m.avg_sek_kwh * 100;
-      const base = spotOre + elnatTotalOre + ENERGISKATT_ORE;
-      const momsOre = base * MOMS_RATE;
+      // Elnät bill VAT: 25% on (grid fee + energy tax)
+      const elnatBase = elnatTotalOre + ENERGISKATT_ORE;
+      const elnatVat = elnatBase * MOMS_RATE;
+      // Elhandel bill VAT: 25% on spot (+ retailer markup in Phase 2)
+      const elhandelVat = spotOre * MOMS_RATE;
       const mm = m.month.slice(5);
       const yy = m.month.slice(2, 4);
       const label = MONTH_LABELS[mm] ?? mm;
@@ -220,18 +265,24 @@ export function CostFloor({ area }: CostFloorProps) {
       return {
         month: m.month,
         monthLabel: showYear ? `${label} '${yy}` : label,
-        spot: Math.round(spotOre * 10) / 10,
         elnat: Math.round(elnatTotalOre * 10) / 10,
         skatt: Math.round(ENERGISKATT_ORE * 10) / 10,
-        moms: Math.round(momsOre * 10) / 10,
+        elnatVat: Math.round(elnatVat * 10) / 10,
+        spot: Math.round(spotOre * 10) / 10,
+        elhandelVat: Math.round(elhandelVat * 10) / 10,
       };
     });
   }, [spotData, elnatTotalOre]);
 
   const current = chartData.length > 0 ? chartData[chartData.length - 1] : null;
-  const currentTotal = current
-    ? current.spot + current.elnat + current.skatt + current.moms
+  const currentElnat = current
+    ? current.elnat + current.skatt + current.elnatVat
     : null;
+  const currentElhandel = current ? current.spot + current.elhandelVat : null;
+  const currentTotal =
+    currentElnat != null && currentElhandel != null
+      ? currentElnat + currentElhandel
+      : null;
 
   const loading = spotLoading || gridLoading;
 
@@ -246,13 +297,12 @@ export function CostFloor({ area }: CostFloorProps) {
             </h2>
             <p className="text-xs text-content-muted mt-0.5">
               Minimum cost per kWh — regardless of electricity retailer
-              {chartData.length > 0 && (
-                <span className="ml-1 text-content-faint">
-                  · {chartData[0].month} –{" "}
-                  {chartData[chartData.length - 1].month}
-                </span>
-              )}
             </p>
+            {chartData.length > 0 && (
+              <p className="text-[10px] text-content-faint mt-0.5">
+                {chartData[0].month} – {chartData[chartData.length - 1].month}
+              </p>
+            )}
           </div>
           <div className="flex gap-1">
             {DWELLINGS.map(({ id, label }) => (
@@ -310,55 +360,48 @@ export function CostFloor({ area }: CostFloorProps) {
           )}
         </div>
 
-        {/* Summary box */}
+        {/* Summary box — grouped by bill, 50/50 */}
         {currentTotal != null && current && (
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
-            <div className="sm:col-span-1 bg-surface-secondary rounded-xl py-3 px-3 text-center">
-              <p className="text-[10px] text-content-muted mb-0.5">
-                Total incl. VAT
-              </p>
-              <p className="text-xl font-bold text-content-primary tabular-nums">
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            {/* Left: Total */}
+            <div className="bg-surface-secondary rounded-xl py-3 px-4 text-center flex flex-col justify-center">
+              <p className="text-[10px] text-content-muted mb-0.5">Total</p>
+              <p className="text-2xl font-bold text-content-primary tabular-nums">
                 {currentTotal.toFixed(0)}
               </p>
               <p className="text-[10px] text-content-faint">{PRICE_UNIT}</p>
             </div>
-            {(
-              [
-                {
-                  label: "Spot price",
-                  value: current.spot,
-                  color: cc.costSpot,
-                },
-                {
-                  label: "Grid fee",
-                  value: current.elnat,
-                  color: cc.costElnat,
-                },
-                {
-                  label: "Energy tax",
-                  value: current.skatt,
-                  color: cc.costSkatt,
-                },
-                { label: "VAT", value: current.moms, color: cc.costMoms },
-              ] as const
-            ).map(({ label, value, color }) => (
-              <div
-                key={label}
-                className="bg-surface-secondary rounded-xl py-3 px-3 text-center"
-              >
-                <p className="text-[10px] text-content-muted mb-0.5 flex items-center justify-center gap-1">
-                  <span
-                    className="inline-block w-2 h-2 rounded-sm"
-                    style={{ backgroundColor: color }}
-                  />
-                  {label}
+            {/* Right: Two bills stacked */}
+            <div className="grid grid-rows-2 gap-2">
+              <div className="bg-surface-secondary rounded-xl py-2.5 px-3 flex items-center justify-between">
+                <p className="text-xs text-content-muted">
+                  Elnät bill
+                  <span className="text-content-faint ml-1">(fixed)</span>
                 </p>
-                <p className="text-sm font-semibold text-content-primary tabular-nums">
-                  {value.toFixed(1)}
-                </p>
-                <p className="text-[10px] text-content-faint">{PRICE_UNIT}</p>
+                <div className="text-right">
+                  <span className="text-lg font-semibold text-content-primary tabular-nums">
+                    {currentElnat!.toFixed(0)}
+                  </span>
+                  <span className="text-[10px] text-content-faint ml-1">
+                    {PRICE_UNIT}
+                  </span>
+                </div>
               </div>
-            ))}
+              <div className="bg-surface-secondary rounded-xl py-2.5 px-3 flex items-center justify-between">
+                <p className="text-xs text-content-muted">
+                  Elhandel bill
+                  <span className="text-content-faint ml-1">(min.)</span>
+                </p>
+                <div className="text-right">
+                  <span className="text-lg font-semibold text-content-primary tabular-nums">
+                    {currentElhandel!.toFixed(0)}
+                  </span>
+                  <span className="text-[10px] text-content-faint ml-1">
+                    {PRICE_UNIT}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -376,7 +419,7 @@ export function CostFloor({ area }: CostFloorProps) {
 
         {/* Stacked bar chart */}
         {chartData.length > 0 && (
-          <ResponsiveContainer width="100%" height={isMobile ? 260 : 320}>
+          <ResponsiveContainer width="100%" height={isMobile ? 300 : 380}>
             <BarChart
               data={chartData}
               margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
@@ -394,6 +437,7 @@ export function CostFloor({ area }: CostFloorProps) {
               />
               <YAxis
                 width={isMobile ? 36 : 48}
+                domain={[0, 400]}
                 tick={{ fill: cc.axisDim, fontSize: 10 }}
                 tickLine={false}
                 axisLine={false}
@@ -408,13 +452,7 @@ export function CostFloor({ area }: CostFloorProps) {
                 iconSize={10}
                 wrapperStyle={{ fontSize: 11, color: cc.axis }}
               />
-              <Bar
-                dataKey="spot"
-                name="Spot price"
-                stackId="cost"
-                fill={cc.costSpot}
-                radius={[0, 0, 0, 0]}
-              />
+              {/* ── Elnät bill (bottom, fixed) ── */}
               <Bar
                 dataKey="elnat"
                 name="Grid fee"
@@ -428,8 +466,21 @@ export function CostFloor({ area }: CostFloorProps) {
                 fill={cc.costSkatt}
               />
               <Bar
-                dataKey="moms"
-                name="VAT (25%)"
+                dataKey="elnatVat"
+                name="VAT (elnät)"
+                stackId="cost"
+                fill={cc.costMoms}
+              />
+              {/* ── Elhandel bill (top, your choice) ── */}
+              <Bar
+                dataKey="spot"
+                name="Spot price"
+                stackId="cost"
+                fill={cc.costSpot}
+              />
+              <Bar
+                dataKey="elhandelVat"
+                name="VAT (elhandel)"
                 stackId="cost"
                 fill={cc.costMoms}
                 radius={[3, 3, 0, 0]}
@@ -440,51 +491,55 @@ export function CostFloor({ area }: CostFloorProps) {
       </div>
 
       {/* Source note */}
-      <div className="bg-surface-primary rounded-xl p-4 space-y-2">
-        <h3 className="text-xs font-medium text-content-secondary">
-          What is included?
+      <div className="bg-surface-primary rounded-xl p-5 space-y-3">
+        <h3 className="text-sm font-medium text-content-primary">
+          Two separate bills
         </h3>
-        <ul className="text-xs text-content-muted space-y-1">
-          <li>
-            <strong>Spot price</strong> — Nord Pool {area} monthly average
-          </li>
-          <li>
-            <strong>Grid fee</strong> — {operatorName}
-            {!isCustom && activeOp && (
-              <>
-                {" "}
-                ({activeOp.valid_from.slice(0, 4)}). Fixed{" "}
-                {fastFee.toLocaleString("sv-SE")} kr/yr ÷{" "}
-                {kwhYear.toLocaleString("sv-SE")} kWh + transfer {transferFee}{" "}
-                öre/kWh
-              </>
-            )}
-          </li>
-          <li>
-            <strong>Energy tax</strong> — {ENERGISKATT_ORE} öre/kWh (2026)
-          </li>
-          <li>
-            <strong>VAT</strong> — 25% on all above
-          </li>
-        </ul>
-        <p className="text-[10px] text-content-faint italic">
-          Your retailer&apos;s markup (profit margin + procurement costs) is
-          added on top of this.
-          {!isCustom && activeOp?.source_url && (
-            <>
-              {" "}
-              Source:{" "}
-              <a
-                href={activeOp.source_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline hover:text-content-muted"
-              >
-                {new URL(activeOp.source_url).hostname}
-              </a>
-            </>
-          )}
-        </p>
+        <div className="text-sm text-content-muted space-y-3">
+          <div>
+            <p className="font-medium text-content-secondary mb-1">
+              Elnät bill — fixed, based on your address
+            </p>
+            <ul className="space-y-1 ml-4 list-disc">
+              <li>
+                <strong>Grid fee</strong> — {operatorName}
+                {!isCustom && activeOp && (
+                  <> ({activeOp.valid_from.slice(0, 4)})</>
+                )}
+              </li>
+              <li>
+                <strong>Energy tax</strong> — {ENERGISKATT_ORE} öre/kWh (2026)
+              </li>
+            </ul>
+          </div>
+          <div>
+            <p className="font-medium text-content-secondary mb-1">
+              Elhandel bill — your retailer choice matters
+            </p>
+            <ul className="space-y-1 ml-4 list-disc">
+              <li>
+                <strong>Spot price</strong> — Nord Pool {area} monthly avg (same
+                for all retailers)
+              </li>
+              <li className="text-content-faint italic">
+                + Retailer markup — varies by company (not shown yet)
+              </li>
+            </ul>
+          </div>
+        </div>
+        {!isCustom && activeOp?.source_url && (
+          <p className="text-xs text-content-faint mt-2">
+            Grid fee source:{" "}
+            <a
+              href={activeOp.source_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-content-muted"
+            >
+              {new URL(activeOp.source_url).hostname}
+            </a>
+          </p>
+        )}
       </div>
     </div>
   );
