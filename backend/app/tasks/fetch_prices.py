@@ -168,13 +168,17 @@ def backfill_balancing(days: int, area: str = "SE3") -> list[dict]:
 def fetch_generation_date(target_date: date, area: str = "SE3") -> dict:
     """
     Fetch and store generation mix for target_date. Returns a result dict.
+    Always re-fetches if target_date is today or yesterday (data may be
+    incomplete due to ENTSO-E H+1 lag). Only skips past dates with 96+ slots.
     """
     db = SessionLocal()
     try:
         existing = get_generation_for_date(db, target_date, area)
-        if existing:
+        today = date.today()
+        is_recent = target_date >= today - timedelta(days=1)  # today or yesterday
+        if existing and not is_recent:
             # A full CET day = 96 fifteen-minute slots (24h UTC window, DST-invariant).
-            # Re-fetch if incomplete (e.g. backfill ran mid-day and only captured partial data).
+            # Only skip PAST dates (>= 2 days ago) with complete data.
             distinct_slots = len({r.timestamp_utc for r in existing})
             if distinct_slots >= 96:
                 log.info("SKIP generation %s %s — complete (%d slots)", target_date, area, distinct_slots)
@@ -185,6 +189,9 @@ def fetch_generation_date(target_date: date, area: str = "SE3") -> dict:
                     "rows": len(existing),
                 }
             log.info("REFETCH generation %s %s — only %d/96 slots, data incomplete", target_date, area, distinct_slots)
+        elif existing and is_recent:
+            distinct_slots = len({r.timestamp_utc for r in existing})
+            log.info("REFETCH generation %s %s — recent date, %d/96 slots so far", target_date, area, distinct_slots)
 
         last_error = None
         for attempt in range(1, MAX_RETRIES + 1):
@@ -494,6 +501,25 @@ def lambda_handler(event: dict, context) -> dict:
             "target_date": label,
             "areas": areas,
             "failures": [f["error"] for f in failures],
+        }
+
+    # Hourly generation fetch (every hour at :05).
+    # Always re-fetches today + yesterday to fill overnight gap.
+    # Per EU Regulation 543/2013 Art. 16(2)(b), ENTSO-E publishes
+    # actual generation per production type within H+1.
+    if event.get("hourly_generation"):
+        today_date = date.today()
+        yesterday_date = today_date - timedelta(days=1)
+        log.info("hourly_generation — fetching today+yesterday for areas=%s", areas)
+        results = []
+        for area in areas:
+            # Force re-fetch (don't skip even if some data exists)
+            for gen_date in [yesterday_date, today_date]:
+                results.append(fetch_generation_date(gen_date, area))
+        return {
+            "statusCode": 200,
+            "mode": "hourly_generation",
+            "results": results,
         }
 
     # Price-only retry (13:30, 14:30, 15:30 UTC).

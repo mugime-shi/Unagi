@@ -92,3 +92,21 @@ resource "aws_cloudwatch_event_target" "price_retry_lambda" {
   arn       = aws_lambda_function.scheduler.arn
   input     = jsonencode({ price_retry = true })
 }
+
+# ── Hourly generation fetch (every hour at :05) ─────────────────────────────
+# EU Regulation 543/2013 Art. 16(2)(b): ENTSO-E publishes actual generation
+# per production type within H+1. Fetching at :05 past every hour gives
+# near-real-time generation data and fills the overnight gap between
+# yesterday's daily_fetch and today's midnight_collect.
+resource "aws_cloudwatch_event_rule" "hourly_generation" {
+  name                = "${var.project}-hourly-generation"
+  description         = "Hourly generation mix fetch at :05 past every hour"
+  schedule_expression = "cron(5 * * * ? *)"
+}
+
+resource "aws_cloudwatch_event_target" "hourly_generation_lambda" {
+  rule      = aws_cloudwatch_event_rule.hourly_generation.name
+  target_id = "${var.project}-hourly-generation"
+  arn       = aws_lambda_function.scheduler.arn
+  input     = jsonencode({ hourly_generation = true })
+}

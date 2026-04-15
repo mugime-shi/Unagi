@@ -123,6 +123,185 @@ def get_today_generation(db: DbDep, area: AreaDep = "SE3"):
     return response
 
 
+@router.get("/national-24h")
+def get_national_24h(db: DbDep):
+    """
+    National aggregate generation mix for the last 24 hours, hourly resolution.
+    Sums across all SE zones. Returns up to 24 hourly entries sorted chronologically.
+    """
+    from collections import defaultdict
+    from zoneinfo import ZoneInfo
+
+    from app.models.generation_mix import GenerationMix
+
+    _STHLM = ZoneInfo("Europe/Stockholm")
+
+    # Query last 48h of data (wide buffer for ENTSO-E lag + overnight gaps)
+    cutoff = datetime.now(tz=timezone.utc) - timedelta(hours=48)
+    rows = (
+        db.query(GenerationMix)
+        .filter(GenerationMix.timestamp_utc >= cutoff.replace(tzinfo=None))
+        .order_by(GenerationMix.timestamp_utc)
+        .all()
+    )
+
+    PSR_GROUP = {
+        "B01": "other",
+        "B02": "other",
+        "B04": "fossil",
+        "B05": "fossil",
+        "B06": "other",
+        "B09": "other",
+        "B10": "hydro",
+        "B11": "hydro",
+        "B12": "hydro",
+        "B14": "nuclear",
+        "B15": "other",
+        "B16": "solar",
+        "B17": "other",
+        "B18": "wind",
+        "B19": "wind",
+        "B20": "other",
+    }
+
+    # Group by UTC hour (national aggregate across all zones)
+    by_hour: dict[datetime, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    for r in rows:
+        ts = r.timestamp_utc
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        hour_ts = ts.replace(minute=0, second=0, microsecond=0)
+        group = PSR_GROUP.get(r.psr_type, "other")
+        by_hour[hour_ts][group].append(float(r.value_mw))
+
+    # Build hourly entries
+    entries = []
+    for hour_ts in sorted(by_hour.keys()):
+        groups = by_hour[hour_ts]
+        entry: dict = {"timestamp_utc": hour_ts.isoformat()}
+        local = hour_ts.astimezone(_STHLM)
+        entry["hour_label"] = f"{local.hour:02d}:00"
+        total = 0.0
+        for g in ("hydro", "nuclear", "wind", "solar", "fossil", "other"):
+            avg = sum(groups.get(g, [])) / len(groups[g]) if groups.get(g) else 0
+            entry[g] = round(avg)
+            total += avg
+        renewable = entry.get("hydro", 0) + entry.get("wind", 0) + entry.get("solar", 0)
+        entry["total_mw"] = round(total)
+        entry["renewable_pct"] = round(renewable / total * 100, 1) if total > 0 else None
+        entries.append(entry)
+
+    # Take the last 24 data points (count-based)
+    # Note: ENTSO-E lag may create a ~3h overnight gap, so 24 points
+    # can span slightly more than 24 calendar hours.
+    last_24 = entries[-24:] if len(entries) > 24 else entries
+    latest_slot = last_24[-1]["timestamp_utc"] if last_24 else None
+
+    # Compute current snapshot from latest entry
+    latest = last_24[-1] if last_24 else None
+    renewable_pct = latest["renewable_pct"] if latest else None
+    carbon_free = (
+        (latest.get("hydro", 0) + latest.get("wind", 0) + latest.get("solar", 0) + latest.get("nuclear", 0))
+        / latest["total_mw"]
+        * 100
+        if latest and latest["total_mw"] > 0
+        else None
+    )
+
+    return {
+        "count": len(last_24),
+        "latest_slot": latest_slot,
+        "renewable_pct": round(renewable_pct, 1) if renewable_pct else None,
+        "carbon_free_pct": round(carbon_free, 1) if carbon_free else None,
+        "hourly": last_24,
+    }
+
+
+@router.get("/history")
+def get_generation_history(
+    db: DbDep,
+    days: int = Query(7, ge=1, le=365, description="Number of past days"),
+):
+    """
+    Daily aggregated generation mix for all SE zones combined (national).
+    Returns daily totals (MW-h equivalent) grouped by source type.
+    """
+    from collections import defaultdict
+    from zoneinfo import ZoneInfo
+
+    _STHLM = ZoneInfo("Europe/Stockholm")
+    today = datetime.now(tz=timezone.utc).date()
+    start = today - timedelta(days=days - 1)
+
+    from app.models.generation_mix import GenerationMix
+    from app.utils.timezone import stockholm_midnight_utc
+
+    range_start = stockholm_midnight_utc(start)
+    range_end = stockholm_midnight_utc(today + timedelta(days=1))
+
+    rows = (
+        db.query(GenerationMix)
+        .filter(
+            GenerationMix.timestamp_utc >= range_start.replace(tzinfo=None),
+            GenerationMix.timestamp_utc < range_end.replace(tzinfo=None),
+        )
+        .order_by(GenerationMix.timestamp_utc)
+        .all()
+    )
+
+    PSR_GROUP = {
+        "B01": "other",
+        "B02": "other",
+        "B04": "fossil",
+        "B05": "fossil",
+        "B06": "other",
+        "B09": "other",
+        "B10": "hydro",
+        "B11": "hydro",
+        "B12": "hydro",
+        "B14": "nuclear",
+        "B15": "other",
+        "B16": "solar",
+        "B17": "other",
+        "B18": "wind",
+        "B19": "wind",
+        "B20": "other",
+    }
+
+    by_date: dict[date, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    for r in rows:
+        ts = r.timestamp_utc
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        d = ts.astimezone(_STHLM).date()
+        group = PSR_GROUP.get(r.psr_type, "other")
+        by_date[d][group].append(float(r.value_mw))
+
+    daily = []
+    cur = start
+    while cur <= today:
+        groups = by_date.get(cur, {})
+        if groups:
+            entry: dict = {"date": cur.isoformat()}
+            total = 0.0
+            for g in ("hydro", "nuclear", "wind", "solar", "fossil", "other"):
+                avg = sum(groups.get(g, [])) / len(groups[g]) if groups.get(g) else 0
+                entry[g] = round(avg)
+                total += avg
+            renewable = entry.get("hydro", 0) + entry.get("wind", 0) + entry.get("solar", 0)
+            entry["total_mw"] = round(total)
+            entry["renewable_pct"] = round(renewable / total * 100, 1) if total > 0 else None
+            daily.append(entry)
+        cur += timedelta(days=1)
+
+    return {
+        "days": days,
+        "start": start.isoformat(),
+        "end": today.isoformat(),
+        "daily": daily,
+    }
+
+
 @router.get("/date")
 def get_generation_for_date_endpoint(
     db: DbDep,

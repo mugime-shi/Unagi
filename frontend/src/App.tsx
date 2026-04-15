@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { CheapHoursWidget } from "./components/CheapHoursWidget";
 import { CostFloor } from "./components/CostFloor";
+import { Overview } from "./components/Overview";
 import { ForecastAccuracy } from "./components/ForecastAccuracy";
 import { GenerationChart } from "./components/GenerationChart";
 import { NotificationBell } from "./components/NotificationBell";
@@ -84,7 +85,7 @@ interface LgbmForecastLocal {
 }
 
 export default function App() {
-  const [layer, setLayer] = useState<Layer>("prices");
+  const [layer, setLayer] = useState<Layer>("overview");
   const [menuOpen, setMenuOpen] = useState<boolean>(false);
   const [tab, setTab] = useState<Tab>("today");
   const [forecastDate, setForecastDate] = useState<string>(tomorrowISO);
@@ -266,6 +267,7 @@ export default function App() {
           <nav className="ml-auto hidden sm:flex gap-1">
             {(
               [
+                { id: "overview" as const, label: "Overview" },
                 { id: "prices" as const, label: "Prices" },
                 { id: "cost" as const, label: "Cost" },
                 { id: "simulators" as const, label: "Simulators" },
@@ -346,6 +348,7 @@ export default function App() {
             </button>
             {(
               [
+                { id: "overview" as const, label: "Overview" },
                 { id: "prices" as const, label: "Prices" },
                 { id: "cost" as const, label: "Cost" },
                 { id: "simulators" as const, label: "Simulators" },
@@ -370,10 +373,36 @@ export default function App() {
         </>
       )}
 
-      <main className="w-full max-w-3xl mx-auto px-4 py-6 space-y-4 flex-1">
+      <main className="w-full max-w-4xl mx-auto px-4 py-6 space-y-4 flex-1">
+        {/* ── Layer 0: Overview (default) ── */}
+        {layer === "overview" && (
+          <Overview
+            onZoneClick={(zone) => {
+              setArea(zone);
+              setTab("today");
+              setLayer("prices");
+            }}
+          />
+        )}
+
         {/* ── Layer 1: Prices ── */}
         {layer === "prices" && (
           <>
+            <div className="flex items-start justify-between">
+              <h1 className="text-lg font-semibold text-content-primary">
+                Spot Prices
+              </h1>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-secondary/50 border border-surface-tertiary/40 shadow-[inset_0_1px_0_0_rgba(148,163,184,0.05)] whitespace-nowrap">
+                <span className="text-sm font-mono text-content-primary tabular-nums tracking-wide">
+                  {todayISO()}
+                </span>
+                <span className="text-xs text-content-muted font-medium">
+                  (
+                  {new Date().toLocaleDateString("en-SE", { weekday: "short" })}
+                  )
+                </span>
+              </span>
+            </div>
             {/* Tab selector */}
             <div className="flex flex-wrap gap-2 items-center">
               {(
@@ -483,20 +512,6 @@ export default function App() {
               <span className="text-content-muted text-sm whitespace-nowrap">
                 · {areaCity}
               </span>
-              {tab === "today" && (
-                <span className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-secondary/50 border border-surface-tertiary/40 shadow-[inset_0_1px_0_0_rgba(148,163,184,0.05)] whitespace-nowrap">
-                  <span className="text-sm font-mono text-content-primary tabular-nums tracking-wide">
-                    {todayISO()}
-                  </span>
-                  <span className="text-xs text-content-muted font-medium">
-                    (
-                    {new Date().toLocaleDateString("en-US", {
-                      weekday: "short",
-                    })}
-                    )
-                  </span>
-                </span>
-              )}
             </div>
 
             {/* ── Today tab ── */}
@@ -869,6 +884,21 @@ export default function App() {
         {/* ── Cost Floor ── */}
         {layer === "cost" && (
           <>
+            <div className="flex items-start justify-between">
+              <h1 className="text-lg font-semibold text-content-primary">
+                Electricity Cost Breakdown
+              </h1>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-secondary/50 border border-surface-tertiary/40 shadow-[inset_0_1px_0_0_rgba(148,163,184,0.05)] whitespace-nowrap">
+                <span className="text-sm font-mono text-content-primary tabular-nums tracking-wide">
+                  {todayISO()}
+                </span>
+                <span className="text-xs text-content-muted font-medium">
+                  (
+                  {new Date().toLocaleDateString("en-SE", { weekday: "short" })}
+                  )
+                </span>
+              </span>
+            </div>
             {/* Area selector */}
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex gap-1">
@@ -898,6 +928,21 @@ export default function App() {
         {/* ── Simulators ── */}
         {layer === "simulators" && (
           <div className="space-y-6">
+            <div className="flex items-start justify-between">
+              <h1 className="text-lg font-semibold text-content-primary">
+                Savings Simulators
+              </h1>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-secondary/50 border border-surface-tertiary/40 shadow-[inset_0_1px_0_0_rgba(148,163,184,0.05)] whitespace-nowrap">
+                <span className="text-sm font-mono text-content-primary tabular-nums tracking-wide">
+                  {todayISO()}
+                </span>
+                <span className="text-xs text-content-muted font-medium">
+                  (
+                  {new Date().toLocaleDateString("en-SE", { weekday: "short" })}
+                  )
+                </span>
+              </span>
+            </div>
             <ConsumptionSimulator />
             <SolarSimulator />
           </div>

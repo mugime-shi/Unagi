@@ -119,3 +119,11 @@ resource "aws_lambda_permission" "eventbridge_price_retry" {
   principal     = "events.amazonaws.com"
   source_arn    = each.value.arn
 }
+
+resource "aws_lambda_permission" "eventbridge_hourly_generation" {
+  statement_id  = "AllowEventBridgeHourlyGeneration"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.scheduler.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.hourly_generation.arn
+}
