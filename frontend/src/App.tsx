@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { CheapHoursWidget } from "./components/CheapHoursWidget";
+import { CostFloor } from "./components/CostFloor";
 import { ForecastAccuracy } from "./components/ForecastAccuracy";
 import { GenerationChart } from "./components/GenerationChart";
 import { NotificationBell } from "./components/NotificationBell";
@@ -84,6 +85,7 @@ interface LgbmForecastLocal {
 
 export default function App() {
   const [layer, setLayer] = useState<Layer>("prices");
+  const [menuOpen, setMenuOpen] = useState<boolean>(false);
   const [tab, setTab] = useState<Tab>("today");
   const [forecastDate, setForecastDate] = useState<string>(tomorrowISO);
   const [area, setArea] = useState<Area>("SE3");
@@ -260,11 +262,12 @@ export default function App() {
             Catch an E[el] for now and then.
           </span>
 
-          {/* Layer selector — desktop only (mobile gets it on row 2) */}
+          {/* Layer selector — desktop only */}
           <nav className="ml-auto hidden sm:flex gap-1">
             {(
               [
                 { id: "prices" as const, label: "Prices" },
+                { id: "cost" as const, label: "Cost" },
                 { id: "simulators" as const, label: "Simulators" },
               ] satisfies { id: Layer; label: string }[]
             ).map(({ id, label }) => (
@@ -285,31 +288,87 @@ export default function App() {
           <div className="ml-auto sm:ml-0 flex items-center gap-1">
             <ThemeToggle />
             <NotificationBell area={area} />
+            {/* Hamburger — mobile only */}
+            <button
+              onClick={() => setMenuOpen((v) => !v)}
+              className="sm:hidden p-1.5 rounded-lg text-white/70 hover:text-white transition-colors"
+              aria-label="Menu"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M4 6h16M4 12h16M4 18h16"
+                />
+              </svg>
+            </button>
           </div>
         </div>
-
-        {/* Row 2 (mobile only): full-width nav tabs */}
-        <nav className="sm:hidden mt-2 flex gap-1.5">
-          {(
-            [
-              { id: "prices" as const, label: "Prices" },
-              { id: "simulators" as const, label: "Simulators" },
-            ] satisfies { id: Layer; label: string }[]
-          ).map(({ id, label }) => (
-            <button
-              key={id}
-              onClick={() => setLayer(id)}
-              className={`flex-1 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                layer === id
-                  ? "bg-sky-500 dark:bg-sea-700 text-white"
-                  : "bg-sky-800/50 dark:bg-sea-800/50 text-white/70 hover:text-white/90"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
       </header>
+
+      {/* Mobile slide-in drawer (right side) */}
+      {menuOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="sm:hidden fixed inset-0 bg-black/50 z-40"
+            onClick={() => setMenuOpen(false)}
+          />
+          {/* Panel */}
+          <div className="sm:hidden fixed top-0 right-0 h-full w-56 z-50 bg-sea-900 dark:bg-sea-950 border-l border-sea-700 dark:border-sea-800 shadow-2xl flex flex-col pt-16 px-4 gap-1 animate-[slideIn_150ms_ease-out]">
+            {/* Close button */}
+            <button
+              onClick={() => setMenuOpen(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-lg text-white/70 hover:text-white transition-colors"
+              aria-label="Close menu"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+            {(
+              [
+                { id: "prices" as const, label: "Prices" },
+                { id: "cost" as const, label: "Cost" },
+                { id: "simulators" as const, label: "Simulators" },
+              ] satisfies { id: Layer; label: string }[]
+            ).map(({ id, label }) => (
+              <button
+                key={id}
+                onClick={() => {
+                  setLayer(id);
+                  setMenuOpen(false);
+                }}
+                className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  layer === id
+                    ? "bg-sea-700 dark:bg-sea-800 text-white"
+                    : "text-white/70 hover:bg-sea-800/50 dark:hover:bg-sea-800/70"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       <main className="w-full max-w-3xl mx-auto px-4 py-6 space-y-4 flex-1">
         {/* ── Layer 1: Prices ── */}
@@ -429,7 +488,7 @@ export default function App() {
                   <span className="text-sm font-mono text-content-primary tabular-nums tracking-wide">
                     {todayISO()}
                   </span>
-                  <span className="text-xs text-cyan-600 dark:text-cyan-400/60 font-medium">
+                  <span className="text-xs text-content-muted font-medium">
                     (
                     {new Date().toLocaleDateString("en-US", {
                       weekday: "short",
@@ -804,6 +863,35 @@ export default function App() {
             )}
             {/* ── Trends tab ── */}
             {tab === "trends" && <PriceHistory area={area} />}
+          </>
+        )}
+
+        {/* ── Cost Floor ── */}
+        {layer === "cost" && (
+          <>
+            {/* Area selector */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex gap-1">
+                {AREAS.map(({ id, label, cities }) => (
+                  <button
+                    key={id}
+                    title={`${id}: ${cities}`}
+                    onClick={() => setArea(id)}
+                    className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                      area === id
+                        ? "bg-sky-600 text-white"
+                        : "text-content-muted hover:text-content-primary border border-surface-tertiary"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <span className="text-content-muted text-sm whitespace-nowrap">
+                · {areaCity}
+              </span>
+            </div>
+            <CostFloor area={area} />
           </>
         )}
 

@@ -33,6 +33,11 @@ export interface ChartColors {
   lgbm: string;
   weekdayAvg: string;
   fallback: string;
+  // Cost floor
+  costSpot: string;
+  costElnat: string;
+  costSkatt: string;
+  costMoms: string;
 }
 
 const DARK: ChartColors = {
@@ -75,6 +80,11 @@ const DARK: ChartColors = {
   lgbm: "#fbbf24", // amber-400
   weekdayAvg: "#94a3b8", // slate-400
   fallback: "#6366f1", // indigo-500
+  // Cost floor — bar-friendly (~70% saturation of Unagi palette)
+  costSpot: "#5b8ec9", // blue — daLine family, toned for bars
+  costElnat: "#2d8f9d", // teal — ocean depth
+  costSkatt: "#c49630", // amber — brand accent, controlled
+  costMoms: "#55627a", // slate blue — neutral
 };
 
 const LIGHT: ChartColors = {
@@ -117,6 +127,11 @@ const LIGHT: ChartColors = {
   lgbm: "#d97706", // amber-600
   weekdayAvg: "#64748b", // slate-500
   fallback: "#4f46e5", // indigo-600
+  // Cost floor — bar-friendly (light mode, brighter for white bg)
+  costSpot: "#4a8fd0", // medium blue — visible on white
+  costElnat: "#2a9aaa", // medium teal — clear on white
+  costSkatt: "#c49630", // warm amber — same warmth as dark
+  costMoms: "#8895a8", // light slate — neutral but readable
 };
 
 export function useChartColors(): ChartColors {

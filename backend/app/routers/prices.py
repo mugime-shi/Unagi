@@ -232,6 +232,50 @@ def get_price_history(
     }
 
 
+@router.get("/monthly-averages")
+def get_monthly_averages(
+    db: DbDep,
+    months: int = Query(12, ge=1, le=24, description="Number of past months to include"),
+    area: AreaDep = "SE3",
+):
+    """
+    Monthly average spot prices for the past N months.
+    Groups hourly prices by Stockholm calendar month.
+    """
+    if area not in VALID_AREAS:
+        raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
+
+    from collections import defaultdict
+
+    today = datetime.now(tz=timezone.utc).date()
+    # Go back N+1 months to ensure we capture the full earliest month
+    y, m = today.year, today.month - months
+    while m <= 0:
+        m += 12
+        y -= 1
+    start = date(y, m, 1)
+
+    rows = get_prices_for_date_range(db, start, today, area=area)
+
+    by_month: dict[str, list[float]] = defaultdict(list)
+    for r in rows:
+        cet_date = _to_stockholm_date(r.timestamp_utc)
+        by_month[cet_date.strftime("%Y-%m")].append(float(r.price_sek_kwh))
+
+    monthly = []
+    for key in sorted(by_month.keys()):
+        vals = by_month[key]
+        monthly.append(
+            {
+                "month": key,
+                "avg_sek_kwh": round(sum(vals) / len(vals), 4),
+                "count": len(vals),
+            }
+        )
+
+    return {"area": area, "months": monthly[-months:]}
+
+
 @router.get("/multi-zone")
 def get_multi_zone_history(
     db: DbDep,
@@ -524,7 +568,6 @@ def get_weekly_forecast(
         raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
 
     from sqlalchemy import text
-
 
     today = date.today()
 
