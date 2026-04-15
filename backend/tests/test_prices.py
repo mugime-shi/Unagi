@@ -594,8 +594,11 @@ def test_forecast_with_historical_data(client, db):
     # Insert data for 2 same-weekday dates (1 and 2 weeks ago)
     for weeks_ago in (1, 2):
         past_date = tomorrow - timedelta(weeks=weeks_ago)
-        # Insert hourly data for hour 10 Stockholm time (= UTC 9:00 in CET)
-        ts = datetime(past_date.year, past_date.month, past_date.day, 9, 0, tzinfo=timezone.utc)
+        # Insert hourly data for hour 10 Stockholm time (DST-aware)
+        from zoneinfo import ZoneInfo
+
+        sthlm_10 = datetime(past_date.year, past_date.month, past_date.day, 10, 0, tzinfo=ZoneInfo("Europe/Stockholm"))
+        ts = sthlm_10.astimezone(timezone.utc)
         price = 0.30 + weeks_ago * 0.10  # 0.40, 0.50
         upsert_prices(
             db,
