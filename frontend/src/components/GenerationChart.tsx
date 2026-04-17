@@ -58,6 +58,8 @@ interface GenerationData {
 interface GenerationChartProps {
   generation: GenerationData | null;
   prices: PricePoint[] | null;
+  mode?: "zone" | "national";
+  height?: number;
 }
 
 function toUtc(iso: string): string {
@@ -134,6 +136,8 @@ function CustomTooltip({
 export function GenerationChart({
   generation,
   prices,
+  mode = "zone",
+  height = 240,
 }: GenerationChartProps): ReactElement | null {
   const cc = useChartColors();
   const isMobile = useIsMobile();
@@ -201,6 +205,11 @@ export function GenerationChart({
         <div className="flex items-start justify-between">
           <h2 className="text-sm font-medium text-content-primary">
             Generation mix &middot; MW
+            {mode === "national" && (
+              <span className="text-content-muted ml-1.5 font-normal">
+                Sweden (SE1–SE4)
+              </span>
+            )}
           </h2>
           <div className="flex gap-2 flex-wrap justify-end">
             {activeSources.map(({ key, label }) => (
@@ -244,7 +253,7 @@ export function GenerationChart({
           </p>
         )}
       </div>
-      <ResponsiveContainer width="100%" height={240}>
+      <ResponsiveContainer width="100%" height={height}>
         <AreaChart
           data={chartData}
           stackOffset="none"

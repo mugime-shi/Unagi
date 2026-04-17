@@ -2,7 +2,7 @@
 
 export type Area = "SE1" | "SE2" | "SE3" | "SE4";
 export type Tab = "today" | "tomorrow" | "trends";
-export type Layer = "prices" | "simulators" | "cost";
+export type Layer = "overview" | "prices" | "simulators" | "cost";
 
 export interface AreaInfo {
   id: Area;
