@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../utils/api";
+import { useRefresh } from "./useRefresh";
 import type { Area } from "../types/index";
 
 interface CoverageData {
@@ -21,6 +22,7 @@ export function useCoverage(
   const [data, setData] = useState<CoverageData | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<Error | null>(null);
+  const { key: refreshKey } = useRefresh();
 
   useEffect(() => {
     setLoading(true);
@@ -35,7 +37,7 @@ export function useCoverage(
       .then(setData)
       .catch(setError)
       .finally(() => setLoading(false));
-  }, [area, days]);
+  }, [area, days, refreshKey]);
 
   return { data, loading, error };
 }

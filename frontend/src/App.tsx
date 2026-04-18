@@ -11,6 +11,8 @@ import { PriceHistory } from "./components/PriceHistory";
 import { PriceIndicator } from "./components/PriceIndicator";
 import { ConsumptionSimulator } from "./components/ConsumptionSimulator";
 import { SolarSimulator } from "./components/SolarSimulator";
+import { UpdateBadge } from "./components/UpdateBadge";
+import { RefreshProvider } from "./hooks/useRefresh";
 import { useBalancing } from "./hooks/useBalancing";
 import { useDatePrices } from "./hooks/useDatePrices";
 import { useForecast } from "./hooks/useForecast";
@@ -85,6 +87,14 @@ interface LgbmForecastLocal {
 }
 
 export default function App() {
+  return (
+    <RefreshProvider>
+      <AppInner />
+    </RefreshProvider>
+  );
+}
+
+function AppInner() {
   const [layer, setLayer] = useState<Layer>("overview");
   const [menuOpen, setMenuOpen] = useState<boolean>(false);
   const [tab, setTab] = useState<Tab>("today");
@@ -388,20 +398,11 @@ export default function App() {
         {/* ── Layer 1: Prices ── */}
         {layer === "prices" && (
           <>
-            <div className="flex items-start justify-between">
+            <div className="flex flex-col sm:flex-row gap-1 sm:gap-4 sm:items-start sm:justify-between">
               <h1 className="text-lg font-semibold text-content-primary">
                 Spot Prices
               </h1>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-secondary/50 border border-surface-tertiary/40 shadow-[inset_0_1px_0_0_rgba(148,163,184,0.05)] whitespace-nowrap">
-                <span className="text-sm font-mono text-content-primary tabular-nums tracking-wide">
-                  {todayISO()}
-                </span>
-                <span className="text-xs text-content-muted font-medium">
-                  (
-                  {new Date().toLocaleDateString("en-SE", { weekday: "short" })}
-                  )
-                </span>
-              </span>
+              <UpdateBadge />
             </div>
             {/* Tab selector */}
             <div className="flex flex-wrap gap-2 items-center">
@@ -884,20 +885,11 @@ export default function App() {
         {/* ── Cost Floor ── */}
         {layer === "cost" && (
           <>
-            <div className="flex items-start justify-between">
+            <div className="flex flex-col sm:flex-row gap-1 sm:gap-4 sm:items-start sm:justify-between">
               <h1 className="text-lg font-semibold text-content-primary">
                 Electricity Cost Breakdown
               </h1>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-secondary/50 border border-surface-tertiary/40 shadow-[inset_0_1px_0_0_rgba(148,163,184,0.05)] whitespace-nowrap">
-                <span className="text-sm font-mono text-content-primary tabular-nums tracking-wide">
-                  {todayISO()}
-                </span>
-                <span className="text-xs text-content-muted font-medium">
-                  (
-                  {new Date().toLocaleDateString("en-SE", { weekday: "short" })}
-                  )
-                </span>
-              </span>
+              <UpdateBadge />
             </div>
             {/* Area selector */}
             <div className="flex flex-wrap items-center gap-2">
@@ -928,20 +920,11 @@ export default function App() {
         {/* ── Simulators ── */}
         {layer === "simulators" && (
           <div className="space-y-6">
-            <div className="flex items-start justify-between">
+            <div className="flex flex-col sm:flex-row gap-1 sm:gap-4 sm:items-start sm:justify-between">
               <h1 className="text-lg font-semibold text-content-primary">
                 Savings Simulators
               </h1>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-secondary/50 border border-surface-tertiary/40 shadow-[inset_0_1px_0_0_rgba(148,163,184,0.05)] whitespace-nowrap">
-                <span className="text-sm font-mono text-content-primary tabular-nums tracking-wide">
-                  {todayISO()}
-                </span>
-                <span className="text-xs text-content-muted font-medium">
-                  (
-                  {new Date().toLocaleDateString("en-SE", { weekday: "short" })}
-                  )
-                </span>
-              </span>
+              <UpdateBadge />
             </div>
             <ConsumptionSimulator />
             <SolarSimulator />

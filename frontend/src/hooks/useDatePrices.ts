@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../utils/api";
+import { useRefresh } from "./useRefresh";
 import type {
   Area,
   PricesResponse,
@@ -38,6 +39,7 @@ export function useDatePrices(
   const [data, setData] = useState<PricesResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<Error | null>(null);
+  const { key: refreshKey } = useRefresh();
 
   useEffect(() => {
     if (!date) {
@@ -75,7 +77,7 @@ export function useDatePrices(
       })
       .catch(setError)
       .finally(() => setLoading(false));
-  }, [date, area]);
+  }, [date, area, refreshKey]);
 
   return { data, loading, error };
 }

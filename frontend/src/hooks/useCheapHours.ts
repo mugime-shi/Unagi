@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../utils/api";
+import { useRefresh } from "./useRefresh";
 import type { Area, CheapestWindowResponse } from "../types/index";
 
 interface UseCheapHoursReturn {
@@ -16,6 +17,7 @@ export function useCheapHours(
   const [data, setData] = useState<CheapestWindowResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<Error | null>(null);
+  const { key: refreshKey } = useRefresh();
 
   useEffect(() => {
     if (!date || !duration) return;
@@ -36,7 +38,7 @@ export function useCheapHours(
         setError(e);
         setLoading(false);
       });
-  }, [date, duration, area]);
+  }, [date, duration, area, refreshKey]);
 
   return { data, loading, error };
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../utils/api";
+import { useRefresh } from "./useRefresh";
 import type { Area, WeeklyClassifiedResponse } from "../types/index";
 
 interface UseWeeklyForecastReturn {
@@ -15,6 +16,7 @@ export function useWeeklyForecast(
   const [data, setData] = useState<WeeklyClassifiedResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<Error | null>(null);
+  const { key: refreshKey } = useRefresh();
 
   useEffect(() => {
     if (!enabled) {
@@ -31,7 +33,7 @@ export function useWeeklyForecast(
       .then(setData)
       .catch(setError)
       .finally(() => setLoading(false));
-  }, [area, enabled]);
+  }, [area, enabled, refreshKey]);
 
   return { data, loading, error };
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../utils/api";
+import { useRefresh } from "./useRefresh";
 import type { Area, RetrospectiveResponse } from "../types/index";
 
 interface UseRetrospectiveReturn {
@@ -15,6 +16,7 @@ export function useRetrospective(
   const [data, setData] = useState<RetrospectiveResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<Error | null>(null);
+  const { key: refreshKey } = useRefresh();
 
   useEffect(() => {
     if (!date) {
@@ -31,7 +33,7 @@ export function useRetrospective(
       .then(setData)
       .catch(setError)
       .finally(() => setLoading(false));
-  }, [date, area]);
+  }, [date, area, refreshKey]);
 
   return { data, loading, error };
 }

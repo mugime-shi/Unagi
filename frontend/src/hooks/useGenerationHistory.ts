@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../utils/api";
+import { useRefresh } from "./useRefresh";
 
 export interface GenHistoryDay {
   date: string;
@@ -32,6 +33,7 @@ export function useGenerationHistory(
   const [data, setData] = useState<GenHistoryResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
+  const { key: refreshKey } = useRefresh();
 
   useEffect(() => {
     if (days < 1) {
@@ -49,7 +51,7 @@ export function useGenerationHistory(
       .then(setData)
       .catch(setError)
       .finally(() => setLoading(false));
-  }, [days]);
+  }, [days, refreshKey]);
 
   return { data, loading, error };
 }

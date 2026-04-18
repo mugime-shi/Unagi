@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../utils/api";
+import { useRefresh } from "./useRefresh";
 import type { Area, PricesResponse } from "../types/index";
 
 const ZONES: Area[] = ["SE1", "SE2", "SE3", "SE4"];
@@ -82,6 +83,7 @@ export function useAllZonePrices(): UseAllZonePricesReturn {
   const [data, setData] = useState<Record<Area, ZonePriceSummary> | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
+  const { key: refreshKey } = useRefresh();
 
   useEffect(() => {
     let cancelled = false;
@@ -115,7 +117,7 @@ export function useAllZonePrices(): UseAllZonePricesReturn {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshKey]);
 
   return { data, loading, error };
 }

@@ -18,6 +18,7 @@ import { useAllZonePrices } from "../hooks/useAllZonePrices";
 import { useGenerationHistory } from "../hooks/useGenerationHistory";
 import { useChartColors } from "../hooks/useChartColors";
 import { useIsMobile } from "../hooks/useIsMobile";
+import { UpdateBadge } from "./UpdateBadge";
 import { formatPrice, PRICE_UNIT } from "../utils/formatters";
 import type { Area } from "../types/index";
 import type { GenHistoryDay } from "../hooks/useGenerationHistory";
@@ -614,10 +615,6 @@ export function Overview({ onZoneClick }: OverviewProps) {
     return `as of ${time} ${tz} (${lag})`;
   }, [nat24h]);
 
-  // Date badge
-  const todayISO = new Date().toISOString().split("T")[0];
-  const weekday = new Date().toLocaleDateString("en-SE", { weekday: "short" });
-
   // Chart subtitle
   const chartSubtitle = is24h
     ? "MW, hourly, SE1–SE4"
@@ -626,18 +623,11 @@ export function Overview({ onZoneClick }: OverviewProps) {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row gap-1 sm:gap-4 sm:items-start sm:justify-between">
         <h1 className="text-lg font-semibold text-content-primary">
           Sweden Electricity Overview
         </h1>
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-secondary/50 border border-surface-tertiary/40 shadow-[inset_0_1px_0_0_rgba(148,163,184,0.05)] whitespace-nowrap">
-          <span className="text-sm font-mono text-content-primary tabular-nums tracking-wide">
-            {todayISO}
-          </span>
-          <span className="text-xs text-content-muted font-medium">
-            ({weekday})
-          </span>
-        </span>
+        <UpdateBadge />
       </div>
 
       {/* Time range selector */}

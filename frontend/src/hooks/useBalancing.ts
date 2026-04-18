@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../utils/api";
+import { useRefresh } from "./useRefresh";
 import type { Area, BalancingResponse } from "../types/index";
 
 function prevDay(iso: string): string {
@@ -31,6 +32,7 @@ export function useBalancing(
   const [dataDate, setDataDate] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<Error | null>(null);
+  const { key: refreshKey } = useRefresh();
 
   useEffect(() => {
     if (!dateISO) {
@@ -71,7 +73,7 @@ export function useBalancing(
           .catch(setError);
       })
       .finally(() => setLoading(false));
-  }, [dateISO, area]);
+  }, [dateISO, area, refreshKey]);
 
   return { data, dataDate, loading, error };
 }

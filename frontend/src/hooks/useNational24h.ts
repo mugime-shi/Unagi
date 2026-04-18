@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../utils/api";
+import { useRefresh } from "./useRefresh";
 
 export interface National24hEntry {
   timestamp_utc: string;
@@ -32,6 +33,7 @@ export function useNational24h(): UseNational24hReturn {
   const [data, setData] = useState<National24hResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
+  const { key: refreshKey } = useRefresh();
 
   useEffect(() => {
     setLoading(true);
@@ -44,7 +46,7 @@ export function useNational24h(): UseNational24hReturn {
       .then(setData)
       .catch(setError)
       .finally(() => setLoading(false));
-  }, []);
+  }, [refreshKey]);
 
   return { data, loading, error };
 }

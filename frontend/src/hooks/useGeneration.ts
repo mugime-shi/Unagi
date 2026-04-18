@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../utils/api";
+import { useRefresh } from "./useRefresh";
 import type { Area, GenerationResponse } from "../types/index";
 
 const API_BASE: string = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
@@ -14,6 +15,7 @@ export function useGeneration(area: Area = "SE3"): UseGenerationReturn {
   const [data, setData] = useState<GenerationResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
+  const { key: refreshKey } = useRefresh();
 
   useEffect(() => {
     let cancelled = false;
@@ -41,7 +43,7 @@ export function useGeneration(area: Area = "SE3"): UseGenerationReturn {
     return () => {
       cancelled = true;
     };
-  }, [area]);
+  }, [area, refreshKey]);
 
   return { data, loading, error };
 }

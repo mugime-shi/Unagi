@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../utils/api";
+import { useRefresh } from "./useRefresh";
 import type { GenerationPoint, GenerationResponse } from "../types/index";
 
 const API_BASE: string = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
@@ -75,6 +76,7 @@ export function useNationalGeneration(
   const [data, setData] = useState<NationalGenerationData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
+  const { key: refreshKey } = useRefresh();
 
   useEffect(() => {
     let cancelled = false;
@@ -191,7 +193,7 @@ export function useNationalGeneration(
     return () => {
       cancelled = true;
     };
-  }, [mode]);
+  }, [mode, refreshKey]);
 
   return { data, loading, error };
 }

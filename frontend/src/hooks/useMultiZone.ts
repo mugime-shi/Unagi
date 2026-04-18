@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../utils/api";
+import { useRefresh } from "./useRefresh";
 import type { MultiZoneResponse } from "../types/index";
 
 interface UseMultiZoneReturn {
@@ -12,6 +13,7 @@ export function useMultiZone(days: number = 90): UseMultiZoneReturn {
   const [data, setData] = useState<MultiZoneResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
+  const { key: refreshKey } = useRefresh();
 
   useEffect(() => {
     setLoading(true);
@@ -24,7 +26,7 @@ export function useMultiZone(days: number = 90): UseMultiZoneReturn {
       .then(setData)
       .catch(setError)
       .finally(() => setLoading(false));
-  }, [days]);
+  }, [days, refreshKey]);
 
   return { data, loading, error };
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../utils/api";
+import { useRefresh } from "./useRefresh";
 import type { Area, PricesResponse } from "../types/index";
 
 interface UsePricesReturn {
@@ -15,6 +16,7 @@ export function usePrices(
   const [data, setData] = useState<PricesResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
+  const { key: refreshKey } = useRefresh();
 
   useEffect(() => {
     if (!day) {
@@ -32,7 +34,7 @@ export function usePrices(
       .then(setData)
       .catch(setError)
       .finally(() => setLoading(false));
-  }, [day, area]);
+  }, [day, area, refreshKey]);
 
   return { data, loading, error };
 }

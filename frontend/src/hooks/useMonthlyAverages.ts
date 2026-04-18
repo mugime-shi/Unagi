@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../utils/api";
+import { useRefresh } from "./useRefresh";
 import type { Area, MonthlyAvgResponse } from "../types/index";
 
 interface UseMonthlyAveragesReturn {
@@ -15,6 +16,7 @@ export function useMonthlyAverages(
   const [data, setData] = useState<MonthlyAvgResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
+  const { key: refreshKey } = useRefresh();
 
   useEffect(() => {
     setLoading(true);
@@ -27,7 +29,7 @@ export function useMonthlyAverages(
       .then(setData)
       .catch(setError)
       .finally(() => setLoading(false));
-  }, [months, area]);
+  }, [months, area, refreshKey]);
 
   return { data, loading, error };
 }

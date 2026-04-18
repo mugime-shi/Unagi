@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../utils/api";
+import { useRefresh } from "./useRefresh";
 import type { Area, HistoryResponse } from "../types/index";
 
 interface UseHistoryReturn {
@@ -15,6 +16,7 @@ export function useHistory(
   const [data, setData] = useState<HistoryResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
+  const { key: refreshKey } = useRefresh();
 
   useEffect(() => {
     setLoading(true);
@@ -27,7 +29,7 @@ export function useHistory(
       .then(setData)
       .catch(setError)
       .finally(() => setLoading(false));
-  }, [days, area]);
+  }, [days, area, refreshKey]);
 
   return { data, loading, error };
 }

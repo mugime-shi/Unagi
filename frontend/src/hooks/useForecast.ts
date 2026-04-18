@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../utils/api";
+import { useRefresh } from "./useRefresh";
 import type { Area, ForecastResponse } from "../types/index";
 
 interface UseForecastReturn {
@@ -15,6 +16,7 @@ export function useForecast(
   const [data, setData] = useState<ForecastResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<Error | null>(null);
+  const { key: refreshKey } = useRefresh();
 
   useEffect(() => {
     if (!date) {
@@ -31,7 +33,7 @@ export function useForecast(
       .then(setData)
       .catch(setError)
       .finally(() => setLoading(false));
-  }, [date, area]);
+  }, [date, area, refreshKey]);
 
   return { data, loading, error };
 }

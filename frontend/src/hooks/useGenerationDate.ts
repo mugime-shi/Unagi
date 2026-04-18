@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../utils/api";
+import { useRefresh } from "./useRefresh";
 import type { Area, GenerationResponse } from "../types/index";
 
 const API_BASE: string = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
@@ -17,6 +18,7 @@ export function useGenerationDate(
   const [data, setData] = useState<GenerationResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<Error | null>(null);
+  const { key: refreshKey } = useRefresh();
 
   useEffect(() => {
     if (!date) {
@@ -48,7 +50,7 @@ export function useGenerationDate(
     return () => {
       cancelled = true;
     };
-  }, [date, area]);
+  }, [date, area, refreshKey]);
 
   return { data, loading, error };
 }
