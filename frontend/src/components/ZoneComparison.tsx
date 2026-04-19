@@ -160,7 +160,7 @@ export function ZoneComparison({ days = 90 }: ZoneComparisonProps) {
   if (points.length === 0) {
     return (
       <div className="bg-surface-primary rounded-2xl p-4 space-y-2">
-        <h2 className="text-sm font-medium text-content-primary">
+        <h2 className="text-base font-medium text-content-primary">
           Zone Comparison -- SE1-SE4
         </h2>
         <p className="text-content-muted text-sm">
@@ -198,7 +198,7 @@ python -m app.tasks.fetch_prices --backfill 90 --area SE4`}
   return (
     <div className="bg-surface-primary rounded-2xl p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium text-content-primary">
+        <h2 className="text-base font-medium text-content-primary">
           Zone Comparison -- SE1-SE4
         </h2>
         <span className="text-xs text-content-muted">

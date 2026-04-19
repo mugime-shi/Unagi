@@ -203,7 +203,7 @@ export function GenerationChart({
     <div className="bg-surface-primary rounded-2xl p-4">
       <div className="mb-3">
         <div className="flex items-start justify-between">
-          <h2 className="text-sm font-medium text-content-primary">
+          <h2 className="text-base font-medium text-content-primary">
             Generation mix &middot; MW
             {mode === "national" && (
               <span className="text-content-muted ml-1.5 font-normal">

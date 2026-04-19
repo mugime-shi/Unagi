@@ -269,7 +269,7 @@ function AppInner() {
             alt="Unagi"
             className="h-9 sm:h-12 w-auto -my-1 shrink-0"
           />
-          <span className="hidden sm:inline text-[11px] text-white/50 tracking-wide self-end mb-0">
+          <span className="font-display hidden sm:inline text-[13px] italic text-white/60 tracking-wide self-end mb-0">
             Catch an E[el] for now and then.
           </span>
 

@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.middleware.api_key import ApiKeyMiddleware
-from app.routers import generation, grid, notify, prices, simulate, solar
+from app.routers import elhandlare, generation, grid, notify, prices, simulate, solar
 
 app = FastAPI(
     title=settings.app_name,
@@ -36,6 +36,7 @@ app.include_router(simulate.router, prefix="/api/v1")
 app.include_router(solar.router, prefix="/api/v1")
 app.include_router(notify.router, prefix="/api/v1")
 app.include_router(grid.router, prefix="/api/v1")
+app.include_router(elhandlare.router, prefix="/api/v1")
 
 
 @app.get("/health")

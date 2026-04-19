@@ -15,6 +15,7 @@ import { useChartColors } from "../hooks/useChartColors";
 import { useGridOperators } from "../hooks/useGridOperators";
 import { useMonthlyAverages } from "../hooks/useMonthlyAverages";
 import { useIsMobile } from "../hooks/useIsMobile";
+import { ElhandlareRanking } from "./ElhandlareRanking";
 import { PRICE_UNIT } from "../utils/formatters";
 import type { Area, GridOperatorEntry } from "../types/index";
 
@@ -292,7 +293,7 @@ export function CostFloor({ area }: CostFloorProps) {
         {/* Title row */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-3">
           <div className="flex-1">
-            <h2 className="text-sm font-medium text-content-primary">
+            <h2 className="text-base font-medium text-content-primary">
               Electricity cost breakdown
             </h2>
             <p className="text-xs text-content-muted mt-0.5">
@@ -491,16 +492,16 @@ export function CostFloor({ area }: CostFloorProps) {
       </div>
 
       {/* Source note */}
-      <div className="bg-surface-primary rounded-xl p-5 space-y-3">
-        <h3 className="text-sm font-medium text-content-primary">
+      <div className="bg-surface-primary rounded-2xl p-4 space-y-3">
+        <h3 className="text-base font-medium text-content-primary">
           Two separate bills
         </h3>
-        <div className="text-sm text-content-muted space-y-3">
+        <div className="text-xs text-content-muted space-y-3">
           <div>
             <p className="font-medium text-content-secondary mb-1">
               Elnät bill — fixed, based on your address
             </p>
-            <ul className="space-y-1 ml-4 list-disc">
+            <ul className="space-y-1 pl-4 list-disc marker:text-content-faint">
               <li>
                 <strong>Grid fee</strong> — {operatorName}
                 {!isCustom && activeOp && (
@@ -516,13 +517,14 @@ export function CostFloor({ area }: CostFloorProps) {
             <p className="font-medium text-content-secondary mb-1">
               Elhandel bill — your retailer choice matters
             </p>
-            <ul className="space-y-1 ml-4 list-disc">
+            <ul className="space-y-1 pl-4 list-disc marker:text-content-faint">
               <li>
                 <strong>Spot price</strong> — Nord Pool {area} monthly avg (same
                 for all retailers)
               </li>
-              <li className="text-content-faint italic">
-                + Retailer markup — varies by company (not shown yet)
+              <li>
+                <strong>Retailer markup</strong> — company markup + monthly fee
+                (varies by retailer, see Retailer comparison below)
               </li>
             </ul>
           </div>
@@ -541,6 +543,8 @@ export function CostFloor({ area }: CostFloorProps) {
           </p>
         )}
       </div>
+
+      <ElhandlareRanking area={area} dwelling={dwelling} kwhYear={kwhYear} />
     </div>
   );
 }

@@ -4,6 +4,17 @@ export default {
   content: ["./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      fontFamily: {
+        sans: [
+          "var(--font-sans)",
+          "system-ui",
+          "-apple-system",
+          "Segoe UI",
+          "sans-serif",
+        ],
+        display: ["var(--font-display)", "Georgia", "Cambria", "serif"],
+        mono: ["var(--font-mono)", "Menlo", "Monaco", "monospace"],
+      },
       colors: {
         // ── Deep Sea theme (α: 深海回遊) ──
         // 既存コンポーネント互換用。新規コードは surface/content トークンを使う

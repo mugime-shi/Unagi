@@ -378,6 +378,30 @@ export interface GridOperatorsResponse {
   operators: GridOperatorEntry[];
 }
 
+// ─── Elhandlare (electricity retailers) ──────────────────────────────────────
+
+export interface ElhandlareEntry {
+  slug: string;
+  name: string;
+  area: string;
+  contract_type: "rorligt" | "kvartspris" | "fast";
+  paslag_ore_kwh: number;
+  monthly_fee_sek: number;
+  elcert_included: boolean;
+  binding_months: number;
+  is_estimate: boolean;
+  notes: string | null;
+  valid_from: string;
+  valid_to: string;
+  source_url: string | null;
+}
+
+export interface ElhandlareResponse {
+  area: string;
+  count: number;
+  retailers: ElhandlareEntry[];
+}
+
 // ─── Monthly Averages ────────────────────────────────────────────────────────
 
 export interface MonthlyAvg {

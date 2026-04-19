@@ -50,7 +50,7 @@ export function ConsumptionSimulator() {
 
   return (
     <div className="bg-surface-primary rounded-2xl p-4">
-      <h2 className="text-sm font-medium text-content-primary mb-1">
+      <h2 className="text-base font-medium text-content-primary mb-1">
         Monthly cost comparison
       </h2>
       <p className="text-xs text-content-faint mb-3">

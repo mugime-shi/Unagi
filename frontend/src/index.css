@@ -11,9 +11,9 @@
   --surface-tertiary: #1a3058; /* sea-700 */
 
   --text-primary: #f3f4f6; /* gray-100 */
-  --text-secondary: #9ca3af; /* gray-400 */
-  --text-muted: #6b7280; /* gray-500 */
-  --text-faint: #4b5563; /* gray-600 */
+  --text-secondary: #b5bbc5; /* between gray-300 and gray-400 */
+  --text-muted: #868d9a; /* between gray-400 and gray-500 */
+  --text-faint: #5b6171; /* between gray-500 and gray-600 */
 
   --indicator-cheap-bg: rgba(8, 51, 68, 0.4); /* cyan-950/40 */
   --indicator-cheap-border: rgba(21, 94, 117, 0.4); /* cyan-800/40 */
@@ -31,9 +31,9 @@
   --surface-tertiary: #cbd5e1; /* slate-300 */
 
   --text-primary: #0f172a; /* slate-900 */
-  --text-secondary: #475569; /* slate-600 */
-  --text-muted: #64748b; /* slate-500 */
-  --text-faint: #94a3b8; /* slate-400 */
+  --text-secondary: #3d4860; /* between slate-600 and slate-700 */
+  --text-muted: #556177; /* between slate-500 and slate-600 */
+  --text-faint: #7c8ba0; /* between slate-400 and slate-500 */
 
   --indicator-cheap-bg: #ecfeff; /* cyan-50 */
   --indicator-cheap-border: #a5f3fc; /* cyan-200 */
@@ -46,6 +46,28 @@
 html,
 body {
   background-color: var(--surface-page); /* prevents white flash on iOS overscroll */
+  font-family: var(--font-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* ── Display type (Fraunces) — h1 & tagline only ──
+ * opsz is matched to rendered size so strokes don't feel clogged.
+ * SOFT adds a hint of roundness (eel body), WONK flicks the terminals (tail).
+ */
+h1,
+.font-display {
+  font-family: var(--font-display), Georgia, Cambria, serif;
+  font-variation-settings: "opsz" 36, "SOFT" 60, "WONK" 1;
+  letter-spacing: -0.01em;
+}
+
+/* ── Card titles (h2/h3) — sans for neon-crisp "section label" feel ──
+ * Sharper than Fraunces at small sizes; clearer hierarchy against h1 display.
+ */
+h2,
+h3 {
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.005em;
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -64,4 +86,28 @@ body {
   to {
     transform: translateX(0);
   }
+}
+
+/* ── Typography scale (override Tailwind defaults) ──
+ * Unagi is a data+text dashboard (NYT Interactive class). Bumping Tailwind's
+ * font-size utilities here keeps the rest of the codebase's `text-sm` etc.
+ * intact while producing a more readable scale on every screen.
+ *
+ * To opt out at a specific site, use an arbitrary value like `text-[14px]`
+ * — arbitrary values bypass these rules.
+ */
+.text-\[10px\] { font-size: 11px; line-height: 15px; }
+.text-\[11px\] { font-size: 12px; line-height: 16px; }
+.text-xs       { font-size: 0.8125rem; line-height: 1.5; }  /* 13 / 19.5 */
+.text-sm       { font-size: 0.9375rem; line-height: 1.5; }  /* 15 / 22.5 */
+.text-base     { font-size: 1rem;      line-height: 1.5; }  /* 16 / 24 */
+.text-lg       { font-size: 1.125rem;  line-height: 1.4; }  /* 18 / 25 */
+
+@media (min-width: 640px) {
+  .text-\[10px\] { font-size: 12px; line-height: 16px; }
+  .text-\[11px\] { font-size: 13px; line-height: 18px; }
+  .text-xs       { font-size: 0.875rem;  line-height: 1.5; }   /* 14 / 21 */
+  .text-sm       { font-size: 1rem;      line-height: 1.5; }   /* 16 / 24 */
+  .text-base     { font-size: 1.125rem;  line-height: 1.55; }  /* 18 / 28 */
+  .text-lg       { font-size: 1.375rem;  line-height: 1.4; }   /* 22 / 31 */
 }

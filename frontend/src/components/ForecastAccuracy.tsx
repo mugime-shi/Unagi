@@ -223,7 +223,7 @@ export function ForecastAccuracy({
               }`}
             >
               <div>
-                <span className="text-sm font-medium text-content-primary">
+                <span className="text-base font-medium text-content-primary">
                   {modelLabel(m.name)}
                 </span>
                 <span className="text-xs text-content-muted ml-2">

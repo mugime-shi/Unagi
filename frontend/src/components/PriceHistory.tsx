@@ -205,7 +205,7 @@ export function PriceHistory({
     <div className="space-y-3">
       {subNav}
       <div className="bg-surface-primary rounded-2xl p-4 space-y-4">
-        <h2 className="text-sm font-medium text-content-primary">
+        <h2 className="text-base font-medium text-content-primary">
           Spot price
           <span className="text-content-muted ml-1.5">
             last {days} days &middot; {area}

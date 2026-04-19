@@ -29,10 +29,10 @@ interface OverviewProps {
 }
 
 const ZONE_LABELS: Record<Area, string> = {
-  SE1: "SE1 · Luleå",
-  SE2: "SE2 · Sundsvall",
-  SE3: "SE3 · Stockholm",
-  SE4: "SE4 · Malmö",
+  SE1: "SE1 · Luleå, Umeå",
+  SE2: "SE2 · Sundsvall, Östersund",
+  SE3: "SE3 · Stockholm, Göteborg",
+  SE4: "SE4 · Malmö, Helsingborg",
 };
 
 type TimeRange = "24h" | "7d" | "30d" | "90d" | "180d" | "365d";
@@ -418,7 +418,7 @@ function ZonePriceHistoryChart({
 
   return (
     <div className="bg-surface-primary rounded-2xl p-4">
-      <h2 className="text-sm font-medium text-content-primary mb-1">
+      <h2 className="text-base font-medium text-content-primary mb-1">
         Spot price by zone
         <span className="text-content-muted ml-1.5 font-normal">
           {PRICE_UNIT}, {granLabel} average
@@ -650,7 +650,7 @@ export function Overview({ onZoneClick }: OverviewProps) {
       {/* Generation chart */}
       <div className="bg-surface-primary rounded-2xl p-4">
         <div className="mb-1">
-          <h2 className="text-sm font-medium text-content-primary">
+          <h2 className="text-base font-medium text-content-primary">
             Generation mix
             <span className="text-content-muted ml-1.5 font-normal">
               {chartSubtitle}
@@ -703,7 +703,7 @@ export function Overview({ onZoneClick }: OverviewProps) {
       {/* Zone prices */}
       {is24h ? (
         <div className="bg-surface-primary rounded-2xl p-4">
-          <h2 className="text-sm font-medium text-content-primary mb-1">
+          <h2 className="text-base font-medium text-content-primary mb-1">
             Spot price by zone
           </h2>
           <p className="text-xs text-content-muted mb-3">
@@ -731,7 +731,7 @@ export function Overview({ onZoneClick }: OverviewProps) {
                       style={{ backgroundColor: color }}
                     />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-content-primary">
+                      <p className="text-sm sm:text-base font-medium text-content-primary whitespace-nowrap overflow-hidden text-ellipsis">
                         {ZONE_LABELS[zone]}
                       </p>
                       <p className="text-[10px] text-content-muted">
