@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useElhandlare } from "../hooks/useElhandlare";
 import { useMonthlyAverages } from "../hooks/useMonthlyAverages";
 import type { Area, ElhandlareEntry } from "../types/index";
@@ -45,6 +45,7 @@ function formatSek(n: number): string {
 export function ElhandlareRanking({ area, dwelling, kwhYear }: Props) {
   const { data: retailerData, loading: retailerLoading } = useElhandlare(area);
   const { data: spotData, loading: spotLoading } = useMonthlyAverages(12, area);
+  const [expandedEstimate, setExpandedEstimate] = useState<string | null>(null);
 
   // 12-month average spot price in öre/kWh (exkl moms)
   const spotAvgOreExkl = useMemo<number | null>(() => {
@@ -108,41 +109,56 @@ export function ElhandlareRanking({ area, dwelling, kwhYear }: Props) {
         {!loading && ranked.length > 0 && (
           <div className="space-y-2">
             {ranked.map((r, idx) => (
-              <div
-                key={r.slug}
-                className="flex items-center gap-3 px-3 py-3 rounded-xl bg-surface-secondary"
-              >
-                <div className="w-6 text-center text-sm font-semibold text-content-muted tabular-nums">
-                  {idx + 1}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-base font-medium text-content-primary">
-                      {r.name}
-                    </span>
-                    <span className="text-[10px] uppercase tracking-wide text-content-muted bg-surface-tertiary rounded px-1.5 py-0.5">
-                      {CONTRACT_TYPE_LABEL[r.contract_type] ?? r.contract_type}
-                    </span>
-                    {r.is_estimate && (
-                      <span
-                        className="text-[10px] uppercase tracking-wide text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded px-1.5 py-0.5"
-                        title="Påslag figure is an estimate; company does not disclose"
-                      >
-                        estimated
+              <div key={r.slug}>
+                <div className="flex items-center gap-3 px-3 py-3 rounded-xl bg-surface-secondary">
+                  <div className="w-6 text-center text-sm font-semibold text-content-muted tabular-nums">
+                    {idx + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-base font-medium text-content-primary">
+                        {r.name}
                       </span>
-                    )}
+                      <span className="text-[10px] uppercase tracking-wide text-content-muted bg-surface-tertiary rounded px-1.5 py-0.5">
+                        {CONTRACT_TYPE_LABEL[r.contract_type] ??
+                          r.contract_type}
+                      </span>
+                      {r.is_estimate && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedEstimate(
+                              expandedEstimate === r.slug ? null : r.slug,
+                            )
+                          }
+                          className="text-[10px] uppercase tracking-wide text-amber-600 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 rounded px-1.5 py-0.5 cursor-pointer"
+                          aria-expanded={expandedEstimate === r.slug}
+                        >
+                          estimated
+                        </button>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-content-muted mt-0.5 tabular-nums">
+                      {r.paslag_ore_kwh.toFixed(1)} öre markup ·{" "}
+                      {formatSek(r.monthly_fee_sek)} kr/mån
+                    </div>
                   </div>
-                  <div className="text-[11px] text-content-muted mt-0.5 tabular-nums">
-                    {r.paslag_ore_kwh.toFixed(1)} öre markup ·{" "}
-                    {formatSek(r.monthly_fee_sek)} kr/mån
+                  <div className="text-right whitespace-nowrap">
+                    <div className="text-sm font-semibold text-content-primary tabular-nums">
+                      {formatSek(r.totalAnnualSek)} kr
+                    </div>
+                    <div className="text-[10px] text-content-muted">
+                      per year
+                    </div>
                   </div>
                 </div>
-                <div className="text-right whitespace-nowrap">
-                  <div className="text-sm font-semibold text-content-primary tabular-nums">
-                    {formatSek(r.totalAnnualSek)} kr
-                  </div>
-                  <div className="text-[10px] text-content-muted">per year</div>
-                </div>
+                {expandedEstimate === r.slug && r.is_estimate && (
+                  <p className="text-[11px] text-amber-600/90 dark:text-amber-400/90 px-3 pt-1.5 leading-relaxed">
+                    Markup figure is inferred from third-party comparison sites
+                    — {r.name} does not publish it officially. Verify with the
+                    company before signing.
+                  </p>
+                )}
               </div>
             ))}
           </div>
@@ -197,17 +213,44 @@ export function ElhandlareRanking({ area, dwelling, kwhYear }: Props) {
           </div>
         )}
 
-        <div className="pt-2 border-t border-surface-tertiary/40">
+        <div className="pt-2 border-t border-surface-tertiary/40 space-y-2">
+          <div>
+            <p className="text-sm font-medium text-content-secondary mb-1">
+              Not shown above
+            </p>
+            <ul className="text-xs text-content-muted space-y-0.5 pl-4 list-disc marker:text-content-faint">
+              <li>
+                <strong className="text-content-secondary">Cheap Energy</strong>{" "}
+                — markup not publicly disclosed
+              </li>
+              <li>
+                <strong className="text-content-secondary">Bixia</strong> —
+                markup not publicly disclosed
+              </li>
+              <li>
+                <strong className="text-content-secondary">
+                  Mölndals Energi
+                </strong>{" "}
+                — neither markup nor monthly fee disclosed in a comparable form
+              </li>
+            </ul>
+            <p className="text-xs text-content-muted mt-2 leading-relaxed">
+              That opacity is informative in itself. If you have verified
+              figures for any of these retailers (e.g. from your own bill or
+              contract), I&apos;d love to hear — it would make the comparison
+              more complete. Reach out via the{" "}
+              <a
+                href="https://github.com/mugime-shi/Unagi/issues"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-content-primary"
+              >
+                GitHub issues
+              </a>
+              .
+            </p>
+          </div>
           <p className="text-[11px] text-content-muted leading-relaxed">
-            <span className="font-medium text-content-secondary">
-              Not shown above:
-            </span>{" "}
-            Cheap Energy, Bixia and Mölndals Energi don&apos;t publish their
-            markup in a comparable form — so they can&apos;t be ranked against
-            these 5 companies. That opacity is itself informative when choosing
-            a retailer.
-          </p>
-          <p className="text-[11px] text-content-muted mt-2 leading-relaxed">
             Figures are annual estimates based on publicly disclosed markup,
             monthly fees, and {area} spot price averages. Verify with each
             retailer before signing.

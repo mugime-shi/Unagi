@@ -591,8 +591,8 @@ export function CostFloor({ area }: CostFloorProps) {
             </a>
           </li>
           <li>
-            <strong>Energy tax</strong> — 36 öre/kWh (2026), billed via the grid
-            company since 2018 per{" "}
+            <strong>Energy tax</strong> — 36 öre/kWh (2026). Collected via the
+            grid company (not the retailer) since 2018. Source:{" "}
             <a
               href="https://www.skatteverket.se/privat/skatter/fastigheterochbostad/skattpaenergi.4.18e1b10334ebe8bc80003395.html"
               target="_blank"
@@ -607,8 +607,8 @@ export function CostFloor({ area }: CostFloorProps) {
             tax; retail side: spot + markup + monthly fee)
           </li>
           <li>
-            <strong>Retailer figures</strong> — each company&apos;s
-            avtalsvillkor plus{" "}
+            <strong>Retailer figures</strong> — each company&apos;s published
+            contract terms plus{" "}
             <a
               href="https://elpriskollen.se"
               target="_blank"
