@@ -545,6 +545,115 @@ export function CostFloor({ area }: CostFloorProps) {
       </div>
 
       <ElhandlareRanking area={area} dwelling={dwelling} kwhYear={kwhYear} />
+
+      {/* Data sources & market notes — transparency block */}
+      <div className="bg-surface-primary rounded-2xl p-4 space-y-3">
+        <div>
+          <h2 className="text-base font-medium text-content-primary">
+            Data sources & market notes
+          </h2>
+          <p className="text-xs text-content-muted mt-0.5">
+            Where the numbers come from, and two market shifts worth knowing.
+          </p>
+        </div>
+
+        <ul className="text-xs text-content-muted space-y-1.5 pl-4 list-disc marker:text-content-faint">
+          <li>
+            <strong>Spot price</strong> — day-ahead auction on{" "}
+            <a
+              href="https://www.nordpoolgroup.com/en/Market-data1/Dayahead/Area-Prices/SE/Hourly/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-content-primary"
+            >
+              Nord Pool
+            </a>{" "}
+            for SE1–SE4, collected via{" "}
+            <a
+              href="https://transparency.entsoe.eu/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-content-primary"
+            >
+              ENTSO-E Transparency Platform
+            </a>
+          </li>
+          <li>
+            <strong>Grid fees</strong> — each operator&apos;s published tariff,
+            cross-checked against{" "}
+            <a
+              href="https://ei.se/om-oss/statistik-och-oppna-data/oppna-data"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-content-primary"
+            >
+              Ei öppna data
+            </a>
+          </li>
+          <li>
+            <strong>Energy tax</strong> — 36 öre/kWh (2026), billed via the grid
+            company since 2018 per{" "}
+            <a
+              href="https://www.skatteverket.se/privat/skatter/fastigheterochbostad/skattpaenergi.4.18e1b10334ebe8bc80003395.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-content-primary"
+            >
+              Skatteverket
+            </a>
+          </li>
+          <li>
+            <strong>VAT</strong> — 25% applied on both bills (grid side: fee +
+            tax; retail side: spot + markup + monthly fee)
+          </li>
+          <li>
+            <strong>Retailer figures</strong> — each company&apos;s
+            avtalsvillkor plus{" "}
+            <a
+              href="https://elpriskollen.se"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-content-primary"
+            >
+              Elpriskollen
+            </a>{" "}
+            (2025–2026)
+          </li>
+        </ul>
+
+        <div className="pt-2 border-t border-surface-tertiary/40 space-y-2">
+          <p className="text-xs text-content-muted leading-relaxed">
+            <span className="font-medium text-content-secondary">
+              Moving toward 15-minute pricing (kvartspris):
+            </span>{" "}
+            Sweden began rolling out 15-minute imbalance settlement in May 2025
+            under the{" "}
+            <a
+              href="https://energy.ec.europa.eu/topics/markets-and-consumers/clean-energy-all-europeans-package_en"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-content-primary"
+            >
+              EU Clean Energy Package (2019/944)
+            </a>
+            . Most variable-price contracts are expected to be priced in
+            15-minute slots rather than monthly averages going forward — see{" "}
+            <a
+              href="https://www.svk.se/aktorsportalen/elmarknad/kvartsvis-avrakning/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-content-primary"
+            >
+              Svenska kraftnät
+            </a>
+            .
+          </p>
+          <p className="text-[11px] text-content-faint leading-relaxed">
+            Unagi is a personal project — verify figures against each
+            provider&apos;s official site before signing anything.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
