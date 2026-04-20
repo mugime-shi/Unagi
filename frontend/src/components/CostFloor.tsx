@@ -294,10 +294,10 @@ export function CostFloor({ area }: CostFloorProps) {
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-3">
           <div className="flex-1">
             <h2 className="text-base font-medium text-content-primary">
-              Electricity cost breakdown
+              Monthly floor cost
             </h2>
             <p className="text-xs text-content-muted mt-0.5">
-              Minimum cost per kWh — regardless of electricity retailer
+              What you pay regardless of retailer — spot + grid + tax + VAT
             </p>
             {chartData.length > 0 && (
               <p className="text-[10px] text-content-faint mt-0.5">

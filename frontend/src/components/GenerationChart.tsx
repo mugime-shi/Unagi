@@ -202,30 +202,14 @@ export function GenerationChart({
   return (
     <div className="bg-surface-primary rounded-2xl p-4">
       <div className="mb-3">
-        <div className="flex items-start justify-between">
-          <h2 className="text-base font-medium text-content-primary">
-            Generation mix &middot; MW
-            {mode === "national" && (
-              <span className="text-content-muted ml-1.5 font-normal">
-                Sweden (SE1–SE4)
-              </span>
-            )}
-          </h2>
-          <div className="flex gap-2 flex-wrap justify-end">
-            {activeSources.map(({ key, label }) => (
-              <span
-                key={key}
-                className="flex items-center gap-1 text-xs text-content-secondary"
-              >
-                <span
-                  className="inline-block w-2.5 h-2.5 rounded-sm"
-                  style={{ backgroundColor: cc[key] + "99" }}
-                />
-                {label}
-              </span>
-            ))}
-          </div>
-        </div>
+        <h2 className="text-base font-medium text-content-primary">
+          Generation mix &middot; MW
+          {mode === "national" && (
+            <span className="text-content-muted ml-1.5 font-normal">
+              Sweden (SE1–SE4)
+            </span>
+          )}
+        </h2>
         {(renewable_pct != null || carbon_free_pct != null) && (
           <p className="text-xs text-content-muted mt-0.5">
             {renewable_pct != null && (
@@ -304,6 +288,18 @@ export function GenerationChart({
           ))}
         </AreaChart>
       </ResponsiveContainer>
+      {/* Legend below chart — consistent with Overview layout */}
+      <div className="flex flex-wrap justify-center gap-3 mt-2 text-xs text-content-secondary">
+        {activeSources.map(({ key, label }) => (
+          <span key={key} className="flex items-center gap-1">
+            <span
+              className="inline-block w-2.5 h-2.5 rounded-sm"
+              style={{ backgroundColor: cc[key] + "99" }}
+            />
+            {label}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

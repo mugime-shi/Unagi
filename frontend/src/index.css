@@ -60,6 +60,19 @@ h1,
   letter-spacing: -0.01em;
 }
 
+/* Page titles (h1) get an extra bump since they anchor the layout */
+h1 {
+  font-size: 1.25rem;   /* 20px mobile */
+  line-height: 1.3;
+}
+
+@media (min-width: 640px) {
+  h1 {
+    font-size: 1.625rem; /* 26px desktop */
+    line-height: 1.25;
+  }
+}
+
 /* ── Card titles (h2/h3) — sans for neon-crisp "section label" feel ──
  * Sharper than Fraunces at small sizes; clearer hierarchy against h1 display.
  */

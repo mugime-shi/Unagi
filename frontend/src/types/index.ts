@@ -402,6 +402,23 @@ export interface ElhandlareResponse {
   retailers: ElhandlareEntry[];
 }
 
+// ─── Hydro reservoir & wind forecast (Overview cards) ────────────────────────
+
+export interface HydroReservoirResponse {
+  week_start: string | null;
+  stored_gwh: number | null;
+  change_gwh: number | null;
+  change_pct: number | null;
+}
+
+export interface WindForecastSummaryResponse {
+  hours_ahead: number;
+  avg_wind_100m_ms: number | null;
+  peak_wind_100m_ms: number | null;
+  peak_at_utc: string | null;
+  sample_count: number;
+}
+
 // ─── Monthly Averages ────────────────────────────────────────────────────────
 
 export interface MonthlyAvg {

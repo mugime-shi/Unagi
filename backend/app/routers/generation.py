@@ -11,9 +11,11 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
+from app.models.hydro_reservoir import HydroReservoir
 from app.services.entsoe_client import EntsoEError
 from app.services.generation_service import (
     build_generation_summary,
@@ -326,3 +328,51 @@ def get_generation_for_date_endpoint(
         "source": "ENTSO-E A75",
         **summary,
     }
+
+
+@router.get("/hydro-reservoir")
+def get_hydro_reservoir(db: DbDep):
+    """
+    Latest national hydro reservoir level (GWh) aggregated across SE1–SE4,
+    plus week-over-week change. Source: ENTSO-E A72 (weekly, P7D).
+    """
+    # Only use weeks that have data for all 4 areas so the national total is comparable
+    per_week = (
+        db.query(HydroReservoir.week_start, func.count(HydroReservoir.area).label("n"))
+        .group_by(HydroReservoir.week_start)
+        .having(func.count(HydroReservoir.area) >= 4)
+        .order_by(HydroReservoir.week_start.desc())
+        .limit(2)
+        .all()
+    )
+    if not per_week:
+        return {
+            "week_start": None,
+            "stored_gwh": None,
+            "change_gwh": None,
+            "change_pct": None,
+        }
+
+    latest_week = per_week[0].week_start
+    prev_week = per_week[1].week_start if len(per_week) >= 2 else None
+
+    latest_mwh = (
+        db.query(func.sum(HydroReservoir.stored_energy_mwh)).filter(HydroReservoir.week_start == latest_week).scalar()
+        or 0
+    )
+    result = {
+        "week_start": latest_week.isoformat(),
+        "stored_gwh": round(float(latest_mwh) / 1000, 0),
+        "change_gwh": None,
+        "change_pct": None,
+    }
+    if prev_week:
+        prev_mwh = (
+            db.query(func.sum(HydroReservoir.stored_energy_mwh)).filter(HydroReservoir.week_start == prev_week).scalar()
+            or 0
+        )
+        diff = float(latest_mwh) - float(prev_mwh)
+        result["change_gwh"] = round(diff / 1000, 0)
+        if prev_mwh:
+            result["change_pct"] = round(diff / float(prev_mwh) * 100, 1)
+    return result

@@ -16,6 +16,8 @@ import {
 import { useNational24h } from "../hooks/useNational24h";
 import { useAllZonePrices } from "../hooks/useAllZonePrices";
 import { useGenerationHistory } from "../hooks/useGenerationHistory";
+import { useHydroReservoir } from "../hooks/useHydroReservoir";
+import { useWindForecastSummary } from "../hooks/useWindForecastSummary";
 import { useChartColors } from "../hooks/useChartColors";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { UpdateBadge } from "./UpdateBadge";
@@ -199,10 +201,12 @@ function GenChart({
   data,
   cc,
   isMobile,
+  shareByType,
 }: {
   data: GenChartRow[];
   cc: ReturnType<typeof useChartColors>;
   isMobile: boolean;
+  shareByType?: Record<string, number> | null;
 }) {
   return (
     <>
@@ -292,9 +296,9 @@ function GenChart({
           />
         </AreaChart>
       </ResponsiveContainer>
-      {/* Legend outside chart to avoid overlap with rotated X-axis labels */}
+      {/* Legend outside chart — share % from the latest slot when available */}
       <div
-        className="flex justify-center gap-3 mt-2"
+        className="flex flex-wrap justify-center gap-3 mt-2"
         style={{ fontSize: 11, color: cc.axis }}
       >
         {[
@@ -303,15 +307,21 @@ function GenChart({
           { label: "Hydro", color: cc.hydro },
           { label: "Other", color: cc.other },
           { label: "Nuclear", color: cc.nuclear },
-        ].map(({ label, color }) => (
-          <span key={label} className="flex items-center gap-1">
-            <span
-              className="inline-block w-2.5 h-2.5 rounded-sm"
-              style={{ backgroundColor: color + "99" }}
-            />
-            {label}
-          </span>
-        ))}
+        ].map(({ label, color }) => {
+          const pct = shareByType?.[label];
+          return (
+            <span key={label} className="flex items-center gap-1">
+              <span
+                className="inline-block w-2.5 h-2.5 rounded-sm"
+                style={{ backgroundColor: color + "99" }}
+              />
+              {label}
+              {pct != null && (
+                <span className="tabular-nums opacity-70"> {pct}%</span>
+              )}
+            </span>
+          );
+        })}
       </div>
     </>
   );
@@ -513,6 +523,10 @@ export function Overview({ onZoneClick }: OverviewProps) {
     is24h ? 0 : rangeDays,
   );
 
+  // Overview cards (Sweden-wide, price-linked, not visible from the chart)
+  const { data: hydroReservoir } = useHydroReservoir();
+  const { data: windForecast } = useWindForecastSummary(24);
+
   const cc = useChartColors();
   const isMobile = useIsMobile();
   const zones: Area[] = ["SE1", "SE2", "SE3", "SE4"];
@@ -566,32 +580,57 @@ export function Overview({ onZoneClick }: OverviewProps) {
     return historyToRows(genHistory.daily, rangeDays);
   }, [is24h, nat24h, genHistory, rangeDays]);
 
-  // ── Renewable card values ──
-  const renewableNow = nat24h?.renewable_pct ?? null;
-  const renewableAvg = useMemo(() => {
-    if (is24h && nat24h?.hourly?.length) {
-      const vals = nat24h.hourly
-        .map((h) => h.renewable_pct)
-        .filter((v): v is number => v != null);
-      return vals.length > 0
-        ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length)
-        : null;
-    }
-    if (!genHistory?.daily?.length) return null;
-    const vals = genHistory.daily
-      .map((d) => d.renewable_pct)
-      .filter((v): v is number => v != null);
-    return vals.length > 0
-      ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length)
-      : null;
-  }, [is24h, nat24h, genHistory]);
-
-  const avgLabel = is24h
-    ? "24h avg"
-    : `avg (${RANGES.find((r) => r.id === range)?.label})`;
   const chartLoading = is24h
     ? nat24hLoading && !nat24h
     : genHistLoading && !genHistory;
+
+  // Generation mix share % at the latest slot (drives legend % annotations)
+  const shareByType = useMemo<Record<string, number> | null>(() => {
+    if (!genChartData.length) return null;
+    const latest = genChartData[genChartData.length - 1];
+    const total =
+      latest.hydro + latest.nuclear + latest.wind + latest.solar + latest.other;
+    if (total <= 0) return null;
+    return {
+      Solar: Math.round((latest.solar / total) * 100),
+      Wind: Math.round((latest.wind / total) * 100),
+      Hydro: Math.round((latest.hydro / total) * 100),
+      Other: Math.round((latest.other / total) * 100),
+      Nuclear: Math.round((latest.nuclear / total) * 100),
+    };
+  }, [genChartData]);
+
+  // Zone price spread (SE4 − SE1 current price, öre/kWh) — bottleneck indicator
+  const zoneSpread = useMemo<number | null>(() => {
+    const se1 = priceData?.SE1?.current_sek_kwh ?? null;
+    const se4 = priceData?.SE4?.current_sek_kwh ?? null;
+    if (se1 == null || se4 == null) return null;
+    return Math.round((se4 - se1) * 100); // to öre
+  }, [priceData]);
+
+  // Today's volatility — ratio of national hourly max to min (averaged across zones)
+  const volatility = useMemo<{ ratio: number; spread: number } | null>(() => {
+    if (!priceData) return null;
+    const hourly = new Map<number, number[]>();
+    for (const z of Object.values(priceData)) {
+      for (const s of z.slots) {
+        const arr = hourly.get(s.hour) ?? [];
+        arr.push(s.price);
+        hourly.set(s.hour, arr);
+      }
+    }
+    const avgs = Array.from(hourly.values()).map(
+      (arr) => arr.reduce((sum, p) => sum + p, 0) / arr.length,
+    );
+    if (avgs.length < 2) return null;
+    const max = Math.max(...avgs);
+    const min = Math.min(...avgs);
+    if (min <= 0) return null;
+    return {
+      ratio: +(max / min).toFixed(1),
+      spread: Math.round((max - min) * 100), // öre
+    };
+  }, [priceData]);
 
   // Lag info
   const lagText = useMemo(() => {
@@ -619,6 +658,33 @@ export function Overview({ onZoneClick }: OverviewProps) {
   const chartSubtitle = is24h
     ? "MW, hourly, SE1–SE4"
     : `MW, ${rangeDays <= 30 ? "daily" : rangeDays <= 90 ? "weekly" : rangeDays <= 180 ? "bi-weekly" : "monthly"} avg, SE1–SE4`;
+
+  // Latest-slot carbon intensity (gCO2/kWh) — approx coefficients:
+  // fossil ≈ 400 gCO2/kWh, other ≈ 20 gCO2/kWh, renewable + nuclear ≈ 0
+  const latestCarbonIntensity = useMemo<number | null>(() => {
+    if (!nat24h?.hourly?.length) return null;
+    const latest = nat24h.hourly[nat24h.hourly.length - 1];
+    const total = latest.total_mw;
+    if (!total || total <= 0) return null;
+    const co2 = (latest.fossil ?? 0) * 400 + (latest.other ?? 0) * 20;
+    return Math.round(co2 / total);
+  }, [nat24h]);
+
+  // Compose an env badges line: "Renewable X% · Carbon-free Y% · ZgCO₂/kWh"
+  const envBadgeLine = useMemo<string | null>(() => {
+    if (!is24h || !nat24h) return null;
+    const parts: string[] = [];
+    if (nat24h.renewable_pct != null) {
+      parts.push(`Renewable ${nat24h.renewable_pct}%`);
+    }
+    if (nat24h.carbon_free_pct != null) {
+      parts.push(`Carbon-free ${nat24h.carbon_free_pct}%`);
+    }
+    if (latestCarbonIntensity != null) {
+      parts.push(`${latestCarbonIntensity}gCO₂/kWh`);
+    }
+    return parts.length > 0 ? parts.join(" · ") : null;
+  }, [is24h, nat24h, latestCarbonIntensity]);
 
   return (
     <div className="space-y-4">
@@ -656,8 +722,12 @@ export function Overview({ onZoneClick }: OverviewProps) {
               {chartSubtitle}
             </span>
           </h2>
-          {is24h && lagText && (
-            <p className="text-xs text-content-muted mt-0.5">{lagText}</p>
+          {is24h && (envBadgeLine || lagText) && (
+            <p className="text-xs text-content-muted mt-0.5">
+              {envBadgeLine && <span>{envBadgeLine}</span>}
+              {envBadgeLine && lagText && <span> · </span>}
+              {lagText && <span>{lagText}</span>}
+            </p>
           )}
         </div>
         {chartLoading ? (
@@ -666,7 +736,12 @@ export function Overview({ onZoneClick }: OverviewProps) {
             style={{ height: isMobile ? 280 : 360 }}
           />
         ) : genChartData.length > 0 ? (
-          <GenChart data={genChartData} cc={cc} isMobile={isMobile} />
+          <GenChart
+            data={genChartData}
+            cc={cc}
+            isMobile={isMobile}
+            shareByType={is24h ? shareByType : null}
+          />
         ) : (
           <p className="text-sm text-content-muted text-center py-16">
             No generation data available
@@ -674,26 +749,83 @@ export function Overview({ onZoneClick }: OverviewProps) {
         )}
       </div>
 
-      {/* Renewable cards — 2 cards: now + avg */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-surface-primary rounded-2xl p-4 text-center flex flex-col items-center justify-center">
-          <p className="text-xs text-content-muted mb-1">Renewable now</p>
-          {renewableNow != null ? (
-            <p className="text-2xl font-bold text-green-600 dark:text-green-400 tabular-nums">
-              {renewableNow}%
-            </p>
+      {/* Sweden overview cards — price-linked signals that aren't visible on the chart */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div
+          className="bg-surface-primary rounded-2xl p-4 text-center flex flex-col items-center justify-center"
+          title="North–south current price gap (SE4 − SE1) — wide spread = grid bottleneck"
+        >
+          <p className="text-xs text-content-muted mb-1">Zone spread</p>
+          {zoneSpread != null ? (
+            <>
+              <p className="text-2xl font-bold tabular-nums text-content-primary">
+                {zoneSpread >= 0 ? "+" : ""}
+                {zoneSpread}
+              </p>
+              <p className="text-[11px] text-content-faint mt-0.5">
+                öre · SE4 − SE1
+              </p>
+            </>
           ) : (
             <p className="text-sm text-content-muted">--</p>
           )}
         </div>
-        <div className="bg-surface-primary rounded-2xl p-4 text-center flex flex-col items-center justify-center">
-          <p className="text-xs text-content-muted mb-1">
-            Renewable {avgLabel}
-          </p>
-          {renewableAvg != null ? (
-            <p className="text-2xl font-bold text-green-600/70 dark:text-green-400/70 tabular-nums">
-              {renewableAvg}%
-            </p>
+
+        <div
+          className="bg-surface-primary rounded-2xl p-4 text-center flex flex-col items-center justify-center"
+          title="National hydro storage (SE1–SE4 sum, ENTSO-E A72, weekly) — low levels push winter prices up"
+        >
+          <p className="text-xs text-content-muted mb-1">Hydro reservoir</p>
+          {hydroReservoir?.stored_gwh != null ? (
+            <>
+              <p className="text-2xl font-bold tabular-nums text-content-primary">
+                {(hydroReservoir.stored_gwh / 1000).toFixed(1)}
+              </p>
+              <p className="text-[11px] text-content-faint mt-0.5">
+                TWh
+                {hydroReservoir.change_pct != null
+                  ? ` · ${hydroReservoir.change_pct >= 0 ? "+" : ""}${hydroReservoir.change_pct}%/wk`
+                  : ""}
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-content-muted">--</p>
+          )}
+        </div>
+
+        <div
+          className="bg-surface-primary rounded-2xl p-4 text-center flex flex-col items-center justify-center"
+          title="Avg 100 m wind forecast next 24 h (Open-Meteo) — strong wind lowers spot prices"
+        >
+          <p className="text-xs text-content-muted mb-1">Wind next 24h</p>
+          {windForecast?.avg_wind_100m_ms != null ? (
+            <>
+              <p className="text-2xl font-bold tabular-nums text-content-primary">
+                {windForecast.avg_wind_100m_ms}
+              </p>
+              <p className="text-[11px] text-content-faint mt-0.5">
+                m/s avg · peak {windForecast.peak_wind_100m_ms}
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-content-muted">--</p>
+          )}
+        </div>
+
+        <div
+          className="bg-surface-primary rounded-2xl p-4 text-center flex flex-col items-center justify-center"
+          title="Today's peak/off-peak ratio (national hourly avg) — higher = more to save by shifting usage"
+        >
+          <p className="text-xs text-content-muted mb-1">Volatility today</p>
+          {volatility ? (
+            <>
+              <p className="text-2xl font-bold tabular-nums text-content-primary">
+                {volatility.ratio}×
+              </p>
+              <p className="text-[11px] text-content-faint mt-0.5">
+                {volatility.spread} öre spread
+              </p>
+            </>
           ) : (
             <p className="text-sm text-content-muted">--</p>
           )}
@@ -751,7 +883,10 @@ export function Overview({ onZoneClick }: OverviewProps) {
                       />
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-lg font-semibold text-content-primary tabular-nums">
+                      <p className="text-[10px] text-content-muted uppercase tracking-wide">
+                        now
+                      </p>
+                      <p className="text-lg font-semibold text-content-primary tabular-nums leading-tight">
                         {z.current_sek_kwh != null
                           ? formatPrice(z.current_sek_kwh)
                           : "—"}
