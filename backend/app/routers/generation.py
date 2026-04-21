@@ -166,17 +166,36 @@ def get_national_24h(db: DbDep):
         "B20": "other",
     }
 
-    # Group by UTC hour (national aggregate across all zones)
-    by_hour: dict[datetime, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    # National aggregation in 3 steps so zones are actually SUMMED, not averaged:
+    #   1) (slot_ts, zone, group) -> sum MW across psr_types inside the group
+    #   2) (slot_ts, group)       -> sum across the four SE zones (= national MW at slot)
+    #   3) (hour_ts, group)       -> average the slots that fall inside the hour
+    # The previous implementation skipped step 2 and fed every zone's slot into step 3,
+    # which averaged four zones together and produced ~1/4 of the true national value
+    # for anything present in more than one zone (wind, hydro, solar, other).
+
+    by_slot_zone: dict[datetime, dict[str, dict[str, float]]] = defaultdict(
+        lambda: defaultdict(lambda: defaultdict(float))
+    )
     for r in rows:
         ts = r.timestamp_utc
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=timezone.utc)
-        hour_ts = ts.replace(minute=0, second=0, microsecond=0)
         group = PSR_GROUP.get(r.psr_type, "other")
-        by_hour[hour_ts][group].append(float(r.value_mw))
+        by_slot_zone[ts][r.area][group] += float(r.value_mw)
 
-    # Build hourly entries
+    by_slot: dict[datetime, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    for ts, zones in by_slot_zone.items():
+        for _zone, groups in zones.items():
+            for g, mw in groups.items():
+                by_slot[ts][g] += mw
+
+    by_hour: dict[datetime, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    for ts, group_mw in by_slot.items():
+        hour_ts = ts.replace(minute=0, second=0, microsecond=0)
+        for g, mw in group_mw.items():
+            by_hour[hour_ts][g].append(mw)
+
     entries = []
     for hour_ts in sorted(by_hour.keys()):
         groups = by_hour[hour_ts]
@@ -185,7 +204,8 @@ def get_national_24h(db: DbDep):
         entry["hour_label"] = f"{local.hour:02d}:00"
         total = 0.0
         for g in ("hydro", "nuclear", "wind", "solar", "fossil", "other"):
-            avg = sum(groups.get(g, [])) / len(groups[g]) if groups.get(g) else 0
+            vals = groups.get(g, [])
+            avg = sum(vals) / len(vals) if vals else 0
             entry[g] = round(avg)
             total += avg
         renewable = entry.get("hydro", 0) + entry.get("wind", 0) + entry.get("solar", 0)
@@ -270,14 +290,31 @@ def get_generation_history(
         "B20": "other",
     }
 
-    by_date: dict[date, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    # Same 3-step national aggregation as /national-24h:
+    #   1) (slot_ts, zone, group) -> MW (psr_types summed within the group)
+    #   2) (slot_ts, group)       -> sum across the four SE zones
+    #   3) (date, group)          -> list of slot MWs, averaged to get daily avg MW
+    by_slot_zone: dict[datetime, dict[str, dict[str, float]]] = defaultdict(
+        lambda: defaultdict(lambda: defaultdict(float))
+    )
     for r in rows:
         ts = r.timestamp_utc
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=timezone.utc)
-        d = ts.astimezone(_STHLM).date()
         group = PSR_GROUP.get(r.psr_type, "other")
-        by_date[d][group].append(float(r.value_mw))
+        by_slot_zone[ts][r.area][group] += float(r.value_mw)
+
+    by_slot: dict[datetime, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    for ts, zones in by_slot_zone.items():
+        for _zone, groups in zones.items():
+            for g, mw in groups.items():
+                by_slot[ts][g] += mw
+
+    by_date: dict[date, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    for ts, group_mw in by_slot.items():
+        d = ts.astimezone(_STHLM).date()
+        for g, mw in group_mw.items():
+            by_date[d][g].append(mw)
 
     daily = []
     cur = start
