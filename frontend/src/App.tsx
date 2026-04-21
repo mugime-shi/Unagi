@@ -943,7 +943,13 @@ function AppInner() {
           >
             Unagi
           </a>
-          .
+          {" · "}
+          <a
+            href="mailto:hello@unagieel.net"
+            className="not-italic underline hover:text-content-secondary transition-colors"
+          >
+            hello@unagieel.net
+          </a>
         </span>
       </footer>
     </div>

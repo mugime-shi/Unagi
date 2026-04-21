@@ -238,14 +238,12 @@ export function ElhandlareRanking({ area, dwelling, kwhYear }: Props) {
               That opacity is informative in itself. If you have verified
               figures for any of these retailers (e.g. from your own bill or
               contract), I&apos;d love to hear — it would make the comparison
-              more complete. Reach out via the{" "}
+              more complete. Reach out at{" "}
               <a
-                href="https://github.com/mugime-shi/Unagi/issues"
-                target="_blank"
-                rel="noopener noreferrer"
+                href="mailto:hello@unagieel.net"
                 className="underline hover:text-content-primary"
               >
-                GitHub issues
+                hello@unagieel.net
               </a>
               .
             </p>
