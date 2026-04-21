@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 # ---------------------------------------------------------------------------
 
 
+@patch("app.tasks.fetch_prices._check_generation_freshness", return_value=[])
 @patch("app.tasks.fetch_prices._send_pipeline_alert")
 @patch("app.tasks.fetch_prices._fetch_gas_prices", return_value={"market": "gas_price", "status": "ok", "rows": 5})
 @patch("app.tasks.fetch_prices._fetch_weather_forecast", return_value={"market": "weather_forecast", "status": "ok"})
@@ -23,7 +24,9 @@ from unittest.mock import MagicMock, patch
     "app.tasks.fetch_prices.fetch_generation_date",
     return_value={"date": "2026-03-19", "market": "generation", "status": "ok", "rows": 24},
 )
-def test_midnight_collect_calls_fetch_not_predict(mock_gen, mock_bal, mock_lf, mock_weather, mock_gas, mock_alert):
+def test_midnight_collect_calls_fetch_not_predict(
+    mock_gen, mock_bal, mock_lf, mock_weather, mock_gas, mock_alert, mock_health
+):
     from app.tasks.fetch_prices import lambda_handler
 
     with patch("app.tasks.fetch_prices._record_predictions") as mock_predict:
@@ -36,10 +39,12 @@ def test_midnight_collect_calls_fetch_not_predict(mock_gen, mock_bal, mock_lf, m
     assert mock_lf.called
     assert mock_weather.called
     assert mock_gas.called
+    mock_health.assert_called_once()
     mock_predict.assert_not_called()
     mock_alert.assert_not_called()
 
 
+@patch("app.tasks.fetch_prices._check_generation_freshness", return_value=[])
 @patch("app.tasks.fetch_prices._send_pipeline_alert")
 @patch("app.tasks.fetch_prices._fetch_gas_prices", return_value={"market": "gas_price", "status": "ok", "rows": 5})
 @patch("app.tasks.fetch_prices._fetch_weather_forecast", return_value={"market": "weather_forecast", "status": "ok"})
@@ -55,7 +60,9 @@ def test_midnight_collect_calls_fetch_not_predict(mock_gen, mock_bal, mock_lf, m
     "app.tasks.fetch_prices.fetch_generation_date",
     return_value={"date": "2026-03-19", "market": "generation", "status": "ok", "rows": 24},
 )
-def test_midnight_collect_alerts_on_failure(mock_gen, mock_bal, mock_lf, mock_weather, mock_gas, mock_alert):
+def test_midnight_collect_alerts_on_failure(
+    mock_gen, mock_bal, mock_lf, mock_weather, mock_gas, mock_alert, mock_health
+):
     from app.tasks.fetch_prices import lambda_handler
 
     result = lambda_handler({"midnight_collect": True}, None)

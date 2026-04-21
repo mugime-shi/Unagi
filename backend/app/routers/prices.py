@@ -10,8 +10,11 @@ from sqlalchemy.orm import Session
 _STOCKHOLM = ZoneInfo("Europe/Stockholm")
 
 
-def _to_stockholm_date(dt_utc: datetime) -> date:
-    """Convert a UTC datetime to the calendar date in Europe/Stockholm (CET/CEST)."""
+def _to_stockholm_date(dt_utc) -> date:
+    """Convert a UTC datetime (or ISO string) to the calendar date in Europe/Stockholm."""
+    if isinstance(dt_utc, str):
+        # SQLite via raw text() returns timestamps as strings; Postgres returns datetime.
+        dt_utc = datetime.fromisoformat(dt_utc)
     if dt_utc.tzinfo is None:
         dt_utc = dt_utc.replace(tzinfo=timezone.utc)
     return dt_utc.astimezone(_STOCKHOLM).date()
@@ -194,56 +197,56 @@ def get_price_history(
 ):
     """
     Daily average spot prices for the past N days (default 90).
-    Aggregation is done in Postgres so only N rows come back to Python.
+
+    Uses a raw SELECT (no Stockholm-date extraction in SQL, which isn't
+    portable to SQLite in the test suite) and buckets by Stockholm date
+    in Python. On 365 days that's still only ~8 760 timestamp rows, so
+    the Python loop finishes in single-digit ms.
     """
+    from collections import defaultdict
+
     if area not in VALID_AREAS:
         raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
     today = datetime.now(tz=timezone.utc).date()
     start = today - timedelta(days=days - 1)
 
+    range_start_utc = (
+        datetime.combine(start, datetime.min.time(), tzinfo=_STOCKHOLM).astimezone(timezone.utc).replace(tzinfo=None)
+    )
+    range_end_utc = (
+        datetime.combine(today + timedelta(days=1), datetime.min.time(), tzinfo=_STOCKHOLM)
+        .astimezone(timezone.utc)
+        .replace(tzinfo=None)
+    )
+
     sql = text(
         """
-        SELECT (timestamp_utc AT TIME ZONE 'Europe/Stockholm')::date AS day,
-               AVG(price_sek_kwh) AS avg_sek_kwh,
-               MIN(price_sek_kwh) AS min_sek_kwh,
-               MAX(price_sek_kwh) AS max_sek_kwh
+        SELECT timestamp_utc, price_sek_kwh
         FROM spot_prices
         WHERE area = :area
           AND timestamp_utc >= :start
           AND timestamp_utc <  :end
-        GROUP BY day
-        ORDER BY day
         """
     )
-    db_rows = (
-        db.execute(
-            sql,
-            {
-                "area": area,
-                "start": datetime.combine(start, datetime.min.time(), tzinfo=_STOCKHOLM)
-                .astimezone(timezone.utc)
-                .replace(tzinfo=None),
-                "end": datetime.combine(today + timedelta(days=1), datetime.min.time(), tzinfo=_STOCKHOLM)
-                .astimezone(timezone.utc)
-                .replace(tzinfo=None),
-            },
-        )
-        .mappings()
-        .all()
-    )
+    db_rows = db.execute(
+        sql,
+        {"area": area, "start": range_start_utc, "end": range_end_utc},
+    ).all()
 
-    by_date = {r["day"]: r for r in db_rows}
+    by_date: dict[date, list[float]] = defaultdict(list)
+    for ts, price in db_rows:
+        by_date[_to_stockholm_date(ts)].append(float(price))
 
     daily = []
     cur = start
     while cur <= today:
-        r = by_date.get(cur)
+        vals = by_date.get(cur)
         daily.append(
             {
                 "date": cur.isoformat(),
-                "avg_sek_kwh": round(float(r["avg_sek_kwh"]), 4) if r else None,
-                "min_sek_kwh": round(float(r["min_sek_kwh"]), 4) if r else None,
-                "max_sek_kwh": round(float(r["max_sek_kwh"]), 4) if r else None,
+                "avg_sek_kwh": round(sum(vals) / len(vals), 4) if vals else None,
+                "min_sek_kwh": round(min(vals), 4) if vals else None,
+                "max_sek_kwh": round(max(vals), 4) if vals else None,
             }
         )
         cur += timedelta(days=1)
@@ -308,44 +311,44 @@ def get_multi_zone_history(
     days: int = Query(90, ge=7, le=365, description="Number of past days to include"),
 ):
     """
-    Daily average spot prices for all four SE bidding zones (SE1-SE4) for the past N days.
-    A single GROUP BY covers every zone × day — previously this was four separate
-    queries looped in Python, which scaled badly on 365-day ranges.
+    Daily average spot prices for all four SE bidding zones (SE1-SE4)
+    for the past N days.
+
+    Uses one non-aggregating query for all areas (vs four separate
+    queries before) and groups by Stockholm date in Python so the code
+    remains portable across Postgres and SQLite (test harness).
     """
+    from collections import defaultdict
+
     today = datetime.now(tz=timezone.utc).date()
     start = today - timedelta(days=days - 1)
 
+    range_start_utc = (
+        datetime.combine(start, datetime.min.time(), tzinfo=_STOCKHOLM).astimezone(timezone.utc).replace(tzinfo=None)
+    )
+    range_end_utc = (
+        datetime.combine(today + timedelta(days=1), datetime.min.time(), tzinfo=_STOCKHOLM)
+        .astimezone(timezone.utc)
+        .replace(tzinfo=None)
+    )
+
     sql = text(
         """
-        SELECT area,
-               (timestamp_utc AT TIME ZONE 'Europe/Stockholm')::date AS day,
-               AVG(price_sek_kwh) AS avg_sek_kwh
+        SELECT area, timestamp_utc, price_sek_kwh
         FROM spot_prices
         WHERE timestamp_utc >= :start
           AND timestamp_utc <  :end
-        GROUP BY area, day
-        ORDER BY area, day
         """
     )
-    db_rows = (
-        db.execute(
-            sql,
-            {
-                "start": datetime.combine(start, datetime.min.time(), tzinfo=_STOCKHOLM)
-                .astimezone(timezone.utc)
-                .replace(tzinfo=None),
-                "end": datetime.combine(today + timedelta(days=1), datetime.min.time(), tzinfo=_STOCKHOLM)
-                .astimezone(timezone.utc)
-                .replace(tzinfo=None),
-            },
-        )
-        .mappings()
-        .all()
-    )
+    db_rows = db.execute(
+        sql,
+        {"start": range_start_utc, "end": range_end_utc},
+    ).all()
 
-    by_area_date: dict[str, dict[date, float]] = {a: {} for a in VALID_AREAS}
-    for r in db_rows:
-        by_area_date[r["area"]][r["day"]] = float(r["avg_sek_kwh"])
+    by_area_date: dict[str, dict[date, list[float]]] = {a: defaultdict(list) for a in VALID_AREAS}
+    for area, ts, price in db_rows:
+        if area in by_area_date:
+            by_area_date[area][_to_stockholm_date(ts)].append(float(price))
 
     zones: dict[str, list[dict]] = {}
     for area in sorted(VALID_AREAS):
@@ -353,11 +356,11 @@ def get_multi_zone_history(
         daily = []
         cur = start
         while cur <= today:
-            avg = per_date.get(cur)
+            vals = per_date.get(cur)
             daily.append(
                 {
                     "date": cur.isoformat(),
-                    "avg_sek_kwh": round(avg, 4) if avg is not None else None,
+                    "avg_sek_kwh": round(sum(vals) / len(vals), 4) if vals else None,
                 }
             )
             cur += timedelta(days=1)
