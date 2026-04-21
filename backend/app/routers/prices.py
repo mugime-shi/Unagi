@@ -4,6 +4,7 @@ from typing import Annotated
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 _STOCKHOLM = ZoneInfo("Europe/Stockholm")
@@ -193,31 +194,56 @@ def get_price_history(
 ):
     """
     Daily average spot prices for the past N days (default 90).
-    Returns only daily summaries (no raw 15-min slots) — efficient for trend charts.
+    Aggregation is done in Postgres so only N rows come back to Python.
     """
     if area not in VALID_AREAS:
         raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
     today = datetime.now(tz=timezone.utc).date()
     start = today - timedelta(days=days - 1)
-    rows = get_prices_for_date_range(db, start, today, area=area)
 
-    from collections import defaultdict
+    sql = text(
+        """
+        SELECT (timestamp_utc AT TIME ZONE 'Europe/Stockholm')::date AS day,
+               AVG(price_sek_kwh) AS avg_sek_kwh,
+               MIN(price_sek_kwh) AS min_sek_kwh,
+               MAX(price_sek_kwh) AS max_sek_kwh
+        FROM spot_prices
+        WHERE area = :area
+          AND timestamp_utc >= :start
+          AND timestamp_utc <  :end
+        GROUP BY day
+        ORDER BY day
+        """
+    )
+    db_rows = (
+        db.execute(
+            sql,
+            {
+                "area": area,
+                "start": datetime.combine(start, datetime.min.time(), tzinfo=_STOCKHOLM)
+                .astimezone(timezone.utc)
+                .replace(tzinfo=None),
+                "end": datetime.combine(today + timedelta(days=1), datetime.min.time(), tzinfo=_STOCKHOLM)
+                .astimezone(timezone.utc)
+                .replace(tzinfo=None),
+            },
+        )
+        .mappings()
+        .all()
+    )
 
-    by_date: dict[date, list[float]] = defaultdict(list)
-    for r in rows:
-        cet_date = _to_stockholm_date(r.timestamp_utc)
-        by_date[cet_date].append(float(r.price_sek_kwh))
+    by_date = {r["day"]: r for r in db_rows}
 
     daily = []
     cur = start
     while cur <= today:
-        vals = by_date.get(cur)
+        r = by_date.get(cur)
         daily.append(
             {
                 "date": cur.isoformat(),
-                "avg_sek_kwh": round(sum(vals) / len(vals), 4) if vals else None,
-                "min_sek_kwh": round(min(vals), 4) if vals else None,
-                "max_sek_kwh": round(max(vals), 4) if vals else None,
+                "avg_sek_kwh": round(float(r["avg_sek_kwh"]), 4) if r else None,
+                "min_sek_kwh": round(float(r["min_sek_kwh"]), 4) if r else None,
+                "max_sek_kwh": round(float(r["max_sek_kwh"]), 4) if r else None,
             }
         )
         cur += timedelta(days=1)
@@ -283,31 +309,55 @@ def get_multi_zone_history(
 ):
     """
     Daily average spot prices for all four SE bidding zones (SE1-SE4) for the past N days.
-    Useful for visualising the north-south price gradient and transmission bottlenecks.
-    Zones with no DB data return null for each day (trigger a backfill first).
+    A single GROUP BY covers every zone × day — previously this was four separate
+    queries looped in Python, which scaled badly on 365-day ranges.
     """
-    from collections import defaultdict
-
     today = datetime.now(tz=timezone.utc).date()
     start = today - timedelta(days=days - 1)
 
+    sql = text(
+        """
+        SELECT area,
+               (timestamp_utc AT TIME ZONE 'Europe/Stockholm')::date AS day,
+               AVG(price_sek_kwh) AS avg_sek_kwh
+        FROM spot_prices
+        WHERE timestamp_utc >= :start
+          AND timestamp_utc <  :end
+        GROUP BY area, day
+        ORDER BY area, day
+        """
+    )
+    db_rows = (
+        db.execute(
+            sql,
+            {
+                "start": datetime.combine(start, datetime.min.time(), tzinfo=_STOCKHOLM)
+                .astimezone(timezone.utc)
+                .replace(tzinfo=None),
+                "end": datetime.combine(today + timedelta(days=1), datetime.min.time(), tzinfo=_STOCKHOLM)
+                .astimezone(timezone.utc)
+                .replace(tzinfo=None),
+            },
+        )
+        .mappings()
+        .all()
+    )
+
+    by_area_date: dict[str, dict[date, float]] = {a: {} for a in VALID_AREAS}
+    for r in db_rows:
+        by_area_date[r["area"]][r["day"]] = float(r["avg_sek_kwh"])
+
     zones: dict[str, list[dict]] = {}
     for area in sorted(VALID_AREAS):
-        rows = get_prices_for_date_range(db, start, today, area=area)
-
-        by_date: dict[date, list[float]] = defaultdict(list)
-        for r in rows:
-            cet_date = _to_stockholm_date(r.timestamp_utc)
-            by_date[cet_date].append(float(r.price_sek_kwh))
-
+        per_date = by_area_date.get(area, {})
         daily = []
         cur = start
         while cur <= today:
-            vals = by_date.get(cur)
+            avg = per_date.get(cur)
             daily.append(
                 {
                     "date": cur.isoformat(),
-                    "avg_sek_kwh": round(sum(vals) / len(vals), 4) if vals else None,
+                    "avg_sek_kwh": round(avg, 4) if avg is not None else None,
                 }
             )
             cur += timedelta(days=1)
@@ -566,8 +616,6 @@ def get_weekly_forecast(
     """
     if area not in VALID_AREAS:
         raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
-
-    from sqlalchemy import text
 
     today = date.today()
 
