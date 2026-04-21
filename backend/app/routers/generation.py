@@ -224,11 +224,42 @@ def get_national_24h(db: DbDep):
         else None
     )
 
+    # Per-zone freshness — exposed so the UI can show which SE area is lagging
+    # behind ENTSO-E publication (e.g. "SE4 2.5 h behind"). Empty dict if the
+    # lookup fails; the endpoint should still return its primary payload.
+    zone_latest: dict[str, str] = {}
+    try:
+        zone_rows = (
+            db.execute(
+                text(
+                    """
+                SELECT area, MAX(timestamp_utc) AS last_ts
+                FROM generation_mix
+                WHERE timestamp_utc >= :cutoff
+                GROUP BY area
+                """
+                ),
+                {"cutoff": cutoff.replace(tzinfo=None)},
+            )
+            .mappings()
+            .all()
+        )
+        for r in zone_rows:
+            last_ts = r["last_ts"]
+            if last_ts is None:
+                continue
+            if last_ts.tzinfo is None:
+                last_ts = last_ts.replace(tzinfo=timezone.utc)
+            zone_latest[r["area"]] = last_ts.isoformat()
+    except Exception:  # pragma: no cover — defensive, never blocks the main response
+        zone_latest = {}
+
     return {
         "count": len(last_24),
         "latest_slot": latest_slot,
         "renewable_pct": round(renewable_pct, 1) if renewable_pct else None,
         "carbon_free_pct": round(carbon_free, 1) if carbon_free else None,
+        "zone_latest": zone_latest,
         "hourly": last_24,
     }
 

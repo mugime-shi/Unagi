@@ -110,3 +110,21 @@ resource "aws_cloudwatch_event_target" "hourly_generation_lambda" {
   arn       = aws_lambda_function.scheduler.arn
   input     = jsonencode({ hourly_generation = true })
 }
+
+# ── Weekly self-heal backfill (Saturday 04:00 UTC) ──────────────────────────
+# Idempotent top-up that walks the last 7 days and re-fetches anything the
+# per-hour / nightly runs failed to land (ENTSO-E late publishes, transient
+# 5xx, etc.). The SKIP heuristic turns complete days into no-ops, so the
+# real cost is a handful of API calls per area on normal weeks.
+resource "aws_cloudwatch_event_rule" "weekly_backfill" {
+  name                = "${var.project}-weekly-backfill"
+  description         = "Weekly 7-day generation backfill (Sat 04:00 UTC)"
+  schedule_expression = "cron(0 4 ? * SAT *)"
+}
+
+resource "aws_cloudwatch_event_target" "weekly_backfill_lambda" {
+  rule      = aws_cloudwatch_event_rule.weekly_backfill.name
+  target_id = "${var.project}-weekly-backfill"
+  arn       = aws_lambda_function.scheduler.arn
+  input     = jsonencode({ backfill_generation = 7 })
+}

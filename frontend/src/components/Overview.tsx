@@ -686,6 +686,28 @@ export function Overview({ onZoneClick }: OverviewProps) {
     return parts.length > 0 ? parts.join(" · ") : null;
   }, [is24h, nat24h, latestCarbonIntensity]);
 
+  // Surface zones whose latest generation slot lags more than 1 h behind the
+  // freshest zone. Anything smaller is normal ENTSO-E publication jitter.
+  const laggingZones = useMemo<{ zone: string; hoursBehind: number }[]>(() => {
+    if (!is24h || !nat24h?.zone_latest) return [];
+    const entries = Object.entries(nat24h.zone_latest).filter(
+      ([, iso]) => typeof iso === "string" && iso.length > 0,
+    ) as [string, string][];
+    if (entries.length < 2) return [];
+    const times = entries.map(([zone, iso]) => ({
+      zone,
+      ms: new Date(iso).getTime(),
+    }));
+    const newest = Math.max(...times.map((t) => t.ms));
+    return times
+      .filter((t) => newest - t.ms > 60 * 60 * 1000)
+      .map((t) => ({
+        zone: t.zone,
+        hoursBehind: +((newest - t.ms) / (60 * 60 * 1000)).toFixed(1),
+      }))
+      .sort((a, b) => b.hoursBehind - a.hoursBehind);
+  }, [is24h, nat24h]);
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -727,6 +749,17 @@ export function Overview({ onZoneClick }: OverviewProps) {
               {envBadgeLine && <span>{envBadgeLine}</span>}
               {envBadgeLine && lagText && <span> · </span>}
               {lagText && <span>{lagText}</span>}
+            </p>
+          )}
+          {is24h && laggingZones.length > 0 && (
+            <p
+              className="text-[11px] text-amber-600 dark:text-amber-400 mt-1"
+              title="Some SE zones are lagging behind ENTSO-E publication. Totals include all zones that have reported; the shaded area may grow retroactively as missing slots arrive."
+            >
+              ⚠ Delayed:{" "}
+              {laggingZones
+                .map((z) => `${z.zone} ${z.hoursBehind}h behind`)
+                .join(" · ")}
             </p>
           )}
         </div>

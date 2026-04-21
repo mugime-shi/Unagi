@@ -20,6 +20,7 @@ export interface National24hResponse {
   latest_slot: string | null;
   renewable_pct: number | null;
   carbon_free_pct: number | null;
+  zone_latest?: Partial<Record<"SE1" | "SE2" | "SE3" | "SE4", string>>;
   hourly: National24hEntry[];
 }
 
