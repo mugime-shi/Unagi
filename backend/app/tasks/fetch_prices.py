@@ -21,7 +21,7 @@ import argparse
 import logging
 import sys
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from app.config import settings
 from app.db.database import SessionLocal
@@ -177,18 +177,39 @@ def fetch_generation_date(target_date: date, area: str = "SE3") -> dict:
         today = date.today()
         is_recent = target_date >= today - timedelta(days=1)  # today or yesterday
         if existing and not is_recent:
-            # A full CET day = 96 fifteen-minute slots (24h UTC window, DST-invariant).
-            # Only skip PAST dates (>= 2 days ago) with complete data.
+            # Completeness depends on the ENTSO-E resolution for that day:
+            #   PT15M -> 96 timestamps/day (24h × 4 quarters)
+            #   PT60M -> 24 timestamps/day
+            # ENTSO-E switched SE areas from PT60M to PT15M on 2025-12-02, so
+            # older days can legitimately have only 24 timestamps and still
+            # be fully populated. Treat either as "complete" so the retry
+            # loop doesn't keep hammering ENTSO-E for days that already have
+            # everything the upstream will ever publish.
             distinct_slots = len({r.timestamp_utc for r in existing})
-            if distinct_slots >= 96:
-                log.info("SKIP generation %s %s — complete (%d slots)", target_date, area, distinct_slots)
+            resolutions = {r.resolution for r in existing if r.resolution}
+            is_pt60 = resolutions == {"PT60M"}
+            expected = 24 if is_pt60 else 96
+            if distinct_slots >= expected:
+                log.info(
+                    "SKIP generation %s %s — complete (%d slots, %s)",
+                    target_date,
+                    area,
+                    distinct_slots,
+                    "PT60M" if is_pt60 else "PT15M",
+                )
                 return {
                     "date": target_date.isoformat(),
                     "market": "generation",
                     "status": "cached",
                     "rows": len(existing),
                 }
-            log.info("REFETCH generation %s %s — only %d/96 slots, data incomplete", target_date, area, distinct_slots)
+            log.info(
+                "REFETCH generation %s %s — only %d/%d slots, data incomplete",
+                target_date,
+                area,
+                distinct_slots,
+                expected,
+            )
         elif existing and is_recent:
             distinct_slots = len({r.timestamp_utc for r in existing})
             log.info("REFETCH generation %s %s — recent date, %d/96 slots so far", target_date, area, distinct_slots)
@@ -477,6 +498,12 @@ def lambda_handler(event: dict, context) -> dict:
         results.append(_fetch_weather_forecast())
         results.append(_fetch_gas_prices())
 
+        # Data-freshness health check: detect cases where fetchers succeeded
+        # but upstream still hasn't delivered recent slots (ENTSO-E publishing
+        # gaps that CloudWatch Lambda-error alarms can't see).
+        health_issues = _check_generation_freshness()
+        results.extend(health_issues)
+
         failed = [r for r in results if r["status"] == "error"]
         if failed:
             _send_pipeline_alert("midnight_collect", results)
@@ -516,8 +543,11 @@ def lambda_handler(event: dict, context) -> dict:
             # Force re-fetch (don't skip even if some data exists)
             for gen_date in [yesterday_date, today_date]:
                 results.append(fetch_generation_date(gen_date, area))
+        failed = [r for r in results if r["status"] == "error"]
+        if failed:
+            _send_pipeline_alert("hourly_generation", results)
         return {
-            "statusCode": 200,
+            "statusCode": 200 if not failed else 207,
             "mode": "hourly_generation",
             "results": results,
         }
@@ -531,8 +561,11 @@ def lambda_handler(event: dict, context) -> dict:
         all_results = []
         for area in areas:
             all_results.extend(fetch_dates([today, tomorrow], area))
+        failed = [r for r in all_results if r["status"] == "error"]
+        if failed:
+            _send_pipeline_alert("price_retry", all_results)
         return {
-            "statusCode": 200,
+            "statusCode": 200 if not failed else 207,
             "mode": "price_retry",
             "results": all_results,
         }
@@ -737,6 +770,79 @@ def _send_pipeline_alert(step_name: str, results: list[dict]) -> None:
         send_pipeline_alert(step_name, results)
     except Exception as exc:
         log.warning("Pipeline alert send failed for %s: %s", step_name, exc)
+
+
+# Maximum acceptable lag between "now" and the latest generation slot per area.
+# ENTSO-E normally delivers within 1-2 h; 3 h is chosen as the alert threshold
+# so transient hiccups during the hourly fetch don't page us.
+_GENERATION_FRESHNESS_LAG_HOURS = 3.0
+
+
+def _check_generation_freshness() -> list[dict]:
+    """
+    Verify generation_mix has reasonably recent data for every SE zone.
+
+    Returns a list of error-shaped dicts (same shape as fetcher results) for
+    any zone whose latest slot is more than _GENERATION_FRESHNESS_LAG_HOURS
+    old, or that has no rows at all in the last 24h. Empty list means all
+    zones are fresh. The alarm handler turns these into a Telegram alert —
+    this is the only signal that catches "Lambda succeeded but upstream
+    data never arrived" situations, which CloudWatch error alarms miss.
+    """
+    from sqlalchemy import text
+
+    db = SessionLocal()
+    try:
+        rows = (
+            db.execute(
+                text(
+                    """
+                SELECT area, MAX(timestamp_utc) AS last_ts
+                FROM generation_mix
+                WHERE timestamp_utc >= NOW() - INTERVAL '24 hours'
+                GROUP BY area
+                """
+                )
+            )
+            .mappings()
+            .all()
+        )
+    except Exception as exc:
+        log.warning("generation freshness check failed: %s", exc)
+        return []
+    finally:
+        db.close()
+
+    now = datetime.now(timezone.utc)
+    seen = {r["area"]: r["last_ts"] for r in rows}
+    issues: list[dict] = []
+    for area in ALL_AREAS:
+        last_ts = seen.get(area)
+        if last_ts is None:
+            issues.append(
+                {
+                    "area": area,
+                    "market": "generation_health",
+                    "status": "error",
+                    "error": "no generation_mix rows in the last 24 h",
+                }
+            )
+            continue
+        if last_ts.tzinfo is None:
+            last_ts = last_ts.replace(tzinfo=timezone.utc)
+        age_h = (now - last_ts).total_seconds() / 3600
+        if age_h > _GENERATION_FRESHNESS_LAG_HOURS:
+            issues.append(
+                {
+                    "area": area,
+                    "market": "generation_health",
+                    "status": "error",
+                    "error": f"latest slot is {age_h:.1f} h old ({last_ts.isoformat()})",
+                }
+            )
+    if issues:
+        log.warning("generation freshness: %d zone(s) flagged", len(issues))
+    return issues
 
 
 def _record_predictions(areas: list[str], target_date: date | None = None) -> list[dict]:
