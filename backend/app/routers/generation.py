@@ -11,7 +11,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
@@ -22,6 +22,25 @@ from app.services.generation_service import (
     fetch_and_store_generation,
     get_generation_for_date,
 )
+
+# Shared SQL fragment: ENTSO-E psr_type -> Unagi semantic group.
+# Kept as raw SQL so /national-24h and /history can do the national aggregation
+# in Postgres (summing zones per slot, averaging slots per bucket) without
+# pulling hundreds of thousands of rows into Python.
+_PSR_TO_GROUP_SQL = """
+    CASE psr_type
+        WHEN 'B04' THEN 'fossil'
+        WHEN 'B05' THEN 'fossil'
+        WHEN 'B10' THEN 'hydro'
+        WHEN 'B11' THEN 'hydro'
+        WHEN 'B12' THEN 'hydro'
+        WHEN 'B14' THEN 'nuclear'
+        WHEN 'B16' THEN 'solar'
+        WHEN 'B18' THEN 'wind'
+        WHEN 'B19' THEN 'wind'
+        ELSE 'other'
+    END
+"""
 
 router = APIRouter(prefix="/generation", tags=["generation"])
 
@@ -134,80 +153,55 @@ def get_national_24h(db: DbDep):
     from collections import defaultdict
     from zoneinfo import ZoneInfo
 
-    from app.models.generation_mix import GenerationMix
-
     _STHLM = ZoneInfo("Europe/Stockholm")
 
-    # Query last 48h of data (wide buffer for ENTSO-E lag + overnight gaps)
+    # Query last 48h of data (wide buffer for ENTSO-E lag + overnight gaps).
+    # All aggregation happens in Postgres so we only pull one row per
+    # (hour, group) back into Python.
     cutoff = datetime.now(tz=timezone.utc) - timedelta(hours=48)
-    rows = (
-        db.query(GenerationMix)
-        .filter(GenerationMix.timestamp_utc >= cutoff.replace(tzinfo=None))
-        .order_by(GenerationMix.timestamp_utc)
-        .all()
+    sql = text(
+        f"""
+        WITH slot_zone AS (
+            SELECT timestamp_utc, area, {_PSR_TO_GROUP_SQL} AS grp,
+                   SUM(value_mw) AS mw
+            FROM generation_mix
+            WHERE timestamp_utc >= :cutoff
+            GROUP BY timestamp_utc, area, grp
+        ),
+        slot AS (
+            SELECT timestamp_utc, grp, SUM(mw) AS national_mw
+            FROM slot_zone
+            GROUP BY timestamp_utc, grp
+        )
+        SELECT date_trunc('hour', timestamp_utc) AS hour_ts,
+               grp,
+               AVG(national_mw) AS avg_mw
+        FROM slot
+        GROUP BY hour_ts, grp
+        ORDER BY hour_ts, grp
+        """
     )
+    db_rows = db.execute(sql, {"cutoff": cutoff.replace(tzinfo=None)}).mappings().all()
 
-    PSR_GROUP = {
-        "B01": "other",
-        "B02": "other",
-        "B04": "fossil",
-        "B05": "fossil",
-        "B06": "other",
-        "B09": "other",
-        "B10": "hydro",
-        "B11": "hydro",
-        "B12": "hydro",
-        "B14": "nuclear",
-        "B15": "other",
-        "B16": "solar",
-        "B17": "other",
-        "B18": "wind",
-        "B19": "wind",
-        "B20": "other",
-    }
-
-    # National aggregation in 3 steps so zones are actually SUMMED, not averaged:
-    #   1) (slot_ts, zone, group) -> sum MW across psr_types inside the group
-    #   2) (slot_ts, group)       -> sum across the four SE zones (= national MW at slot)
-    #   3) (hour_ts, group)       -> average the slots that fall inside the hour
-    # The previous implementation skipped step 2 and fed every zone's slot into step 3,
-    # which averaged four zones together and produced ~1/4 of the true national value
-    # for anything present in more than one zone (wind, hydro, solar, other).
-
-    by_slot_zone: dict[datetime, dict[str, dict[str, float]]] = defaultdict(
-        lambda: defaultdict(lambda: defaultdict(float))
-    )
-    for r in rows:
-        ts = r.timestamp_utc
+    # Pivot rows -> {hour_ts: {group: mw}}
+    per_hour: dict[datetime, dict[str, float]] = defaultdict(dict)
+    for r in db_rows:
+        ts = r["hour_ts"]
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=timezone.utc)
-        group = PSR_GROUP.get(r.psr_type, "other")
-        by_slot_zone[ts][r.area][group] += float(r.value_mw)
-
-    by_slot: dict[datetime, dict[str, float]] = defaultdict(lambda: defaultdict(float))
-    for ts, zones in by_slot_zone.items():
-        for _zone, groups in zones.items():
-            for g, mw in groups.items():
-                by_slot[ts][g] += mw
-
-    by_hour: dict[datetime, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
-    for ts, group_mw in by_slot.items():
-        hour_ts = ts.replace(minute=0, second=0, microsecond=0)
-        for g, mw in group_mw.items():
-            by_hour[hour_ts][g].append(mw)
+        per_hour[ts][r["grp"]] = float(r["avg_mw"])
 
     entries = []
-    for hour_ts in sorted(by_hour.keys()):
-        groups = by_hour[hour_ts]
+    for hour_ts in sorted(per_hour.keys()):
+        groups = per_hour[hour_ts]
         entry: dict = {"timestamp_utc": hour_ts.isoformat()}
         local = hour_ts.astimezone(_STHLM)
         entry["hour_label"] = f"{local.hour:02d}:00"
         total = 0.0
         for g in ("hydro", "nuclear", "wind", "solar", "fossil", "other"):
-            vals = groups.get(g, [])
-            avg = sum(vals) / len(vals) if vals else 0
-            entry[g] = round(avg)
-            total += avg
+            mw = groups.get(g, 0.0)
+            entry[g] = round(mw)
+            total += mw
         renewable = entry.get("hydro", 0) + entry.get("wind", 0) + entry.get("solar", 0)
         entry["total_mw"] = round(total)
         entry["renewable_pct"] = round(renewable / total * 100, 1) if total > 0 else None
@@ -246,87 +240,68 @@ def get_generation_history(
 ):
     """
     Daily aggregated generation mix for all SE zones combined (national).
-    Returns daily totals (MW-h equivalent) grouped by source type.
+    All aggregation is done in Postgres: first sum zones per slot, then
+    average the slots that fall inside each Stockholm-local day.
     """
     from collections import defaultdict
-    from zoneinfo import ZoneInfo
 
-    _STHLM = ZoneInfo("Europe/Stockholm")
-    today = datetime.now(tz=timezone.utc).date()
-    start = today - timedelta(days=days - 1)
-
-    from app.models.generation_mix import GenerationMix
     from app.utils.timezone import stockholm_midnight_utc
 
+    today = datetime.now(tz=timezone.utc).date()
+    start = today - timedelta(days=days - 1)
     range_start = stockholm_midnight_utc(start)
     range_end = stockholm_midnight_utc(today + timedelta(days=1))
 
-    rows = (
-        db.query(GenerationMix)
-        .filter(
-            GenerationMix.timestamp_utc >= range_start.replace(tzinfo=None),
-            GenerationMix.timestamp_utc < range_end.replace(tzinfo=None),
+    sql = text(
+        f"""
+        WITH slot_zone AS (
+            SELECT timestamp_utc, area, {_PSR_TO_GROUP_SQL} AS grp,
+                   SUM(value_mw) AS mw
+            FROM generation_mix
+            WHERE timestamp_utc >= :range_start
+              AND timestamp_utc <  :range_end
+            GROUP BY timestamp_utc, area, grp
+        ),
+        slot AS (
+            SELECT timestamp_utc, grp, SUM(mw) AS national_mw
+            FROM slot_zone
+            GROUP BY timestamp_utc, grp
         )
-        .order_by(GenerationMix.timestamp_utc)
+        SELECT (timestamp_utc AT TIME ZONE 'Europe/Stockholm')::date AS day,
+               grp,
+               AVG(national_mw) AS avg_mw
+        FROM slot
+        GROUP BY day, grp
+        ORDER BY day, grp
+        """
+    )
+    db_rows = (
+        db.execute(
+            sql,
+            {
+                "range_start": range_start.replace(tzinfo=None),
+                "range_end": range_end.replace(tzinfo=None),
+            },
+        )
+        .mappings()
         .all()
     )
 
-    PSR_GROUP = {
-        "B01": "other",
-        "B02": "other",
-        "B04": "fossil",
-        "B05": "fossil",
-        "B06": "other",
-        "B09": "other",
-        "B10": "hydro",
-        "B11": "hydro",
-        "B12": "hydro",
-        "B14": "nuclear",
-        "B15": "other",
-        "B16": "solar",
-        "B17": "other",
-        "B18": "wind",
-        "B19": "wind",
-        "B20": "other",
-    }
-
-    # Same 3-step national aggregation as /national-24h:
-    #   1) (slot_ts, zone, group) -> MW (psr_types summed within the group)
-    #   2) (slot_ts, group)       -> sum across the four SE zones
-    #   3) (date, group)          -> list of slot MWs, averaged to get daily avg MW
-    by_slot_zone: dict[datetime, dict[str, dict[str, float]]] = defaultdict(
-        lambda: defaultdict(lambda: defaultdict(float))
-    )
-    for r in rows:
-        ts = r.timestamp_utc
-        if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
-        group = PSR_GROUP.get(r.psr_type, "other")
-        by_slot_zone[ts][r.area][group] += float(r.value_mw)
-
-    by_slot: dict[datetime, dict[str, float]] = defaultdict(lambda: defaultdict(float))
-    for ts, zones in by_slot_zone.items():
-        for _zone, groups in zones.items():
-            for g, mw in groups.items():
-                by_slot[ts][g] += mw
-
-    by_date: dict[date, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
-    for ts, group_mw in by_slot.items():
-        d = ts.astimezone(_STHLM).date()
-        for g, mw in group_mw.items():
-            by_date[d][g].append(mw)
+    by_date: dict[date, dict[str, float]] = defaultdict(dict)
+    for r in db_rows:
+        by_date[r["day"]][r["grp"]] = float(r["avg_mw"])
 
     daily = []
     cur = start
     while cur <= today:
-        groups = by_date.get(cur, {})
+        groups = by_date.get(cur)
         if groups:
             entry: dict = {"date": cur.isoformat()}
             total = 0.0
             for g in ("hydro", "nuclear", "wind", "solar", "fossil", "other"):
-                avg = sum(groups.get(g, [])) / len(groups[g]) if groups.get(g) else 0
-                entry[g] = round(avg)
-                total += avg
+                mw = groups.get(g, 0.0)
+                entry[g] = round(mw)
+                total += mw
             renewable = entry.get("hydro", 0) + entry.get("wind", 0) + entry.get("solar", 0)
             entry["total_mw"] = round(total)
             entry["renewable_pct"] = round(renewable / total * 100, 1) if total > 0 else None
