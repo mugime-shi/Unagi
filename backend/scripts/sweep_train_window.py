@@ -61,7 +61,7 @@ def _train_and_predict(db, target_date, area, train_days):
     # Same Optuna-tuned params as production (100 trials, 2026-03-18)
     params = {
         "objective": "huber",
-        "huber_delta": 0.5,
+        "huber_delta": 1.0,  # Match production (tuned 2026-03-20, commit 4960ceb)
         "metric": "mae",
         "verbose": -1,
         "num_leaves": 117,
