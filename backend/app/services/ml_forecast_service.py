@@ -494,6 +494,44 @@ def predict_with_model(
     return result
 
 
+def _blend_forecasts(forecast_a: dict, forecast_b: dict, p: float) -> dict:
+    """Soft-blend two 24h LightGBM forecasts: out = (1-p)*A + p*B.
+
+    Blends point, low, and high jointly so the prediction interval scales
+    proportionally with the volatility prior. SHAP and metadata come from A.
+    """
+    blended_slots = []
+    for slot_a, slot_b in zip(forecast_a["slots"], forecast_b["slots"]):
+        a_avg = slot_a.get("avg_sek_kwh")
+        b_avg = slot_b.get("avg_sek_kwh")
+        a_lo = slot_a.get("low_sek_kwh")
+        b_lo = slot_b.get("low_sek_kwh")
+        a_hi = slot_a.get("high_sek_kwh")
+        b_hi = slot_b.get("high_sek_kwh")
+        slot = {"hour": slot_a["hour"]}
+        slot["avg_sek_kwh"] = (
+            round((1 - p) * a_avg + p * b_avg, 4) if a_avg is not None and b_avg is not None else a_avg
+        )
+        slot["low_sek_kwh"] = (
+            round(max(0.0, (1 - p) * a_lo + p * b_lo), 4) if a_lo is not None and b_lo is not None else a_lo
+        )
+        slot["high_sek_kwh"] = (
+            round((1 - p) * a_hi + p * b_hi, 4) if a_hi is not None and b_hi is not None else a_hi
+        )
+        blended_slots.append(slot)
+
+    valid = [(s["low_sek_kwh"], s["avg_sek_kwh"], s["high_sek_kwh"]) for s in blended_slots if s["avg_sek_kwh"] is not None]
+    summary = {
+        "predicted_avg_sek_kwh": round(sum(v[1] for v in valid) / len(valid), 4) if valid else None,
+        "predicted_low_sek_kwh": round(min(v[0] for v in valid), 4) if valid else None,
+        "predicted_high_sek_kwh": round(max(v[2] for v in valid), 4) if valid else None,
+    }
+    out = {"slots": blended_slots, "summary": summary, "ensemble_p": round(p, 4)}
+    if "explanations" in forecast_a:
+        out["explanations"] = forecast_a["explanations"]
+    return out
+
+
 def build_lgbm_forecast(
     db: Session,
     target_date: date,
@@ -504,11 +542,68 @@ def build_lgbm_forecast(
 
     Convenience wrapper around get_or_train_model() + predict_with_model().
     For multi-horizon forecasting, use those functions directly to avoid retraining.
+
+    When LGBM_USE_ENSEMBLE=1, falls through to the M soft-blend path.
     """
+    if os.environ.get("LGBM_USE_ENSEMBLE") == "1":
+        ensemble = build_lgbm_forecast_ensemble(db, target_date, area, price_overrides=price_overrides)
+        if ensemble is not None:
+            return ensemble
+        # graceful fallback to Model A on ensemble failure
+        logger.warning("Ensemble path failed for %s/%s, falling back to Model A", area, target_date)
+
     models = get_or_train_model(db, target_date, area)
     if models is None:
         return _NULL_RESPONSE
     return predict_with_model(models, db, target_date, area, price_overrides=price_overrides)
+
+
+def build_lgbm_forecast_ensemble(
+    db: Session,
+    target_date: date,
+    area: str = "SE3",
+    price_overrides: dict[tuple[date, int], float] | None = None,
+) -> dict | None:
+    """M soft-blend forecast: classifier produces p, output = (1-p)*A + p*B.
+
+    Returns None if any component fails so the caller can decide whether to
+    fall back to plain Model A.
+    """
+    from app.services.regime_classifier_service import (
+        get_or_train_classifier,
+        predict_volatility,
+    )
+
+    model_a = get_or_train_model(db, target_date, area)
+    if model_a is None:
+        return None
+    forecast_a = predict_with_model(model_a, db, target_date, area, price_overrides=price_overrides)
+    if forecast_a is _NULL_RESPONSE or forecast_a["summary"]["predicted_avg_sek_kwh"] is None:
+        return None
+
+    classifier = get_or_train_classifier(db, target_date, area)
+    if classifier is None:
+        return None
+
+    p = predict_volatility(
+        db,
+        target_date,
+        area,
+        classifier_bundle=classifier,
+        model_a_slots=forecast_a["slots"],
+    )
+    if p is None:
+        return None
+
+    model_b = get_or_train_volatile_model(db, target_date, area)
+    if model_b is None:
+        return None
+    forecast_b = predict_with_model(model_b, db, target_date, area, price_overrides=price_overrides)
+    if forecast_b is _NULL_RESPONSE or forecast_b["summary"]["predicted_avg_sek_kwh"] is None:
+        return None
+
+    logger.info("Ensemble blend: p=%.3f for %s/%s", p, area, target_date)
+    return _blend_forecasts(forecast_a, forecast_b, p)
 
 
 def build_multi_horizon_forecast(
