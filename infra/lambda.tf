@@ -49,14 +49,19 @@ resource "aws_lambda_function" "scheduler" {
 
   environment {
     variables = {
-      DATABASE_URL       = var.database_url
-      ENTSOE_API_KEY     = var.entsoe_api_key
-      DEBUG              = "false"
-      VAPID_PRIVATE_KEY  = var.vapid_private_key
-      VAPID_PUBLIC_KEY   = var.vapid_public_key
-      VAPID_CONTACT      = var.vapid_contact
-      TELEGRAM_BOT_TOKEN = var.telegram_bot_token
-      TELEGRAM_CHAT_ID   = var.telegram_chat_id
+      DATABASE_URL        = var.database_url
+      ENTSOE_API_KEY      = var.entsoe_api_key
+      DEBUG               = "false"
+      VAPID_PRIVATE_KEY   = var.vapid_private_key
+      VAPID_PUBLIC_KEY    = var.vapid_public_key
+      VAPID_CONTACT       = var.vapid_contact
+      TELEGRAM_BOT_TOKEN  = var.telegram_bot_token
+      TELEGRAM_CHAT_ID    = var.telegram_chat_id
+      # M ensemble (regime-specific soft blend). Validated 2026-04-25 on a
+      # 90-day backtest: overall MAE -2.5%, calm -1.8%, volatile -2.9% with
+      # the dead-zone gate [0.4, 0.6) hard-coded as the default.
+      # Rollback: remove this var and re-apply.
+      LGBM_USE_ENSEMBLE   = "1"
     }
   }
 
