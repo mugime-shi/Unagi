@@ -639,18 +639,32 @@ def get_weekly_forecast(
     ).fetchone()
     reference_avg = float(ref_row[0]) if ref_row and ref_row[0] else None
 
-    # Try to load existing predictions from forecast_accuracy first
+    # Try to load existing predictions from forecast_accuracy first.
+    # For each future date, multiple model_names ('lgbm', 'lgbm_d2'..'lgbm_d7')
+    # may have rows: each cron run records that date at its respective horizon.
+    # Pick the freshest = lowest-horizon row per (date, hour) so the chart sees
+    # 24 slots/day, not 24×N stacked across stale predictions.
     model_names = {"lgbm": 1, **{f"lgbm_d{h}": h for h in range(2, 8)}}
     existing = db.execute(
         text("""
-            SELECT model_name, target_date, hour, predicted_sek_kwh,
+            SELECT DISTINCT ON (target_date, hour)
+                   model_name, target_date, hour, predicted_sek_kwh,
                    predicted_low_sek_kwh, predicted_high_sek_kwh
             FROM forecast_accuracy
             WHERE area = :area
               AND model_name IN :models
               AND target_date > CURRENT_DATE
               AND target_date <= CURRENT_DATE + 7
-            ORDER BY target_date, hour
+            ORDER BY target_date, hour,
+                     CASE model_name
+                         WHEN 'lgbm'    THEN 1
+                         WHEN 'lgbm_d2' THEN 2
+                         WHEN 'lgbm_d3' THEN 3
+                         WHEN 'lgbm_d4' THEN 4
+                         WHEN 'lgbm_d5' THEN 5
+                         WHEN 'lgbm_d6' THEN 6
+                         WHEN 'lgbm_d7' THEN 7
+                     END
         """),
         {"area": area, "models": tuple(model_names.keys())},
     ).fetchall()
