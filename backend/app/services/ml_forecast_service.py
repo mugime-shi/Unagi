@@ -145,19 +145,19 @@ def _compute_shap_explanations(point_model, X_pred: np.ndarray, top_n: int = 5) 
 # ---------------------------------------------------------------------------
 
 
-def _cache_key(area: str, target_date: date) -> str:
-    """Deterministic key from area + target_date + train_days."""
-    raw = f"{area}:{target_date.isoformat()}:{_TRAIN_DAYS}:v8-cqr30"
+def _cache_key(area: str, target_date: date, variant: str = "A") -> str:
+    """Deterministic key from area + target_date + train_days + variant."""
+    raw = f"{area}:{target_date.isoformat()}:{_TRAIN_DAYS}:v8-cqr30:{variant}"
     return hashlib.md5(raw.encode()).hexdigest()[:12]
 
 
-def _cache_path(area: str, target_date: date) -> Path:
-    return _CACHE_DIR / f"lgbm_{_cache_key(area, target_date)}.pkl"
+def _cache_path(area: str, target_date: date, variant: str = "A") -> Path:
+    return _CACHE_DIR / f"lgbm_{_cache_key(area, target_date, variant)}.pkl"
 
 
-def _load_cached(area: str, target_date: date):
+def _load_cached(area: str, target_date: date, variant: str = "A"):
     """Load cached model if it exists."""
-    path = _cache_path(area, target_date)
+    path = _cache_path(area, target_date, variant)
     if path.exists():
         try:
             with open(path, "rb") as f:
@@ -167,10 +167,10 @@ def _load_cached(area: str, target_date: date):
     return None
 
 
-def _save_cache(area: str, target_date: date, model):
+def _save_cache(area: str, target_date: date, model, variant: str = "A"):
     """Save model to cache."""
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    path = _cache_path(area, target_date)
+    path = _cache_path(area, target_date, variant)
     try:
         with open(path, "wb") as f:
             pickle.dump(model, f)
@@ -183,57 +183,36 @@ def _save_cache(area: str, target_date: date, model):
 # ---------------------------------------------------------------------------
 
 
-def _train_model(db: Session, target_date: date, area: str, *, huber_delta: float = 1.0):
-    """
-    Train LightGBM models on historical data.
+# Tuned via Optuna (100 trials, 4-fold walk-forward CV, 2026-03-18)
+# Re-validated with 53 features (2026-03-19): still optimal on walk-forward sweep
+_BASE_LGBM_PARAMS = {
+    "verbose": -1,
+    "num_leaves": 117,
+    "learning_rate": 0.015798,
+    "max_depth": 11,
+    "min_child_samples": 32,
+    "feature_fraction": 0.541483,
+    "bagging_fraction": 0.872229,
+    "bagging_freq": 1,
+    "lambda_l1": 4.663778,
+    "lambda_l2": 0.000033,
+}
 
-    Training window: [target_date - TRAIN_DAYS, target_date - 1]
-    The last TEST_DAYS are held out for validation (early stopping).
 
-    Returns a dict with 'point', 'low', 'high' models:
-    - point: MAE regression for the best point forecast
-    - low:   quantile regression (alpha=0.10) for the 10th percentile
-    - high:  quantile regression (alpha=0.90) for the 90th percentile
+def _fit_quantile_set(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_val: np.ndarray,
+    y_val: np.ndarray,
+    *,
+    huber_delta: float = 1.0,
+    log_label: str = "model",
+) -> dict:
+    """Train point + low/high quantile models with shared base params and CQR.
+
+    Returns {'point', 'low', 'high', 'q_hat'} ready for predict_with_model().
     """
     import lightgbm as lgb
-
-    train_end = target_date - timedelta(days=1)
-    train_start = train_end - timedelta(days=_TRAIN_DAYS - 1)
-
-    rows = build_feature_matrix(db, train_start, train_end, area=area)
-    if len(rows) < _MIN_TRAIN_ROWS:
-        logger.warning("Insufficient training data: %d rows (need %d)", len(rows), _MIN_TRAIN_ROWS)
-        return None
-
-    # Convert to numpy arrays
-    X = np.array([[r.get(col) for col in FEATURE_COLS] for r in rows], dtype=np.float64)
-    y = np.array([r[TARGET_COL] for r in rows], dtype=np.float64)
-
-    # Replace None with NaN (LightGBM handles NaN natively)
-    X = np.where(X == None, np.nan, X).astype(np.float64)  # noqa: E711
-
-    # Train/validation split: last TEST_DAYS for early stopping
-    split_idx = len(rows) - _TEST_DAYS * 24
-    if split_idx < _MIN_TRAIN_ROWS // 2:
-        split_idx = len(rows)
-
-    X_train, y_train = X[:split_idx], y[:split_idx]
-    X_val, y_val = X[split_idx:], y[split_idx:]
-
-    # Tuned via Optuna (100 trials, 4-fold walk-forward CV, 2026-03-18)
-    # Re-validated with 53 features (2026-03-19): still optimal on walk-forward sweep
-    base_params = {
-        "verbose": -1,
-        "num_leaves": 117,
-        "learning_rate": 0.015798,
-        "max_depth": 11,
-        "min_child_samples": 32,
-        "feature_fraction": 0.541483,
-        "bagging_fraction": 0.872229,
-        "bagging_freq": 1,
-        "lambda_l1": 4.663778,
-        "lambda_l2": 0.000033,
-    }
 
     def _fit(params):
         train_set = lgb.Dataset(X_train, label=y_train, feature_name=FEATURE_COLS)
@@ -244,16 +223,18 @@ def _train_model(db: Session, target_date: date, area: str, *, huber_delta: floa
             return lgb.train(params, train_set, num_boost_round=500, valid_sets=[val_set], callbacks=callbacks)
         return lgb.train(params, train_set, num_boost_round=200, callbacks=callbacks)
 
-    # Point forecast (Huber loss — reduces spike influence while keeping calm precision)
-    point_model = _fit({**base_params, "objective": "huber", "huber_delta": huber_delta, "metric": "mae"})
-    logger.info("LightGBM point model: %d rounds, %d features", point_model.best_iteration, len(FEATURE_COLS))
+    point_model = _fit({**_BASE_LGBM_PARAMS, "objective": "huber", "huber_delta": huber_delta, "metric": "mae"})
+    logger.info(
+        "LightGBM %s point: %d rounds, %d features, %d train rows",
+        log_label,
+        point_model.best_iteration,
+        len(FEATURE_COLS),
+        len(X_train),
+    )
 
-    # Quantile models for prediction intervals
-    low_model = _fit({**base_params, "objective": "quantile", "alpha": 0.10, "metric": "quantile"})
-    high_model = _fit({**base_params, "objective": "quantile", "alpha": 0.90, "metric": "quantile"})
+    low_model = _fit({**_BASE_LGBM_PARAMS, "objective": "quantile", "alpha": 0.10, "metric": "quantile"})
+    high_model = _fit({**_BASE_LGBM_PARAMS, "objective": "quantile", "alpha": 0.90, "metric": "quantile"})
 
-    # Conformal calibration (CQR): compute correction factor on validation set
-    # so that the prediction interval achieves ~80% coverage in practice.
     if len(X_val) > 0:
         val_low = low_model.predict(X_val)
         val_high = high_model.predict(X_val)
@@ -261,12 +242,111 @@ def _train_model(db: Session, target_date: date, area: str, *, huber_delta: floa
         n = len(scores)
         quantile_level = min(1.0, (1 - 0.20) * (1 + 1 / n))
         q_hat = float(np.quantile(scores, quantile_level))
-        logger.info("CQR calibration: q_hat=%.4f (n=%d val samples)", q_hat, n)
+        logger.info("CQR calibration (%s): q_hat=%.4f (n=%d val samples)", log_label, q_hat, n)
     else:
         q_hat = 0.0
-        logger.warning("No validation set — skipping CQR calibration")
+        logger.warning("%s: no validation set — skipping CQR calibration", log_label)
 
     return {"point": point_model, "low": low_model, "high": high_model, "q_hat": q_hat}
+
+
+def _rows_to_xy(rows: list[dict]) -> tuple[np.ndarray, np.ndarray]:
+    """Project feature rows to (X, y) numpy arrays with NaN handling."""
+    X = np.array([[r.get(col) for col in FEATURE_COLS] for r in rows], dtype=object)
+    X = np.where(X == None, np.nan, X).astype(np.float64)  # noqa: E711
+    y = np.array([r[TARGET_COL] for r in rows], dtype=np.float64)
+    return X, y
+
+
+def _label_volatile_days(rows: list[dict]) -> dict[str, bool]:
+    """Median-split each training day's actual price std → volatile=True if above median.
+
+    Proxy label used because we don't have production-MAE labels covering the
+    full 500-day training window. Validated in scripts/validate_volatile_model.py
+    where Model B beat Model A by 5.6% on volatile target days at TRAIN_DAYS=500.
+    """
+    by_day: dict[str, list[float]] = {}
+    for r in rows:
+        price = r.get(TARGET_COL)
+        if price is None:
+            continue
+        by_day.setdefault(r["date"], []).append(float(price))
+    stds: dict[str, float] = {d: float(np.std(p)) for d, p in by_day.items() if len(p) >= 20}
+    if not stds:
+        return {}
+    median_std = float(np.median(list(stds.values())))
+    return {d: (s > median_std) for d, s in stds.items()}
+
+
+def _train_model(db: Session, target_date: date, area: str, *, huber_delta: float = 1.0):
+    """Train Model A — full-history LightGBM (current production)."""
+    train_end = target_date - timedelta(days=1)
+    train_start = train_end - timedelta(days=_TRAIN_DAYS - 1)
+
+    rows = build_feature_matrix(db, train_start, train_end, area=area)
+    if len(rows) < _MIN_TRAIN_ROWS:
+        logger.warning("Insufficient training data: %d rows (need %d)", len(rows), _MIN_TRAIN_ROWS)
+        return None
+
+    X, y = _rows_to_xy(rows)
+
+    split_idx = len(rows) - _TEST_DAYS * 24
+    if split_idx < _MIN_TRAIN_ROWS // 2:
+        split_idx = len(rows)
+
+    return _fit_quantile_set(
+        X[:split_idx], y[:split_idx], X[split_idx:], y[split_idx:],
+        huber_delta=huber_delta, log_label="A",
+    )
+
+
+def _train_volatile_model(db: Session, target_date: date, area: str, *, huber_delta: float = 1.0):
+    """Train Model B — volatile-specialist LightGBM for the M ensemble.
+
+    Same training window as Model A but filters to days whose actual-price std
+    exceeds the window median. Returns the same {point, low, high, q_hat}
+    structure as _train_model so predict_with_model() works unchanged.
+    """
+    train_end = target_date - timedelta(days=1)
+    train_start = train_end - timedelta(days=_TRAIN_DAYS - 1)
+
+    rows = build_feature_matrix(db, train_start, train_end, area=area)
+    if len(rows) < _MIN_TRAIN_ROWS:
+        logger.warning("Model B: insufficient training data: %d rows", len(rows))
+        return None
+
+    day_is_volatile = _label_volatile_days(rows)
+    if not day_is_volatile:
+        logger.warning("Model B: volatile labelling failed (no day with ≥20 hourly prices)")
+        return None
+
+    rows_sorted = sorted(rows, key=lambda r: (r["date"], r["hour"]))
+    vol_rows = [r for r in rows_sorted if day_is_volatile.get(r["date"], False)]
+    if len(vol_rows) < _MIN_TRAIN_ROWS // 2:
+        logger.warning("Model B: too few volatile rows (%d)", len(vol_rows))
+        return None
+
+    X_vol, y_vol = _rows_to_xy(vol_rows)
+
+    # Validation set: last 30 distinct volatile training days (matches
+    # validate_volatile_model.py for behavioural parity)
+    vol_days_sorted = sorted({r["date"] for r in vol_rows})
+    if len(vol_days_sorted) >= 30:
+        val_cutoff_day = vol_days_sorted[-30]
+        val_mask = np.array([r["date"] >= val_cutoff_day for r in vol_rows])
+        X_train_b, y_train_b = X_vol[~val_mask], y_vol[~val_mask]
+        X_val_b, y_val_b = X_vol[val_mask], y_vol[val_mask]
+        if len(X_train_b) < _MIN_TRAIN_ROWS // 2:
+            X_train_b, y_train_b = X_vol, y_vol
+            X_val_b, y_val_b = X_vol[:0], y_vol[:0]
+    else:
+        X_train_b, y_train_b = X_vol, y_vol
+        X_val_b, y_val_b = X_vol[:0], y_vol[:0]
+
+    return _fit_quantile_set(
+        X_train_b, y_train_b, X_val_b, y_val_b,
+        huber_delta=huber_delta, log_label="B(volatile)",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -311,22 +391,37 @@ _NULL_RESPONSE = {
 
 
 def get_or_train_model(db: Session, target_date: date, area: str = "SE3") -> dict | None:
-    """Load cached model or train a new one.
+    """Load cached Model A (current production) or train a new one.
 
     target_date is the d+1 prediction target (model trains on data through target_date - 1).
     Returns model dict with 'point', 'low', 'high', 'q_hat' keys, or None on failure.
     """
-    models = _load_cached(area, target_date)
+    models = _load_cached(area, target_date, variant="A")
     if models is None:
         models = _train_model(db, target_date, area)
         if models is None:
             return None
-        _save_cache(area, target_date, models)
+        _save_cache(area, target_date, models, variant="A")
 
     # Support both old (single model) and new (dict) cache format
     if not isinstance(models, dict):
         models = {"point": models, "low": None, "high": None, "q_hat": 0.0}
 
+    return models
+
+
+def get_or_train_volatile_model(db: Session, target_date: date, area: str = "SE3") -> dict | None:
+    """Load cached Model B (volatile specialist) or train a new one.
+
+    Same window as Model A but trained on volatile-only days. Returns the same
+    structure as get_or_train_model() so predict_with_model() works unchanged.
+    """
+    models = _load_cached(area, target_date, variant="B")
+    if models is None:
+        models = _train_volatile_model(db, target_date, area)
+        if models is None:
+            return None
+        _save_cache(area, target_date, models, variant="B")
     return models
 
 
