@@ -633,28 +633,40 @@ def build_multi_horizon_forecast(
 ) -> list[dict]:
     """Generate recursive forecasts for d+1 through d+max_horizon.
 
-    Trains one model (for d+1) and reuses it for all horizons.
-    Each horizon's predictions become lag features for the next.
+    d+1 routes through build_lgbm_forecast so LGBM_USE_ENSEMBLE can take effect.
+    d+2 onward use Model A recursively (the ensemble's value lives almost
+    entirely in single-step accuracy; deeper horizons are dominated by
+    feature decay rather than regime selection).
 
     Returns list of dicts, each with keys:
         horizon (int), target_date (date), forecast (dict with slots/summary)
     """
     d1_target = base_date + timedelta(days=1)
+
+    # d+1 may use ensemble — route through the env-aware entry point
+    forecast_d1 = build_lgbm_forecast(db, d1_target, area=area)
+    if forecast_d1 is _NULL_RESPONSE or forecast_d1["summary"]["predicted_avg_sek_kwh"] is None:
+        return []
+
+    # d+2..d+7 reuse Model A directly (already cached from build_lgbm_forecast)
     models = get_or_train_model(db, d1_target, area)
     if models is None:
         return []
 
-    results = []
+    results: list[dict] = [{"horizon": 1, "target_date": d1_target, "forecast": forecast_d1}]
     cumulative_overrides: dict[tuple[date, int], float] = {}
+    for slot in forecast_d1["slots"]:
+        if slot.get("avg_sek_kwh") is not None:
+            cumulative_overrides[(d1_target, slot["hour"])] = slot["avg_sek_kwh"]
 
-    for horizon in range(1, max_horizon + 1):
+    for horizon in range(2, max_horizon + 1):
         target = base_date + timedelta(days=horizon)
         forecast = predict_with_model(
             models,
             db,
             target,
             area,
-            price_overrides=cumulative_overrides if horizon > 1 else None,
+            price_overrides=cumulative_overrides,
         )
 
         results.append(
@@ -665,7 +677,6 @@ def build_multi_horizon_forecast(
             }
         )
 
-        # Accumulate predictions for next horizon's lag features
         for slot in forecast["slots"]:
             if slot.get("avg_sek_kwh") is not None:
                 cumulative_overrides[(target, slot["hour"])] = slot["avg_sek_kwh"]
