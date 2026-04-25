@@ -558,16 +558,26 @@ def build_lgbm_forecast(
     return predict_with_model(models, db, target_date, area, price_overrides=price_overrides)
 
 
+# Dead-zone gate: when classifier confidence is in [_GATE_LO, _GATE_HI) the blend
+# tends to hurt rather than help (calm days mis-tagged as volatile drag accuracy
+# down). 90-day backtest 2026-04-25: full blend = -1.6% overall / +1.5% calm,
+# gate [0.4, 0.6) = -2.5% overall / -1.8% calm (the calm degradation reverses).
+_GATE_LO = float(os.environ.get("LGBM_ENSEMBLE_GATE_LO", "0.4"))
+_GATE_HI = float(os.environ.get("LGBM_ENSEMBLE_GATE_HI", "0.6"))
+
+
 def build_lgbm_forecast_ensemble(
     db: Session,
     target_date: date,
     area: str = "SE3",
     price_overrides: dict[tuple[date, int], float] | None = None,
 ) -> dict | None:
-    """M soft-blend forecast: classifier produces p, output = (1-p)*A + p*B.
+    """M soft-blend forecast with dead-zone gate.
 
-    Returns None if any component fails so the caller can decide whether to
-    fall back to plain Model A.
+    Pipeline: Model A → classifier (p) → if p in dead zone, return A with
+    ensemble_p stamped for telemetry; otherwise train Model B and blend.
+    Returns None if any required component fails so the caller can fall
+    back to plain Model A.
     """
     from app.services.regime_classifier_service import (
         get_or_train_classifier,
@@ -594,6 +604,15 @@ def build_lgbm_forecast_ensemble(
     )
     if p is None:
         return None
+
+    if _GATE_LO <= p < _GATE_HI:
+        logger.info(
+            "Ensemble gated (p=%.3f in [%.2f,%.2f)) — returning Model A for %s/%s",
+            p, _GATE_LO, _GATE_HI, area, target_date,
+        )
+        forecast_a["ensemble_p"] = round(p, 4)
+        forecast_a["ensemble_gated"] = True
+        return forecast_a
 
     model_b = get_or_train_volatile_model(db, target_date, area)
     if model_b is None:
