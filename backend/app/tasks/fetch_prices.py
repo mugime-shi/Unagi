@@ -613,6 +613,15 @@ def lambda_handler(event: dict, context) -> dict:
         gas_result = _fetch_gas_prices()
         all_results.append(gas_result)
 
+        # DE-LU day-ahead prices — once per run (single bidding zone, not per area).
+        # Feeds the de_price_prev_day / de_price_same_hour_prev_day ML features,
+        # which are both lagged one day, so yesterday + today fully cover every
+        # forecast target. Tomorrow is intentionally omitted: at the early daily
+        # run DE day-ahead isn't published yet, and the next day's run picks it up
+        # as "today". SKIPs when already stored.
+        for de_date in [yesterday, today]:
+            all_results.append(fetch_de_price_date(de_date))
+
     # Generation backfill via Lambda event
     if event.get("backfill_generation"):
         gen_days = int(event["backfill_generation"])
