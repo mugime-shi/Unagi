@@ -544,8 +544,11 @@ def lambda_handler(event: dict, context) -> dict:
             for gen_date in [yesterday_date, today_date]:
                 results.append(fetch_generation_date(gen_date, area))
         failed = [r for r in results if r["status"] == "error"]
-        if failed:
-            _send_pipeline_alert("hourly_generation", results)
+        # No Telegram alert here on purpose: a transient ENTSO-E publishing gap
+        # makes this hourly job fail every hour across all 4 zones, which spammed
+        # dozens of identical alerts/day (e.g. 2026-06-02). The real staleness
+        # signal is midnight_collect's _check_generation_freshness (>3h old), which
+        # fires once/day. statusCode still reflects failures for CloudWatch.
         return {
             "statusCode": 200 if not failed else 207,
             "mode": "hourly_generation",

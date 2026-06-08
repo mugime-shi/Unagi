@@ -106,6 +106,31 @@ resource "aws_cloudwatch_metric_alarm" "scheduler_errors" {
   }
 }
 
+# Scheduler Lambda: duration approaching the 600s timeout. The Errors>2 alarm
+# above never caught the 2026-06 M-ensemble incident because the cold-cache
+# retrain timed out only ~once per run (spaced apart, never >2 in 5 min). A
+# single run trending toward the timeout is the real precursor — it means a
+# heavy retrain that also re-reads the full training window from Supabase
+# (egress risk). Normal daily run is ~343s, so 480s leaves headroom while still
+# catching the 600s timeouts well before they accumulate.
+resource "aws_cloudwatch_metric_alarm" "scheduler_duration" {
+  alarm_name          = "${var.project}-scheduler-duration"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "Duration"
+  namespace           = "AWS/Lambda"
+  period              = 300
+  statistic           = "Maximum"
+  threshold           = 480000 # ms = 8 min (timeout is 600s)
+  alarm_description   = "Unagi scheduler Lambda run exceeded 8 min — approaching the 600s timeout (heavy retrain / Supabase egress risk)"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+
+  dimensions = {
+    FunctionName = aws_lambda_function.scheduler.function_name
+  }
+}
+
 # API Lambda: sustained errors (15 min) before alerting — tolerate cold-start blips
 resource "aws_cloudwatch_metric_alarm" "api_errors" {
   alarm_name          = "${var.project}-api-errors"
