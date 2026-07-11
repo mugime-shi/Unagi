@@ -1,22 +1,32 @@
+import { useEffect, useState } from "react";
 import { useRefresh } from "../hooks/useRefresh";
 
-function pad(n: number): string {
-  return n.toString().padStart(2, "0");
-}
-
 function formatUpdated(d: Date): string {
-  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  return `${date} ${time}`;
+  // Fixed zone (Swedish market time) so the label is stable regardless of the
+  // viewer's locale — and identical between renders.
+  return new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Europe/Stockholm",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d);
 }
 
 export function UpdateBadge() {
   const { lastUpdatedAt, bump } = useRefresh();
+  // `lastUpdatedAt` is a client-side "now" — its instant (and the runtime
+  // timezone) differ between SSR and hydration, which would trip a hydration
+  // mismatch. Render the timestamp only after mount so both passes agree.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   return (
     <div className="flex items-center gap-1.5 text-xs text-content-muted">
       <span className="tabular-nums">
-        Updated {formatUpdated(lastUpdatedAt)}
+        Updated {mounted ? formatUpdated(lastUpdatedAt) : "—"}
       </span>
       <button
         onClick={bump}
