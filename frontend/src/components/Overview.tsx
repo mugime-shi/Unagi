@@ -240,15 +240,8 @@ function GenChart({
             }
           />
           <Tooltip
-            contentStyle={{
-              background: cc.tooltipBg,
-              border: `1px solid ${cc.tooltipBorder}`,
-              color: cc.tooltipText,
-              borderRadius: 8,
-              fontSize: 12,
-            }}
-            formatter={(v, name) => [`${Math.round(v as number)} MW`, name]}
-            itemSorter={(item) => {
+            content={({ active, payload, label }) => {
+              if (!active || !payload || payload.length === 0) return null;
               const order: Record<string, number> = {
                 Solar: 0,
                 Wind: 1,
@@ -256,7 +249,64 @@ function GenChart({
                 Other: 3,
                 Nuclear: 4,
               };
-              return order[item.name ?? ""] ?? 99;
+              const sorted = [...payload].sort(
+                (a, b) =>
+                  (order[a.name ?? ""] ?? 99) - (order[b.name ?? ""] ?? 99),
+              );
+              const total = payload.reduce(
+                (sum, p) => sum + (typeof p.value === "number" ? p.value : 0),
+                0,
+              );
+              return (
+                <div
+                  style={{
+                    background: cc.tooltipBg,
+                    border: `1px solid ${cc.tooltipBorder}`,
+                    color: cc.tooltipText,
+                    borderRadius: 8,
+                    fontSize: 12,
+                    padding: "8px 12px",
+                    minWidth: 140,
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: 6 }}>
+                    {label}
+                  </div>
+                  {sorted.map((p) => (
+                    <div
+                      key={String(p.dataKey)}
+                      style={{
+                        color: p.color,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      <span>{p.name}</span>
+                      <span className="tabular-nums">
+                        {Math.round((p.value as number) ?? 0)} MW
+                      </span>
+                    </div>
+                  ))}
+                  <div
+                    style={{
+                      borderTop: `1px solid ${cc.tooltipBorder}`,
+                      marginTop: 6,
+                      paddingTop: 4,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <span>Total</span>
+                    <span className="tabular-nums">
+                      {Math.round(total).toLocaleString()} MW
+                    </span>
+                  </div>
+                </div>
+              );
             }}
           />
           <RechartsArea
@@ -782,6 +832,91 @@ export function Overview({ onZoneClick }: OverviewProps) {
         )}
       </div>
 
+      {/* Zone prices — placed right under the generation chart so supply and
+          price sit side by side (same time range) for anyone who wants to
+          compare them by eye, without a dual-axis overlay. */}
+      {is24h ? (
+        <div className="bg-surface-primary rounded-2xl p-4">
+          <h2 className="text-base font-medium text-content-primary mb-1">
+            Spot price by zone
+          </h2>
+          <p className="text-xs text-content-muted mb-3">
+            Click a zone for hourly details
+          </p>
+          {priceLoading && !priceData ? (
+            <div className="space-y-2 animate-pulse">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="h-12 bg-surface-secondary rounded" />
+              ))}
+            </div>
+          ) : priceData ? (
+            <div className="space-y-1">
+              {zones.map((zone) => {
+                const z = priceData[zone];
+                const color = zoneColors[zone];
+                return (
+                  <button
+                    key={zone}
+                    onClick={() => onZoneClick(zone)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-surface-secondary hover:bg-surface-tertiary transition-colors text-left"
+                  >
+                    <span
+                      className="inline-block w-1 h-8 rounded-full shrink-0"
+                      style={{ backgroundColor: color }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm sm:text-base font-medium text-content-primary whitespace-nowrap overflow-hidden text-ellipsis">
+                        {ZONE_LABELS[zone]}
+                      </p>
+                      <p className="text-[10px] text-content-muted">
+                        Today avg{" "}
+                        {z.today_avg_sek_kwh != null
+                          ? formatPrice(z.today_avg_sek_kwh)
+                          : "—"}{" "}
+                        {PRICE_UNIT}
+                      </p>
+                    </div>
+                    <div className="hidden sm:block">
+                      <Sparkline
+                        slots={z.slots}
+                        color={color}
+                        width={100}
+                        height={26}
+                      />
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-[10px] text-content-muted uppercase tracking-wide">
+                        now
+                      </p>
+                      <p className="text-lg font-semibold text-content-primary tabular-nums leading-tight">
+                        {z.current_sek_kwh != null
+                          ? formatPrice(z.current_sek_kwh)
+                          : "—"}
+                      </p>
+                      <p className="text-[10px] text-content-faint">
+                        {PRICE_UNIT}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      ) : multiZoneLoading ? (
+        <div className="bg-surface-primary rounded-2xl p-4 animate-pulse">
+          <div className="h-[260px] bg-surface-secondary rounded-xl" />
+        </div>
+      ) : multiZone ? (
+        <ZonePriceHistoryChart
+          zones={multiZone}
+          cc={cc}
+          isMobile={isMobile}
+          rangeDays={rangeDays}
+          onZoneClick={onZoneClick}
+        />
+      ) : null}
+
       {/* Sweden overview cards — price-linked signals that aren't visible on the chart */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div
@@ -864,89 +999,6 @@ export function Overview({ onZoneClick }: OverviewProps) {
           )}
         </div>
       </div>
-
-      {/* Zone prices */}
-      {is24h ? (
-        <div className="bg-surface-primary rounded-2xl p-4">
-          <h2 className="text-base font-medium text-content-primary mb-1">
-            Spot price by zone
-          </h2>
-          <p className="text-xs text-content-muted mb-3">
-            Click a zone for hourly details
-          </p>
-          {priceLoading && !priceData ? (
-            <div className="space-y-2 animate-pulse">
-              {[0, 1, 2, 3].map((i) => (
-                <div key={i} className="h-12 bg-surface-secondary rounded" />
-              ))}
-            </div>
-          ) : priceData ? (
-            <div className="space-y-1">
-              {zones.map((zone) => {
-                const z = priceData[zone];
-                const color = zoneColors[zone];
-                return (
-                  <button
-                    key={zone}
-                    onClick={() => onZoneClick(zone)}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-surface-secondary hover:bg-surface-tertiary transition-colors text-left"
-                  >
-                    <span
-                      className="inline-block w-1 h-8 rounded-full shrink-0"
-                      style={{ backgroundColor: color }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm sm:text-base font-medium text-content-primary whitespace-nowrap overflow-hidden text-ellipsis">
-                        {ZONE_LABELS[zone]}
-                      </p>
-                      <p className="text-[10px] text-content-muted">
-                        Today avg{" "}
-                        {z.today_avg_sek_kwh != null
-                          ? formatPrice(z.today_avg_sek_kwh)
-                          : "—"}{" "}
-                        {PRICE_UNIT}
-                      </p>
-                    </div>
-                    <div className="hidden sm:block">
-                      <Sparkline
-                        slots={z.slots}
-                        color={color}
-                        width={100}
-                        height={26}
-                      />
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-[10px] text-content-muted uppercase tracking-wide">
-                        now
-                      </p>
-                      <p className="text-lg font-semibold text-content-primary tabular-nums leading-tight">
-                        {z.current_sek_kwh != null
-                          ? formatPrice(z.current_sek_kwh)
-                          : "—"}
-                      </p>
-                      <p className="text-[10px] text-content-faint">
-                        {PRICE_UNIT}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
-        </div>
-      ) : multiZoneLoading ? (
-        <div className="bg-surface-primary rounded-2xl p-4 animate-pulse">
-          <div className="h-[260px] bg-surface-secondary rounded-xl" />
-        </div>
-      ) : multiZone ? (
-        <ZonePriceHistoryChart
-          zones={multiZone}
-          cc={cc}
-          isMobile={isMobile}
-          rangeDays={rangeDays}
-          onZoneClick={onZoneClick}
-        />
-      ) : null}
     </div>
   );
 }
