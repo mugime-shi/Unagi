@@ -45,12 +45,18 @@ interface WeeklySummaryProps {
   data: WeeklyClassifiedResponse | null;
   loading: boolean;
   onDateSelect?: (date: string) => void;
+  /**
+   * Include tomorrow's card. The Tomorrow tab hides it (it is shown in the
+   * main chart there); on Overview there is no such chart, so show all 7 days.
+   */
+  includeTomorrow?: boolean;
 }
 
 export function WeeklySummary({
   data,
   loading,
   onDateSelect,
+  includeTomorrow = false,
 }: WeeklySummaryProps) {
   if (loading) {
     return (
@@ -100,10 +106,14 @@ export function WeeklySummary({
         </div>
       </div>
 
-      {/* Cards — skip tomorrow (shown in the main chart above) */}
-      <div className="no-scrollbar flex gap-2 overflow-x-auto snap-x snap-mandatory pb-2 sm:grid sm:grid-cols-6 sm:gap-1.5 sm:overflow-visible sm:pb-0">
+      {/* Cards — skip tomorrow unless includeTomorrow (it's shown in the
+          Tomorrow tab's main chart, but not on Overview) */}
+      <div
+        className={`no-scrollbar flex gap-2 overflow-x-auto snap-x snap-mandatory pb-2 sm:grid ${includeTomorrow ? "sm:grid-cols-7" : "sm:grid-cols-6"} sm:gap-1.5 sm:overflow-visible sm:pb-0`}
+      >
         {data.days
           .filter((day) => {
+            if (includeTomorrow) return true;
             const tomorrow = new Date();
             tomorrow.setDate(tomorrow.getDate() + 1);
             return day.date !== tomorrow.toISOString().split("T")[0];
