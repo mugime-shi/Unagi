@@ -21,7 +21,7 @@ import { useWindForecastSummary } from "../hooks/useWindForecastSummary";
 import { useChartColors } from "../hooks/useChartColors";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { UpdateBadge } from "./UpdateBadge";
-import { formatPrice, PRICE_UNIT } from "../utils/formatters";
+import { formatPrice, PRICE_UNIT, currentCETHour } from "../utils/formatters";
 import type { Area } from "../types/index";
 import type { GenHistoryDay } from "../hooks/useGenerationHistory";
 import type { National24hEntry } from "../hooks/useNational24h";
@@ -83,6 +83,44 @@ function Sparkline({
         strokeLinecap="round"
       />
     </svg>
+  );
+}
+
+// Price direction over the next known (day-ahead) hours. Sweden's spot prices
+// are fixed a day ahead, so this reads the actual upcoming curve — not a
+// forecast. Returns null when there is no forward signal (end of day) or the
+// move stays within a small deadband (treated as steady → no arrow).
+function priceTrend(
+  current: number | null,
+  slots: { hour: number; price: number }[],
+  nowHour: number,
+): "up" | "down" | null {
+  if (current == null) return null;
+  const next = slots.filter((s) => s.hour > nowHour).slice(0, 3);
+  if (next.length === 0) return null;
+  const nextAvg = next.reduce((sum, s) => sum + s.price, 0) / next.length;
+  const deltaOre = (nextAvg - current) * 100;
+  const DEADBAND_ORE = 3;
+  if (deltaOre > DEADBAND_ORE) return "up";
+  if (deltaOre < -DEADBAND_ORE) return "down";
+  return null;
+}
+
+function TrendArrow({ trend }: { trend: "up" | "down" | null }) {
+  if (!trend) return null;
+  const up = trend === "up";
+  return (
+    <span
+      className={`text-xs ${up ? "text-rose-500 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}
+      title={
+        up
+          ? "Heading up over the next few hours (day-ahead)"
+          : "Heading down over the next few hours (day-ahead)"
+      }
+      aria-label={up ? "price rising" : "price falling"}
+    >
+      {up ? "▲" : "▼"}
+    </span>
   );
 }
 
@@ -579,6 +617,7 @@ export function Overview({ onZoneClick }: OverviewProps) {
 
   const cc = useChartColors();
   const isMobile = useIsMobile();
+  const nowHour = currentCETHour(); // for zone-tile price trend arrows
   const zones: Area[] = ["SE1", "SE2", "SE3", "SE4"];
   const zoneColors: Record<Area, string> = {
     SE1: cc.SE1,
@@ -888,10 +927,19 @@ export function Overview({ onZoneClick }: OverviewProps) {
                       <p className="text-[10px] text-content-muted uppercase tracking-wide">
                         now
                       </p>
-                      <p className="text-lg font-semibold text-content-primary tabular-nums leading-tight">
-                        {z.current_sek_kwh != null
-                          ? formatPrice(z.current_sek_kwh)
-                          : "—"}
+                      <p className="text-lg font-semibold text-content-primary tabular-nums leading-tight flex items-center justify-end gap-1">
+                        <TrendArrow
+                          trend={priceTrend(
+                            z.current_sek_kwh,
+                            z.slots,
+                            nowHour,
+                          )}
+                        />
+                        <span>
+                          {z.current_sek_kwh != null
+                            ? formatPrice(z.current_sek_kwh)
+                            : "—"}
+                        </span>
                       </p>
                       <p className="text-[10px] text-content-faint">
                         {PRICE_UNIT}
