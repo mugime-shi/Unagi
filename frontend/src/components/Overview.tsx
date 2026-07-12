@@ -18,9 +18,13 @@ import { useAllZonePrices } from "../hooks/useAllZonePrices";
 import { useGenerationHistory } from "../hooks/useGenerationHistory";
 import { useHydroReservoir } from "../hooks/useHydroReservoir";
 import { useWindForecastSummary } from "../hooks/useWindForecastSummary";
+import { useWeeklyForecast } from "../hooks/useWeeklyForecast";
+import { useForecastAccuracy } from "../hooks/useForecastAccuracy";
+import { useCoverage } from "../hooks/useCoverage";
 import { useChartColors } from "../hooks/useChartColors";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { UpdateBadge } from "./UpdateBadge";
+import { WeeklySummary } from "./WeeklySummary";
 import { formatPrice, PRICE_UNIT, currentCETHour } from "../utils/formatters";
 import type { Area } from "../types/index";
 import type { GenHistoryDay } from "../hooks/useGenerationHistory";
@@ -28,6 +32,8 @@ import type { National24hEntry } from "../hooks/useNational24h";
 
 interface OverviewProps {
   onZoneClick: (zone: Area) => void;
+  /** Jump to the Prices/Tomorrow tab for a forecast date (from the 7-day cards). */
+  onDateSelect?: (date: string) => void;
 }
 
 const ZONE_LABELS: Record<Area, string> = {
@@ -597,7 +603,7 @@ function ZonePriceHistoryChart({
 
 // ── Main Overview ──
 
-export function Overview({ onZoneClick }: OverviewProps) {
+export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
   const [range, setRange] = useState<TimeRange>("24h");
   const is24h = range === "24h";
   const rangeDays = RANGES.find((r) => r.id === range)?.days ?? 1;
@@ -614,6 +620,17 @@ export function Overview({ onZoneClick }: OverviewProps) {
   // Overview cards (Sweden-wide, price-linked, not visible from the chart)
   const { data: hydroReservoir } = useHydroReservoir();
   const { data: windForecast } = useWindForecastSummary(24);
+
+  // Next-7-days forecast + track record (SE3 default). Overview only mounts on
+  // its own layer, so these fetch only while the Overview is shown.
+  const { data: weekly, loading: weeklyLoading } = useWeeklyForecast(
+    "SE3",
+    true,
+  );
+  const { data: accuracy } = useForecastAccuracy("SE3", 28);
+  const { data: coverage } = useCoverage("SE3", 30);
+  const d1Mae = accuracy?.models?.lgbm?.mae_sek_kwh ?? null; // d+1 MAE (SEK/kWh)
+  const baseMae = accuracy?.models?.same_weekday_avg?.mae_sek_kwh ?? null;
 
   const cc = useChartColors();
   const isMobile = useIsMobile();
@@ -964,6 +981,45 @@ export function Overview({ onZoneClick }: OverviewProps) {
           onZoneClick={onZoneClick}
         />
       ) : null}
+
+      {/* Next 7 days — SE3 forecast + our own accuracy (transparency). This is
+          "what's coming", independent of the historical range selector above. */}
+      {(weeklyLoading || weekly?.days?.length || d1Mae != null) && (
+        <div className="bg-surface-primary rounded-2xl p-4 space-y-3">
+          <WeeklySummary
+            area="SE3"
+            data={weekly}
+            loading={weeklyLoading}
+            includeTomorrow
+            onDateSelect={onDateSelect}
+          />
+          {d1Mae != null && (
+            <p className="text-xs text-content-muted">
+              Track record · SE3 · 28d: d+1 error{" "}
+              <span className="text-content-secondary tabular-nums">
+                {Math.round(d1Mae * 100)} öre
+              </span>
+              {baseMae != null && (
+                <>
+                  {" vs "}
+                  <span className="tabular-nums">
+                    {Math.round(baseMae * 100)} öre
+                  </span>{" "}
+                  baseline
+                </>
+              )}
+              {coverage && coverage.n_samples > 0 && (
+                <>
+                  {" · 80% CI "}
+                  <span className="text-content-secondary tabular-nums">
+                    {Math.round(coverage.coverage_pct)}% covered
+                  </span>
+                </>
+              )}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Sweden overview cards — price-linked signals that aren't visible on the chart */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

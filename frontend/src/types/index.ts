@@ -177,11 +177,10 @@ export interface WeeklyClassifiedResponse {
 // ─── Forecast Accuracy ────────────────────────────────────────────────────────
 
 export interface ModelAccuracy {
-  mae: number;
-  rmse?: number;
-  total_samples: number;
-  days_included?: number;
-  last_updated?: string;
+  mae_sek_kwh: number;
+  rmse_sek_kwh?: number;
+  n_samples: number;
+  n_days?: number;
 }
 
 export interface ForecastAccuracyResponse {
