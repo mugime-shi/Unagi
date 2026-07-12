@@ -392,6 +392,11 @@ function AppInner() {
               setTab("today");
               setLayer("prices");
             }}
+            onDateSelect={(date) => {
+              setForecastDate(date);
+              setTab("tomorrow");
+              setLayer("prices");
+            }}
           />
         )}
 
