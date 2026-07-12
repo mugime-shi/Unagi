@@ -16,8 +16,6 @@ import {
 import { useNational24h } from "../hooks/useNational24h";
 import { useAllZonePrices } from "../hooks/useAllZonePrices";
 import { useGenerationHistory } from "../hooks/useGenerationHistory";
-import { useHydroReservoir } from "../hooks/useHydroReservoir";
-import { useWindForecastSummary } from "../hooks/useWindForecastSummary";
 import { useWeeklyForecast } from "../hooks/useWeeklyForecast";
 import { useForecastAccuracy } from "../hooks/useForecastAccuracy";
 import { useCoverage } from "../hooks/useCoverage";
@@ -617,10 +615,6 @@ export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
     is24h ? 0 : rangeDays,
   );
 
-  // Overview cards (Sweden-wide, price-linked, not visible from the chart)
-  const { data: hydroReservoir } = useHydroReservoir();
-  const { data: windForecast } = useWindForecastSummary(24);
-
   // Next-7-days forecast + track record (SE3 default). Overview only mounts on
   // its own layer, so these fetch only while the Overview is shown.
   const { data: weekly, loading: weeklyLoading } = useWeeklyForecast(
@@ -712,30 +706,6 @@ export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
     const se4 = priceData?.SE4?.current_sek_kwh ?? null;
     if (se1 == null || se4 == null) return null;
     return Math.round((se4 - se1) * 100); // to öre
-  }, [priceData]);
-
-  // Today's volatility — ratio of national hourly max to min (averaged across zones)
-  const volatility = useMemo<{ ratio: number; spread: number } | null>(() => {
-    if (!priceData) return null;
-    const hourly = new Map<number, number[]>();
-    for (const z of Object.values(priceData)) {
-      for (const s of z.slots) {
-        const arr = hourly.get(s.hour) ?? [];
-        arr.push(s.price);
-        hourly.set(s.hour, arr);
-      }
-    }
-    const avgs = Array.from(hourly.values()).map(
-      (arr) => arr.reduce((sum, p) => sum + p, 0) / arr.length,
-    );
-    if (avgs.length < 2) return null;
-    const max = Math.max(...avgs);
-    const min = Math.min(...avgs);
-    if (min <= 0) return null;
-    return {
-      ratio: +(max / min).toFixed(1),
-      spread: Math.round((max - min) * 100), // öre
-    };
   }, [priceData]);
 
   // Lag info
@@ -898,6 +868,19 @@ export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
           </h2>
           <p className="text-xs text-content-muted mb-3">
             Click a zone for hourly details
+            {zoneSpread != null && (
+              <span
+                className="text-content-faint"
+                title="North–south current price gap (SE4 − SE1) — wide spread = grid bottleneck"
+              >
+                {" · North–south spread "}
+                <span className="tabular-nums">
+                  {zoneSpread >= 0 ? "+" : ""}
+                  {zoneSpread}
+                </span>{" "}
+                öre (SE4−SE1)
+              </span>
+            )}
           </p>
           {priceLoading && !priceData ? (
             <div className="space-y-2 animate-pulse">
@@ -1020,89 +1003,6 @@ export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
           )}
         </div>
       )}
-
-      {/* Sweden overview cards — price-linked signals that aren't visible on the chart */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div
-          className="bg-surface-primary rounded-2xl p-4 text-center flex flex-col items-center justify-center"
-          title="North–south current price gap (SE4 − SE1) — wide spread = grid bottleneck"
-        >
-          <p className="text-xs text-content-muted mb-1">Zone spread</p>
-          {zoneSpread != null ? (
-            <>
-              <p className="text-2xl font-bold tabular-nums text-content-primary">
-                {zoneSpread >= 0 ? "+" : ""}
-                {zoneSpread}
-              </p>
-              <p className="text-[11px] text-content-faint mt-0.5">
-                öre · SE4 − SE1
-              </p>
-            </>
-          ) : (
-            <p className="text-sm text-content-muted">--</p>
-          )}
-        </div>
-
-        <div
-          className="bg-surface-primary rounded-2xl p-4 text-center flex flex-col items-center justify-center"
-          title="National hydro storage (SE1–SE4 sum, ENTSO-E A72, weekly) — low levels push winter prices up"
-        >
-          <p className="text-xs text-content-muted mb-1">Hydro reservoir</p>
-          {hydroReservoir?.stored_gwh != null ? (
-            <>
-              <p className="text-2xl font-bold tabular-nums text-content-primary">
-                {(hydroReservoir.stored_gwh / 1000).toFixed(1)}
-              </p>
-              <p className="text-[11px] text-content-faint mt-0.5">
-                TWh
-                {hydroReservoir.change_pct != null
-                  ? ` · ${hydroReservoir.change_pct >= 0 ? "+" : ""}${hydroReservoir.change_pct}%/wk`
-                  : ""}
-              </p>
-            </>
-          ) : (
-            <p className="text-sm text-content-muted">--</p>
-          )}
-        </div>
-
-        <div
-          className="bg-surface-primary rounded-2xl p-4 text-center flex flex-col items-center justify-center"
-          title="Avg 100 m wind forecast next 24 h (Open-Meteo) — strong wind lowers spot prices"
-        >
-          <p className="text-xs text-content-muted mb-1">Wind next 24h</p>
-          {windForecast?.avg_wind_100m_ms != null ? (
-            <>
-              <p className="text-2xl font-bold tabular-nums text-content-primary">
-                {windForecast.avg_wind_100m_ms}
-              </p>
-              <p className="text-[11px] text-content-faint mt-0.5">
-                m/s avg · peak {windForecast.peak_wind_100m_ms}
-              </p>
-            </>
-          ) : (
-            <p className="text-sm text-content-muted">--</p>
-          )}
-        </div>
-
-        <div
-          className="bg-surface-primary rounded-2xl p-4 text-center flex flex-col items-center justify-center"
-          title="Today's peak/off-peak ratio (national hourly avg) — higher = more to save by shifting usage"
-        >
-          <p className="text-xs text-content-muted mb-1">Volatility today</p>
-          {volatility ? (
-            <>
-              <p className="text-2xl font-bold tabular-nums text-content-primary">
-                {volatility.ratio}×
-              </p>
-              <p className="text-[11px] text-content-faint mt-0.5">
-                {volatility.spread} öre spread
-              </p>
-            </>
-          ) : (
-            <p className="text-sm text-content-muted">--</p>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
