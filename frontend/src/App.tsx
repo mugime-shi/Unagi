@@ -22,6 +22,7 @@ import { useRetrospective } from "./hooks/useRetrospective";
 import { usePrices } from "./hooks/usePrices";
 import { useWeeklyForecast } from "./hooks/useWeeklyForecast";
 import { WeeklySummary } from "./components/WeeklySummary";
+import { TodaysDrivers } from "./components/TodaysDrivers";
 import { dateWithWeekday, formatPrice, PRICE_UNIT } from "./utils/formatters";
 import type {
   Area,
@@ -640,6 +641,8 @@ function AppInner() {
                         />
                       )}
                     </div>
+
+                    <TodaysDrivers prices={todayData.prices} />
 
                     <CheapHoursWidget date={todayISO()} area={area} />
                   </>
