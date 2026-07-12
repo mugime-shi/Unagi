@@ -23,6 +23,7 @@ import { usePrices } from "./hooks/usePrices";
 import { useWeeklyForecast } from "./hooks/useWeeklyForecast";
 import { WeeklySummary } from "./components/WeeklySummary";
 import { TodaysDrivers } from "./components/TodaysDrivers";
+import { ShapNarrative } from "./components/ShapNarrative";
 import { dateWithWeekday, formatPrice, PRICE_UNIT } from "./utils/formatters";
 import type {
   Area,
@@ -729,6 +730,15 @@ function AppInner() {
                         }
                         showNowMarker={false}
                       />
+
+                      {!isFutureDate && shapExplanations && (
+                        <div className="mt-2">
+                          <ShapNarrative
+                            shap={shapExplanations}
+                            dateLabel={isTomorrow ? "tomorrow" : forecastDate}
+                          />
+                        </div>
+                      )}
 
                       {/* Summary cards — directly under chart */}
                       {(() => {

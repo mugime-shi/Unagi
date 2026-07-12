@@ -44,10 +44,49 @@ function computeVolatility(
   };
 }
 
+/**
+ * A short plain-language read of the drivers above. Wind and hydro genuinely
+ * move spot prices (the card tooltips already say so); we describe their
+ * direction and the day's price swing without overclaiming precise causation.
+ */
+function driversSentence(
+  wind: { avg_wind_100m_ms?: number | null } | null,
+  hydro: { change_pct?: number | null } | null,
+  volatility: { ratio: number; spread: number } | null,
+): string | null {
+  const clauses: string[] = [];
+  const w = wind?.avg_wind_100m_ms;
+  if (w != null) {
+    const level = w >= 8 ? "Strong" : w >= 5 ? "Moderate" : "Light";
+    const effect = w >= 5 ? "easing prices" : "adding little downward push";
+    clauses.push(`${level} wind (${w} m/s), ${effect}`);
+  }
+  const chg = hydro?.change_pct;
+  if (chg != null) {
+    clauses.push(
+      chg >= 0
+        ? `reservoirs filling (+${chg}%/wk)`
+        : `reservoirs drawing down (${chg}%/wk)`,
+    );
+  }
+  let s = clauses.join("; ");
+  if (volatility) {
+    const swing =
+      volatility.ratio >= 3
+        ? `big intraday swings (${volatility.ratio}×, ${volatility.spread} öre between cheap and peak hours)`
+        : `a fairly flat day (${volatility.ratio}×)`;
+    s = s ? `${s}. Today shows ${swing}.` : `Today shows ${swing}.`;
+  } else if (s) {
+    s += ".";
+  }
+  return s || null;
+}
+
 export function TodaysDrivers({ prices }: { prices: PricePoint[] }) {
   const { data: hydroReservoir } = useHydroReservoir();
   const { data: windForecast } = useWindForecastSummary(24);
   const volatility = useMemo(() => computeVolatility(prices), [prices]);
+  const sentence = driversSentence(windForecast, hydroReservoir, volatility);
 
   return (
     <div className="bg-surface-primary rounded-2xl p-4">
@@ -118,6 +157,9 @@ export function TodaysDrivers({ prices }: { prices: PricePoint[] }) {
           )}
         </div>
       </div>
+      {sentence && (
+        <p className="text-xs text-content-secondary mt-3">{sentence}</p>
+      )}
     </div>
   );
 }
