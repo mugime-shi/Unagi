@@ -6,7 +6,7 @@ in-memory database (avoids "no such table" errors between fixtures/requests).
 No PostgreSQL required to run these tests.
 """
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
@@ -335,18 +335,33 @@ def test_stockholm_timezone_cet_boundary():
 
 def test_history_cest_bucketing_via_endpoint(client, db):
     """History endpoint correctly buckets CEST-boundary prices across calendar dates."""
-    # Use dates within 365-day window; days=365 is max allowed
-    # 2025-07-01 22:00 UTC = 2025-07-02 00:00 CEST → should appear under 2025-07-02
-    # 2025-07-01 21:00 UTC = 2025-07-01 23:00 CEST → should appear under 2025-07-01
+    from app.routers.prices import _to_stockholm_date
+
+    # Pick a summer (CEST) date that is safely in the past and inside the
+    # days=365 window, so the midnight crossing (22:00 UTC → 00:00 CEST next day)
+    # is exercised whenever the test runs. A hard-coded date eventually ages out
+    # of the rolling window; CEST is detected via _to_stockholm_date itself
+    # (22:00 UTC lands on the next calendar day only under +2h summer offset).
+    today = date.today()
+    base = next(
+        d
+        for d in (today - timedelta(days=n) for n in range(40, 340))
+        if _to_stockholm_date(datetime(d.year, d.month, d.day, 22, 0, tzinfo=timezone.utc))
+        == d + timedelta(days=1)
+    )
+    next_day = base + timedelta(days=1)
+
     points = [
         PricePoint(
-            timestamp_utc=datetime(2025, 7, 1, 21, 0, tzinfo=timezone.utc),
+            # 21:00 UTC = 23:00 CEST → buckets to `base`
+            timestamp_utc=datetime(base.year, base.month, base.day, 21, 0, tzinfo=timezone.utc),
             price_eur_mwh=50.0,
             price_sek_kwh=0.55,
             resolution="PT60M",
         ),
         PricePoint(
-            timestamp_utc=datetime(2025, 7, 1, 22, 0, tzinfo=timezone.utc),
+            # 22:00 UTC = 00:00 CEST next day → buckets to `next_day`
+            timestamp_utc=datetime(base.year, base.month, base.day, 22, 0, tzinfo=timezone.utc),
             price_eur_mwh=60.0,
             price_sek_kwh=0.66,
             resolution="PT60M",
@@ -358,10 +373,11 @@ def test_history_cest_bucketing_via_endpoint(client, db):
     assert response.status_code == 200
     by_date = {d["date"]: d for d in response.json()["daily"] if d["avg_sek_kwh"] is not None}
 
-    assert "2025-07-01" in by_date, "21:00 UTC (23:00 CEST) must bucket to 2025-07-01"
-    assert "2025-07-02" in by_date, "22:00 UTC (00:00 CEST next day) must bucket to 2025-07-02"
-    assert abs(by_date["2025-07-01"]["avg_sek_kwh"] - 0.55) < 0.01
-    assert abs(by_date["2025-07-02"]["avg_sek_kwh"] - 0.66) < 0.01
+    b, n = base.isoformat(), next_day.isoformat()
+    assert b in by_date, f"21:00 UTC (23:00 CEST) must bucket to {b}"
+    assert n in by_date, f"22:00 UTC (00:00 CEST next day) must bucket to {n}"
+    assert abs(by_date[b]["avg_sek_kwh"] - 0.55) < 0.01
+    assert abs(by_date[n]["avg_sek_kwh"] - 0.66) < 0.01
 
 
 # ---------------------------------------------------------------------------
