@@ -22,6 +22,8 @@ import { useRetrospective } from "./hooks/useRetrospective";
 import { usePrices } from "./hooks/usePrices";
 import { useWeeklyForecast } from "./hooks/useWeeklyForecast";
 import { WeeklySummary } from "./components/WeeklySummary";
+import { TodaysDrivers } from "./components/TodaysDrivers";
+import { ShapNarrative } from "./components/ShapNarrative";
 import { dateWithWeekday, formatPrice, PRICE_UNIT } from "./utils/formatters";
 import type {
   Area,
@@ -392,6 +394,11 @@ function AppInner() {
               setTab("today");
               setLayer("prices");
             }}
+            onDateSelect={(date) => {
+              setForecastDate(date);
+              setTab("tomorrow");
+              setLayer("prices");
+            }}
           />
         )}
 
@@ -636,6 +643,8 @@ function AppInner() {
                       )}
                     </div>
 
+                    <TodaysDrivers prices={todayData.prices} />
+
                     <CheapHoursWidget date={todayISO()} area={area} />
                   </>
                 )}
@@ -721,6 +730,15 @@ function AppInner() {
                         }
                         showNowMarker={false}
                       />
+
+                      {!isFutureDate && shapExplanations && (
+                        <div className="mt-2">
+                          <ShapNarrative
+                            shap={shapExplanations}
+                            dateLabel={isTomorrow ? "tomorrow" : forecastDate}
+                          />
+                        </div>
+                      )}
 
                       {/* Summary cards — directly under chart */}
                       {(() => {
@@ -936,20 +954,13 @@ function AppInner() {
         <span className="text-[11px] text-content-muted italic">
           A state of total awareness...{" "}
           <a
-            href="https://github.com/mugime-shi/Unagi"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/about"
             className="text-xs font-bold underline hover:text-content-secondary transition-colors"
+            title="About Unagi — data sources, method, contact"
           >
             Unagi
           </a>
-          {" · "}
-          <a
-            href="mailto:hello@unagieel.net"
-            className="not-italic underline hover:text-content-secondary transition-colors"
-          >
-            hello@unagieel.net
-          </a>
+          .
         </span>
       </footer>
     </div>

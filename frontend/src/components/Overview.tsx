@@ -16,18 +16,22 @@ import {
 import { useNational24h } from "../hooks/useNational24h";
 import { useAllZonePrices } from "../hooks/useAllZonePrices";
 import { useGenerationHistory } from "../hooks/useGenerationHistory";
-import { useHydroReservoir } from "../hooks/useHydroReservoir";
-import { useWindForecastSummary } from "../hooks/useWindForecastSummary";
+import { useWeeklyForecast } from "../hooks/useWeeklyForecast";
+import { useForecastAccuracy } from "../hooks/useForecastAccuracy";
+import { useCoverage } from "../hooks/useCoverage";
 import { useChartColors } from "../hooks/useChartColors";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { UpdateBadge } from "./UpdateBadge";
-import { formatPrice, PRICE_UNIT } from "../utils/formatters";
+import { WeeklySummary } from "./WeeklySummary";
+import { formatPrice, PRICE_UNIT, currentCETHour } from "../utils/formatters";
 import type { Area } from "../types/index";
 import type { GenHistoryDay } from "../hooks/useGenerationHistory";
 import type { National24hEntry } from "../hooks/useNational24h";
 
 interface OverviewProps {
   onZoneClick: (zone: Area) => void;
+  /** Jump to the Prices/Tomorrow tab for a forecast date (from the 7-day cards). */
+  onDateSelect?: (date: string) => void;
 }
 
 const ZONE_LABELS: Record<Area, string> = {
@@ -83,6 +87,44 @@ function Sparkline({
         strokeLinecap="round"
       />
     </svg>
+  );
+}
+
+// Price direction over the next known (day-ahead) hours. Sweden's spot prices
+// are fixed a day ahead, so this reads the actual upcoming curve — not a
+// forecast. Returns null when there is no forward signal (end of day) or the
+// move stays within a small deadband (treated as steady → no arrow).
+function priceTrend(
+  current: number | null,
+  slots: { hour: number; price: number }[],
+  nowHour: number,
+): "up" | "down" | null {
+  if (current == null) return null;
+  const next = slots.filter((s) => s.hour > nowHour).slice(0, 3);
+  if (next.length === 0) return null;
+  const nextAvg = next.reduce((sum, s) => sum + s.price, 0) / next.length;
+  const deltaOre = (nextAvg - current) * 100;
+  const DEADBAND_ORE = 3;
+  if (deltaOre > DEADBAND_ORE) return "up";
+  if (deltaOre < -DEADBAND_ORE) return "down";
+  return null;
+}
+
+function TrendArrow({ trend }: { trend: "up" | "down" | null }) {
+  if (!trend) return null;
+  const up = trend === "up";
+  return (
+    <span
+      className={`text-xs ${up ? "text-rose-500 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}
+      title={
+        up
+          ? "Heading up over the next few hours (day-ahead)"
+          : "Heading down over the next few hours (day-ahead)"
+      }
+      aria-label={up ? "price rising" : "price falling"}
+    >
+      {up ? "▲" : "▼"}
+    </span>
   );
 }
 
@@ -240,15 +282,8 @@ function GenChart({
             }
           />
           <Tooltip
-            contentStyle={{
-              background: cc.tooltipBg,
-              border: `1px solid ${cc.tooltipBorder}`,
-              color: cc.tooltipText,
-              borderRadius: 8,
-              fontSize: 12,
-            }}
-            formatter={(v, name) => [`${Math.round(v as number)} MW`, name]}
-            itemSorter={(item) => {
+            content={({ active, payload, label }) => {
+              if (!active || !payload || payload.length === 0) return null;
               const order: Record<string, number> = {
                 Solar: 0,
                 Wind: 1,
@@ -256,7 +291,64 @@ function GenChart({
                 Other: 3,
                 Nuclear: 4,
               };
-              return order[item.name ?? ""] ?? 99;
+              const sorted = [...payload].sort(
+                (a, b) =>
+                  (order[a.name ?? ""] ?? 99) - (order[b.name ?? ""] ?? 99),
+              );
+              const total = payload.reduce(
+                (sum, p) => sum + (typeof p.value === "number" ? p.value : 0),
+                0,
+              );
+              return (
+                <div
+                  style={{
+                    background: cc.tooltipBg,
+                    border: `1px solid ${cc.tooltipBorder}`,
+                    color: cc.tooltipText,
+                    borderRadius: 8,
+                    fontSize: 12,
+                    padding: "8px 12px",
+                    minWidth: 140,
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: 6 }}>
+                    {label}
+                  </div>
+                  {sorted.map((p) => (
+                    <div
+                      key={String(p.dataKey)}
+                      style={{
+                        color: p.color,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      <span>{p.name}</span>
+                      <span className="tabular-nums">
+                        {Math.round((p.value as number) ?? 0)} MW
+                      </span>
+                    </div>
+                  ))}
+                  <div
+                    style={{
+                      borderTop: `1px solid ${cc.tooltipBorder}`,
+                      marginTop: 6,
+                      paddingTop: 4,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <span>Total</span>
+                    <span className="tabular-nums">
+                      {Math.round(total).toLocaleString()} MW
+                    </span>
+                  </div>
+                </div>
+              );
             }}
           />
           <RechartsArea
@@ -509,7 +601,7 @@ function ZonePriceHistoryChart({
 
 // ── Main Overview ──
 
-export function Overview({ onZoneClick }: OverviewProps) {
+export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
   const [range, setRange] = useState<TimeRange>("24h");
   const is24h = range === "24h";
   const rangeDays = RANGES.find((r) => r.id === range)?.days ?? 1;
@@ -523,12 +615,20 @@ export function Overview({ onZoneClick }: OverviewProps) {
     is24h ? 0 : rangeDays,
   );
 
-  // Overview cards (Sweden-wide, price-linked, not visible from the chart)
-  const { data: hydroReservoir } = useHydroReservoir();
-  const { data: windForecast } = useWindForecastSummary(24);
+  // Next-7-days forecast + track record (SE3 default). Overview only mounts on
+  // its own layer, so these fetch only while the Overview is shown.
+  const { data: weekly, loading: weeklyLoading } = useWeeklyForecast(
+    "SE3",
+    true,
+  );
+  const { data: accuracy } = useForecastAccuracy("SE3", 28);
+  const { data: coverage } = useCoverage("SE3", 30);
+  const d1Mae = accuracy?.models?.lgbm?.mae_sek_kwh ?? null; // d+1 MAE (SEK/kWh)
+  const baseMae = accuracy?.models?.same_weekday_avg?.mae_sek_kwh ?? null;
 
   const cc = useChartColors();
   const isMobile = useIsMobile();
+  const nowHour = currentCETHour(); // for zone-tile price trend arrows
   const zones: Area[] = ["SE1", "SE2", "SE3", "SE4"];
   const zoneColors: Record<Area, string> = {
     SE1: cc.SE1,
@@ -606,30 +706,6 @@ export function Overview({ onZoneClick }: OverviewProps) {
     const se4 = priceData?.SE4?.current_sek_kwh ?? null;
     if (se1 == null || se4 == null) return null;
     return Math.round((se4 - se1) * 100); // to öre
-  }, [priceData]);
-
-  // Today's volatility — ratio of national hourly max to min (averaged across zones)
-  const volatility = useMemo<{ ratio: number; spread: number } | null>(() => {
-    if (!priceData) return null;
-    const hourly = new Map<number, number[]>();
-    for (const z of Object.values(priceData)) {
-      for (const s of z.slots) {
-        const arr = hourly.get(s.hour) ?? [];
-        arr.push(s.price);
-        hourly.set(s.hour, arr);
-      }
-    }
-    const avgs = Array.from(hourly.values()).map(
-      (arr) => arr.reduce((sum, p) => sum + p, 0) / arr.length,
-    );
-    if (avgs.length < 2) return null;
-    const max = Math.max(...avgs);
-    const min = Math.min(...avgs);
-    if (min <= 0) return null;
-    return {
-      ratio: +(max / min).toFixed(1),
-      spread: Math.round((max - min) * 100), // öre
-    };
   }, [priceData]);
 
   // Lag info
@@ -782,90 +858,9 @@ export function Overview({ onZoneClick }: OverviewProps) {
         )}
       </div>
 
-      {/* Sweden overview cards — price-linked signals that aren't visible on the chart */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div
-          className="bg-surface-primary rounded-2xl p-4 text-center flex flex-col items-center justify-center"
-          title="North–south current price gap (SE4 − SE1) — wide spread = grid bottleneck"
-        >
-          <p className="text-xs text-content-muted mb-1">Zone spread</p>
-          {zoneSpread != null ? (
-            <>
-              <p className="text-2xl font-bold tabular-nums text-content-primary">
-                {zoneSpread >= 0 ? "+" : ""}
-                {zoneSpread}
-              </p>
-              <p className="text-[11px] text-content-faint mt-0.5">
-                öre · SE4 − SE1
-              </p>
-            </>
-          ) : (
-            <p className="text-sm text-content-muted">--</p>
-          )}
-        </div>
-
-        <div
-          className="bg-surface-primary rounded-2xl p-4 text-center flex flex-col items-center justify-center"
-          title="National hydro storage (SE1–SE4 sum, ENTSO-E A72, weekly) — low levels push winter prices up"
-        >
-          <p className="text-xs text-content-muted mb-1">Hydro reservoir</p>
-          {hydroReservoir?.stored_gwh != null ? (
-            <>
-              <p className="text-2xl font-bold tabular-nums text-content-primary">
-                {(hydroReservoir.stored_gwh / 1000).toFixed(1)}
-              </p>
-              <p className="text-[11px] text-content-faint mt-0.5">
-                TWh
-                {hydroReservoir.change_pct != null
-                  ? ` · ${hydroReservoir.change_pct >= 0 ? "+" : ""}${hydroReservoir.change_pct}%/wk`
-                  : ""}
-              </p>
-            </>
-          ) : (
-            <p className="text-sm text-content-muted">--</p>
-          )}
-        </div>
-
-        <div
-          className="bg-surface-primary rounded-2xl p-4 text-center flex flex-col items-center justify-center"
-          title="Avg 100 m wind forecast next 24 h (Open-Meteo) — strong wind lowers spot prices"
-        >
-          <p className="text-xs text-content-muted mb-1">Wind next 24h</p>
-          {windForecast?.avg_wind_100m_ms != null ? (
-            <>
-              <p className="text-2xl font-bold tabular-nums text-content-primary">
-                {windForecast.avg_wind_100m_ms}
-              </p>
-              <p className="text-[11px] text-content-faint mt-0.5">
-                m/s avg · peak {windForecast.peak_wind_100m_ms}
-              </p>
-            </>
-          ) : (
-            <p className="text-sm text-content-muted">--</p>
-          )}
-        </div>
-
-        <div
-          className="bg-surface-primary rounded-2xl p-4 text-center flex flex-col items-center justify-center"
-          title="Today's peak/off-peak ratio (national hourly avg) — higher = more to save by shifting usage"
-        >
-          <p className="text-xs text-content-muted mb-1">Volatility today</p>
-          {volatility ? (
-            <>
-              <p className="text-2xl font-bold tabular-nums text-content-primary">
-                {volatility.ratio}×
-              </p>
-              <p className="text-[11px] text-content-faint mt-0.5">
-                {volatility.spread} öre spread
-              </p>
-            </>
-          ) : (
-            <p className="text-sm text-content-muted">--</p>
-          )}
-        </div>
-      </div>
-
-      {/* Zone prices */}
+      {/* Zone prices — placed right under the generation chart so supply and
+          price sit side by side (same time range) for anyone who wants to
+          compare them by eye, without a dual-axis overlay. */}
       {is24h ? (
         <div className="bg-surface-primary rounded-2xl p-4">
           <h2 className="text-base font-medium text-content-primary mb-1">
@@ -873,6 +868,19 @@ export function Overview({ onZoneClick }: OverviewProps) {
           </h2>
           <p className="text-xs text-content-muted mb-3">
             Click a zone for hourly details
+            {zoneSpread != null && (
+              <span
+                className="text-content-faint"
+                title="North–south current price gap (SE4 − SE1) — wide spread = grid bottleneck"
+              >
+                {" · North–south spread "}
+                <span className="tabular-nums">
+                  {zoneSpread >= 0 ? "+" : ""}
+                  {zoneSpread}
+                </span>{" "}
+                öre (SE4−SE1)
+              </span>
+            )}
           </p>
           {priceLoading && !priceData ? (
             <div className="space-y-2 animate-pulse">
@@ -919,10 +927,19 @@ export function Overview({ onZoneClick }: OverviewProps) {
                       <p className="text-[10px] text-content-muted uppercase tracking-wide">
                         now
                       </p>
-                      <p className="text-lg font-semibold text-content-primary tabular-nums leading-tight">
-                        {z.current_sek_kwh != null
-                          ? formatPrice(z.current_sek_kwh)
-                          : "—"}
+                      <p className="text-lg font-semibold text-content-primary tabular-nums leading-tight flex items-center justify-end gap-1">
+                        <TrendArrow
+                          trend={priceTrend(
+                            z.current_sek_kwh,
+                            z.slots,
+                            nowHour,
+                          )}
+                        />
+                        <span>
+                          {z.current_sek_kwh != null
+                            ? formatPrice(z.current_sek_kwh)
+                            : "—"}
+                        </span>
                       </p>
                       <p className="text-[10px] text-content-faint">
                         {PRICE_UNIT}
@@ -947,6 +964,45 @@ export function Overview({ onZoneClick }: OverviewProps) {
           onZoneClick={onZoneClick}
         />
       ) : null}
+
+      {/* Next 7 days — SE3 forecast + our own accuracy (transparency). This is
+          "what's coming", independent of the historical range selector above. */}
+      {(weeklyLoading || weekly?.days?.length || d1Mae != null) && (
+        <div className="bg-surface-primary rounded-2xl p-4 space-y-3">
+          <WeeklySummary
+            area="SE3"
+            data={weekly}
+            loading={weeklyLoading}
+            includeTomorrow
+            onDateSelect={onDateSelect}
+          />
+          {d1Mae != null && (
+            <p className="text-xs text-content-muted">
+              Track record · SE3 · 28d: d+1 error{" "}
+              <span className="text-content-secondary tabular-nums">
+                {Math.round(d1Mae * 100)} öre
+              </span>
+              {baseMae != null && (
+                <>
+                  {" vs "}
+                  <span className="tabular-nums">
+                    {Math.round(baseMae * 100)} öre
+                  </span>{" "}
+                  baseline
+                </>
+              )}
+              {coverage && coverage.n_samples > 0 && (
+                <>
+                  {" · 80% CI "}
+                  <span className="text-content-secondary tabular-nums">
+                    {Math.round(coverage.coverage_pct)}% covered
+                  </span>
+                </>
+              )}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
