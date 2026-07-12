@@ -1,0 +1,11 @@
+# Dev-only container for visual verification of the frontend.
+# API calls are proxied (next.config rewrites) to the prod API Gateway via
+# NEXT_PUBLIC_API_DEST — the local backend/DB is intentionally not used
+# (it is empty / not synced with prod).
+FROM node:22-alpine
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+EXPOSE 3000
+CMD ["npx", "next", "dev", "-p", "3000", "-H", "0.0.0.0"]
