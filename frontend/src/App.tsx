@@ -954,20 +954,13 @@ function AppInner() {
         <span className="text-[11px] text-content-muted italic">
           A state of total awareness...{" "}
           <a
-            href="https://github.com/mugime-shi/Unagi"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/about"
             className="text-xs font-bold underline hover:text-content-secondary transition-colors"
+            title="About Unagi — data sources, method, contact"
           >
             Unagi
           </a>
-          {" · "}
-          <a
-            href="mailto:hello@unagieel.net"
-            className="not-italic underline hover:text-content-secondary transition-colors"
-          >
-            hello@unagieel.net
-          </a>
+          .
         </span>
       </footer>
     </div>
