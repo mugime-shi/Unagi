@@ -919,6 +919,19 @@ def _record_predictions(areas: list[str], target_date: date | None = None) -> li
                 failures.append({"market": f"lgbm {area}", "status": "error", "error": str(exc)})
                 db.rollback()
 
+        # Publish the public v1 feed (catch.unagieel.net) now that predictions
+        # are fresh. No-op unless R2 credentials are configured.
+        try:
+            from app.services.forecast_export_service import publish_forecast_exports
+
+            published = publish_forecast_exports(db)
+            if published:
+                log.info("Published %d feed files to R2", len(published))
+                results.append({"market": "feed publish", "status": "ok"})
+        except Exception as exc:
+            log.warning("feed publish failed: %s", exc)
+            failures.append({"market": "feed publish", "status": "error", "error": str(exc)})
+
         if failures:
             _send_pipeline_alert("predict", results + failures)
     finally:

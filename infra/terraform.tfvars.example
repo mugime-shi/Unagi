@@ -3,3 +3,10 @@ project        = "unagi"
 database_url   = "postgresql://postgres:password@db.xxxx.supabase.co:5432/postgres"
 entsoe_api_key = "your-entsoe-api-key"
 image_tag      = "latest"
+
+# Cloudflare R2 public feed (catch.unagieel.net)
+cloudflare_api_token  = "your-cloudflare-api-token"
+cloudflare_account_id = "your-account-id"
+cloudflare_zone_id    = "unagieel.net-zone-id"
+r2_access_key_id      = "r2-access-key"
+r2_secret_access_key  = "r2-secret-key"

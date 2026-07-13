@@ -204,3 +204,84 @@ def write_forecast_exports(
     index_path.write_text(json.dumps(index, indent=1, ensure_ascii=False))
     written.append(index_path)
     return written
+
+
+# ── R2 publishing (catch.unagieel.net) ───────────────────────────────────────
+
+_CACHE_LATEST = "public, max-age=900"  # feed refreshes a few times per day
+_CACHE_ARCHIVE = "public, max-age=31536000, immutable"  # frozen snapshots never change
+
+
+def _make_r2_client():
+    """S3-compatible client for Cloudflare R2. Lazy import keeps boto3 optional locally."""
+    import boto3
+
+    from app.config import settings
+
+    return boto3.client(
+        "s3",
+        endpoint_url=settings.r2_endpoint,
+        aws_access_key_id=settings.r2_access_key_id,
+        aws_secret_access_key=settings.r2_secret_access_key,
+        region_name="auto",
+    )
+
+
+def publish_forecast_exports(
+    db: Session,
+    client=None,
+    bucket: str | None = None,
+    areas: tuple[str, ...] = EXPORT_AREAS,
+    archive: bool = True,
+) -> list[str]:
+    """
+    Build and upload the v1 feed to R2. Returns the uploaded object keys.
+
+    No-op (returns []) when R2 is not configured, so the daily task can call
+    this unconditionally in every environment.
+    """
+    if client is None:
+        from app.config import settings
+
+        if not (settings.r2_endpoint and settings.r2_bucket and settings.r2_access_key_id):
+            return []
+        bucket = settings.r2_bucket
+        client = _make_r2_client()
+
+    def _put(key: str, payload: str, cache_control: str) -> None:
+        client.put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=payload.encode("utf-8"),
+            ContentType="application/json; charset=utf-8",
+            CacheControl=cache_control,
+        )
+
+    stamp_date = datetime.now(tz=STOCKHOLM).date().isoformat()
+    uploaded: list[str] = []
+
+    index = {
+        "schema_version": SCHEMA_VERSION,
+        "generated_at": datetime.now(tz=timezone.utc).isoformat(),
+        "areas": {},
+        "license": _LICENSE,
+    }
+
+    for area in areas:
+        payload = json.dumps(build_forecast_export(db, area), indent=1, ensure_ascii=False)
+
+        latest_key = f"v1/forecast/{area}.json"
+        _put(latest_key, payload, _CACHE_LATEST)
+        uploaded.append(latest_key)
+
+        if archive:
+            snapshot_key = f"v1/archive/{stamp_date}/{area}.json"
+            _put(snapshot_key, payload, _CACHE_ARCHIVE)
+            uploaded.append(snapshot_key)
+
+        index["areas"][area] = f"forecast/{area}.json"
+
+    index_key = "v1/index.json"
+    _put(index_key, json.dumps(index, indent=1, ensure_ascii=False), _CACHE_LATEST)
+    uploaded.append(index_key)
+    return uploaded

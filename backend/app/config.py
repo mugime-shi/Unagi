@@ -28,5 +28,12 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
 
+    # Cloudflare R2 — public forecast feed (catch.unagieel.net).
+    # All empty = publishing disabled (local dev, tests).
+    r2_endpoint: str = ""  # https://<account_id>.r2.cloudflarestorage.com
+    r2_bucket: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+
 
 settings = Settings()

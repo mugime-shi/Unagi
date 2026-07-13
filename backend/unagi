@@ -107,6 +107,10 @@ cmd_export() {
     fi
 }
 
+cmd_publish() {
+    python -m scripts.export_forecast --upload
+}
+
 cmd_smoke() {
     python scripts/fetch_prices_smoke.py
 }
@@ -160,6 +164,7 @@ Data:
   backfill-bal [--days N]       Backfill balancing/imbalance prices (eSett)
   backfill-hydro [--days N]    Backfill hydro reservoir stored energy (A72)
   export [--out DIR] [--area]   Export public v1 forecast JSON (default: ./export_out, all areas)
+  publish                       Build + upload v1 feed to R2 (needs R2_* env)
 
 ML:
   backtest [--days N] [--area]  LightGBM vs baseline comparison
@@ -209,6 +214,7 @@ case "$command" in
     tune)           cmd_tune "$@" ;;
     features)       cmd_features "$@" ;;
     export)         cmd_export "$@" ;;
+    publish)        cmd_publish ;;
     smoke)          cmd_smoke ;;
     test)           cmd_test "$@" ;;
     lambda-backfill) cmd_lambda_backfill "$@" ;;

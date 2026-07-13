@@ -17,6 +17,7 @@ from app.models.forecast_accuracy import ForecastAccuracy
 from app.services.forecast_export_service import (
     SCHEMA_VERSION,
     build_forecast_export,
+    publish_forecast_exports,
     write_forecast_exports,
 )
 
@@ -162,3 +163,39 @@ def test_write_forecast_exports_layout(db, tmp_path):
     assert idx["areas"] == {"SE1": "forecast/SE1.json", "SE3": "forecast/SE3.json"}
     # Latest and archive snapshot must be byte-identical (audit trail)
     assert latest.read_text() == archives[0].read_text()
+
+
+class FakeR2Client:
+    def __init__(self):
+        self.calls = []
+
+    def put_object(self, **kwargs):
+        self.calls.append(kwargs)
+
+
+def test_publish_uploads_expected_objects(db):
+    _seed_prediction(db, TODAY + timedelta(days=1), "lgbm")
+    fake = FakeR2Client()
+
+    keys = publish_forecast_exports(db, client=fake, bucket="unagi-catch", areas=("SE3",))
+
+    assert keys == [
+        "v1/forecast/SE3.json",
+        f"v1/archive/{keys[1].split('/')[2]}/SE3.json",
+        "v1/index.json",
+    ]
+    by_key = {c["Key"]: c for c in fake.calls}
+    latest = by_key["v1/forecast/SE3.json"]
+    assert latest["Bucket"] == "unagi-catch"
+    assert latest["ContentType"].startswith("application/json")
+    assert "max-age=900" in latest["CacheControl"]
+    archive_call = next(c for k, c in by_key.items() if k.startswith("v1/archive/"))
+    assert "immutable" in archive_call["CacheControl"]
+    # Latest and archive payloads are byte-identical (audit trail)
+    assert latest["Body"] == archive_call["Body"]
+    assert json.loads(by_key["v1/index.json"]["Body"])["areas"] == {"SE3": "forecast/SE3.json"}
+
+
+def test_publish_noop_when_unconfigured(db):
+    # No client given and settings are empty in tests → no-op, no exception
+    assert publish_forecast_exports(db) == []
