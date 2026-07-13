@@ -9,6 +9,7 @@ TRIALS=100
 # ── Parse flags after subcommand ─────────────────────────────
 HORIZON=3
 TRAIN_DAYS=270
+OUT=./export_out
 
 parse_flags() {
     while [[ $# -gt 0 ]]; do
@@ -19,6 +20,7 @@ parse_flags() {
             --date)       TARGET_DATE="$2"; shift 2 ;;
             --horizon)    HORIZON="$2";    shift 2 ;;
             --train-days) TRAIN_DAYS="$2"; shift 2 ;;
+            --out)        OUT="$2";        shift 2 ;;
             *) echo "Unknown flag: $1" >&2; exit 1 ;;
         esac
     done
@@ -95,12 +97,24 @@ cmd_ablation_gas() {
     python -m scripts.ablation_gas --days "$DAYS" --area "$AREA"
 }
 
+cmd_export() {
+    local raw_args=" $* "
+    parse_flags "$@"
+    if [[ "$raw_args" == *" --area "* ]]; then
+        python -m scripts.export_forecast --out "$OUT" --area "$AREA"
+    else
+        python -m scripts.export_forecast --out "$OUT"
+    fi
+}
+
 cmd_smoke() {
     python scripts/fetch_prices_smoke.py
 }
 
 cmd_test() {
-    pytest tests/ -v
+    # Canonical test path: run inside the dev container (starts db dependency).
+    # Pass extra pytest args through, e.g. ./unagi test tests/test_forecast_export.py
+    docker compose -f "$(dirname "$0")/../docker-compose.yml" run --rm api pytest "${@:-tests/}" -v
 }
 
 cmd_lambda_backfill() {
@@ -145,6 +159,7 @@ Data:
   backfill-gas [--days N]       Backfill THE gas reference prices
   backfill-bal [--days N]       Backfill balancing/imbalance prices (eSett)
   backfill-hydro [--days N]    Backfill hydro reservoir stored energy (A72)
+  export [--out DIR] [--area]   Export public v1 forecast JSON (default: ./export_out, all areas)
 
 ML:
   backtest [--days N] [--area]  LightGBM vs baseline comparison
@@ -193,8 +208,9 @@ case "$command" in
     sweep)          cmd_sweep "$@" ;;
     tune)           cmd_tune "$@" ;;
     features)       cmd_features "$@" ;;
+    export)         cmd_export "$@" ;;
     smoke)          cmd_smoke ;;
-    test)           cmd_test ;;
+    test)           cmd_test "$@" ;;
     lambda-backfill) cmd_lambda_backfill "$@" ;;
     lambda-collect)  cmd_lambda_collect ;;
     lambda-predict)  cmd_lambda_predict "$@" ;;

@@ -17,6 +17,8 @@ services:
     volumes:
       - ./backend/app:/app/app        # hot-reload in development
       - ./backend/unagi:/app/unagi    # CLI access inside container
+      - ./backend/tests:/app/tests    # run live tests without rebuild
+      - ./backend/scripts:/app/scripts
 
   db:
     image: postgres:17-alpine
