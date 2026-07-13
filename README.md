@@ -17,7 +17,7 @@ Unagi forecasts Swedish electricity spot prices up to 7 days ahead using machine
 - **Cost simulators** — compare fixed vs dynamic contracts, estimate solar PV revenue
 - **Light & dark themes** — marine blue by day, deep sea by night
 
-No account required. No ads. Open source.
+No account required. No ads. Source available.
 
 ## How accurate is it?
 
@@ -64,9 +64,13 @@ Full details: **[System Design](docs/SYSTEM_DESIGN.md)** · **[API Reference](do
 
 Python 3.12 · FastAPI · LightGBM · Optuna · Next.js 16 · React 19 · TypeScript · Tailwind CSS · Recharts · AWS Lambda (arm64) · Terraform · GitHub Actions
 
+## License
+
+Source available — free to read and run locally for personal, non-commercial use. Any other use (including commercial): contact hello@unagieel.net. See [LICENSE.md](LICENSE.md).
+
 ## Contributing
 
-Issues and PRs welcome. The ML model, feature engineering, and training pipeline are all in `backend/app/services/` and `backend/scripts/`.
+Bug reports and feedback welcome — open an issue or email hello@unagieel.net. The ML model, feature engineering, and training pipeline are all in `backend/app/services/` and `backend/scripts/`.
 
 ## Author
 
