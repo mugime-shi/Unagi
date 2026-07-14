@@ -119,3 +119,69 @@ class TestActiveBiasQhat:
         monkeypatch.setenv("LGBM_BIAS_CORRECTION", "")
         bias, _ = _active_bias_qhat(self.MODELS, "SE4")
         assert bias is None
+
+
+class TestCqrAlphaOverride:
+    """LGBM_CQR_ALPHA re-quantiles q_hat from stored conformal scores."""
+
+    # 100 scores 0.01..1.00 → quantile((1-α)(1+1/100)) is easy to reason about
+    SCORES = [round(0.01 * i, 4) for i in range(1, 101)]
+    MODELS = {
+        "q_hat": 0.5,
+        "bias": [0.05] * 24,
+        "q_hat_bias": 0.55,
+        "cqr_scores": SCORES,
+        "cqr_scores_bias": [s + 0.1 for s in SCORES],
+    }
+
+    def test_no_flag_keeps_default_qhat(self, monkeypatch):
+        monkeypatch.delenv("LGBM_CQR_ALPHA", raising=False)
+        monkeypatch.delenv("LGBM_BIAS_CORRECTION", raising=False)
+        _, q_hat = _active_bias_qhat(self.MODELS, "SE4")
+        assert q_hat == 0.5
+
+    def test_alpha_widens_interval(self, monkeypatch):
+        """Smaller alpha → higher quantile of scores → larger q_hat."""
+        monkeypatch.delenv("LGBM_BIAS_CORRECTION", raising=False)
+        monkeypatch.setenv("LGBM_CQR_ALPHA", "SE4:0.10")
+        _, q_hat_10 = _active_bias_qhat(self.MODELS, "SE4")
+        monkeypatch.setenv("LGBM_CQR_ALPHA", "SE4:0.30")
+        _, q_hat_30 = _active_bias_qhat(self.MODELS, "SE4")
+        assert q_hat_10 > q_hat_30
+
+    def test_alpha_applies_only_to_listed_area(self, monkeypatch):
+        monkeypatch.delenv("LGBM_BIAS_CORRECTION", raising=False)
+        monkeypatch.setenv("LGBM_CQR_ALPHA", "SE4:0.10")
+        _, q_hat_se3 = _active_bias_qhat(self.MODELS, "SE3")
+        assert q_hat_se3 == 0.5
+
+    def test_alpha_uses_bias_scores_when_bias_active(self, monkeypatch):
+        """With bias on, re-quantile from cqr_scores_bias (shifted by +0.1 here)."""
+        monkeypatch.setenv("LGBM_BIAS_CORRECTION", "SE4")
+        monkeypatch.setenv("LGBM_CQR_ALPHA", "SE4:0.20")
+        _, q_hat_on = _active_bias_qhat(self.MODELS, "SE4")
+        monkeypatch.delenv("LGBM_BIAS_CORRECTION")
+        _, q_hat_off = _active_bias_qhat(self.MODELS, "SE4")
+        assert q_hat_on == pytest.approx(q_hat_off + 0.1)
+
+    def test_alpha_default_recovers_stored_qhat_formula(self, monkeypatch):
+        """α=0.20 on the raw scores equals the training-time computation."""
+        monkeypatch.delenv("LGBM_BIAS_CORRECTION", raising=False)
+        monkeypatch.setenv("LGBM_CQR_ALPHA", "SE4:0.20")
+        _, q_hat = _active_bias_qhat(self.MODELS, "SE4")
+        n = len(self.SCORES)
+        expected = float(np.quantile(np.array(self.SCORES), min(1.0, 0.8 * (1 + 1 / n))))
+        assert q_hat == pytest.approx(expected)
+
+    def test_invalid_values_ignored(self, monkeypatch):
+        monkeypatch.delenv("LGBM_BIAS_CORRECTION", raising=False)
+        for bad in ("SE4:abc", "SE4:0", "SE4:1.5", "garbage"):
+            monkeypatch.setenv("LGBM_CQR_ALPHA", bad)
+            _, q_hat = _active_bias_qhat(self.MODELS, "SE4")
+            assert q_hat == 0.5, bad
+
+    def test_legacy_dict_without_scores_is_noop(self, monkeypatch):
+        monkeypatch.delenv("LGBM_BIAS_CORRECTION", raising=False)
+        monkeypatch.setenv("LGBM_CQR_ALPHA", "SE4:0.10")
+        _, q_hat = _active_bias_qhat({"q_hat": 0.5}, "SE4")
+        assert q_hat == 0.5

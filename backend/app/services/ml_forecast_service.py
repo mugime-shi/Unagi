@@ -151,7 +151,7 @@ def _cache_key(area: str, target_date: date, variant: str = "A") -> str:
     Bump the version token whenever the cached model-dict schema changes,
     otherwise stale pickles from /tmp/unagi_lgbm are served with the old shape.
     """
-    raw = f"{area}:{target_date.isoformat()}:{_TRAIN_DAYS}:v9-bias:{variant}"
+    raw = f"{area}:{target_date.isoformat()}:{_TRAIN_DAYS}:v10-scores:{variant}"
     return hashlib.md5(raw.encode()).hexdigest()[:12]
 
 
@@ -303,6 +303,10 @@ def _fit_quantile_set(
         "q_hat": q_hat,
         "bias": bias,
         "q_hat_bias": q_hat_bias,
+        # Raw conformal scores so LGBM_CQR_ALPHA can re-quantile per area at
+        # inference without retraining (~720 floats, negligible pickle cost).
+        "cqr_scores": scores.tolist() if len(X_val) > 0 else [],
+        "cqr_scores_bias": scores_bias.tolist() if len(X_val) > 0 else [],
     }
 
 
@@ -497,17 +501,50 @@ def _bias_enabled_for(area: str) -> bool:
     return area in {a.strip().upper() for a in flag.split(",")}
 
 
+def _area_cqr_alpha(area: str) -> float | None:
+    """Parse LGBM_CQR_ALPHA ('SE4:0.16' or 'SE4:0.16,SE3:0.18') for this area.
+
+    Overrides the default 0.20 miscoverage (80% interval) per area, re-quantiled
+    at inference from the stored conformal scores — no retraining needed.
+    """
+    flag = os.environ.get("LGBM_CQR_ALPHA", "").strip()
+    if not flag:
+        return None
+    for part in flag.split(","):
+        name, sep, value = part.partition(":")
+        if sep and name.strip().upper() == area:
+            try:
+                alpha = float(value)
+            except ValueError:
+                return None
+            return alpha if 0.0 < alpha < 1.0 else None
+    return None
+
+
 def _active_bias_qhat(models: dict, area: str) -> tuple[np.ndarray | None, float]:
     """Resolve (per-row bias vector or None, q_hat to use) for a 24h prediction.
 
-    The flag is read at call time so backtests can A/B it against one trained
-    cache, and production stays inert until the Lambda env var is set. Model
-    dicts without 'bias' (pre-v9 caches) are a no-op regardless of the flag.
+    Both flags are read at call time so backtests can A/B them against one
+    trained cache, and production stays inert until the Lambda env vars are
+    set. Model dicts without 'bias'/'cqr_scores' (pre-v10 caches) are a no-op
+    regardless of the flags.
     """
     bias = models.get("bias")
-    if _bias_enabled_for(area) and bias and any(bias):
-        return np.array(bias), float(models.get("q_hat_bias", models.get("q_hat", 0.0)))
-    return None, float(models.get("q_hat", 0.0))
+    bias_active = _bias_enabled_for(area) and bias and any(bias)
+    if bias_active:
+        q_hat = float(models.get("q_hat_bias", models.get("q_hat", 0.0)))
+    else:
+        q_hat = float(models.get("q_hat", 0.0))
+
+    alpha = _area_cqr_alpha(area)
+    if alpha is not None:
+        scores = models.get("cqr_scores_bias" if bias_active else "cqr_scores")
+        if scores:
+            n = len(scores)
+            quantile_level = min(1.0, (1 - alpha) * (1 + 1 / n))
+            q_hat = float(np.quantile(np.array(scores), quantile_level))
+
+    return (np.array(bias) if bias_active else None), q_hat
 
 
 def predict_with_model(
