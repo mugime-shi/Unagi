@@ -37,7 +37,7 @@ curl https://catch.unagieel.net/v1/forecast/SE3.json
 | URL | Contents |
 |-----|----------|
 | `/v1/index.json` | Area list + latest generation time |
-| `/v1/forecast/{SE1..SE4}.json` | 7-day hourly forecast: point + 80% band, cheapest hours per day, live accuracy |
+| `/v1/forecast/{SE1..SE4}.json` | Today + 7 days ahead, hourly. Settled days (`kind: "actual"`) carry the real price with the prior forecast kept alongside; future days carry point + 80% band. Cheapest hours per day, live accuracy |
 | `/v1/archive/{YYYY-MM-DD}/{AREA}.json` | Frozen daily snapshots (audit trail) |
 
 Timestamps are ISO 8601 with Europe/Stockholm offsets; prices are SEK/kWh excl. VAT, grid fees and retailer markup. Free for personal, non-commercial use with attribution — see [LICENSE.md](LICENSE.md). Updated a few times daily after Nord Pool publication; cache-friendly (15 min).

@@ -5,9 +5,23 @@ Builds one self-describing JSON document per bidding zone, intended to be
 published as static files behind a CDN (no server, no auth). Consumers:
 Home Assistant REST sensors, scripts, AI agents.
 
+Each day in `days` is either settled or predicted, declared by `kind`:
+  - kind="actual":   value = settled Nord Pool price (hourly average of the
+                     15-min settlement), forecast = what the model had
+                     predicted for that hour, low/high = the 80% interval the
+                     model had given. Today is always settled; tomorrow flips
+                     from "forecast" to "actual" once the ~13:00 CET Nord Pool
+                     publication has been fetched.
+  - kind="forecast": value is the model prediction (forecast repeats it),
+                     low/high = 80% prediction interval.
+Consumers must select days by `date`/`kind`, never by array index: the array
+runs from today through today+7 (up to 8 entries; days without data are
+omitted, and the settled/forecast boundary moves during the day).
+
 Schema stability contract (v1): fields are only ever ADDED within a schema
 version — never renamed, removed, or re-typed. Breaking changes require a
-new /v2/ path.
+new /v2/ path. (One deliberate exception: 2026-07-14, days[] gained settled
+days at the front while the consumer count was zero.)
 """
 
 import json
@@ -19,6 +33,7 @@ from sqlalchemy.orm import Session
 
 from app.models.forecast_accuracy import ForecastAccuracy
 from app.services.backtest_service import get_accuracy, get_coverage_rate
+from app.services.price_service import get_prices_for_date
 
 STOCKHOLM = ZoneInfo("Europe/Stockholm")
 SCHEMA_VERSION = 1
@@ -43,21 +58,21 @@ def _slot_times(target_date: date, hour: int) -> tuple[str, str]:
     return start.isoformat(), end.isoformat()
 
 
-def _freshest_predictions(db: Session, area: str, today: date) -> dict[date, list[ForecastAccuracy]]:
+def _freshest_predictions(db: Session, area: str, start: date, end: date) -> dict[date, list[ForecastAccuracy]]:
     """
-    Future predictions grouped by target_date, deduplicated per (date, hour)
-    to the lowest-horizon (= freshest) model row.
+    Predictions for target dates in [start, end], grouped by target_date and
+    deduplicated per (date, hour) to the lowest-horizon (= freshest) model row.
 
     Dedup happens in Python so the query stays portable to SQLite (tests).
-    Row count is bounded (7 days × 24 h × 7 models), so this is cheap.
+    Row count is bounded (8 days × 24 h × 7 models), so this is cheap.
     """
     rows = (
         db.query(ForecastAccuracy)
         .filter(
             ForecastAccuracy.area == area,
             ForecastAccuracy.model_name.in_(_MODEL_HORIZONS.keys()),
-            ForecastAccuracy.target_date > today,
-            ForecastAccuracy.target_date <= today + timedelta(days=7),
+            ForecastAccuracy.target_date >= start,
+            ForecastAccuracy.target_date <= end,
         )
         .all()
     )
@@ -105,40 +120,121 @@ def _build_accuracy_block(db: Session, area: str) -> dict:
     }
 
 
-def build_forecast_export(db: Session, area: str = "SE3", today: date | None = None) -> dict:
-    """Build the public v1 forecast document for one bidding zone."""
-    today = today or datetime.now(tz=STOCKHOLM).date()
-    by_date = _freshest_predictions(db, area, today)
+def _opt_float(value) -> float | None:
+    return float(value) if value is not None else None
 
-    days = []
-    for target_date in sorted(by_date.keys()):
-        slots = by_date[target_date]
-        hours = []
-        for row in slots:
-            start, end = _slot_times(target_date, row.hour)
-            hours.append(
-                {
-                    "start": start,
-                    "end": end,
-                    "value": float(row.predicted_sek_kwh),
-                    "low": float(row.predicted_low_sek_kwh) if row.predicted_low_sek_kwh is not None else None,
-                    "high": float(row.predicted_high_sek_kwh) if row.predicted_high_sek_kwh is not None else None,
-                }
-            )
 
-        values = [(float(r.predicted_sek_kwh), r.hour) for r in slots]
-        cheapest = sorted(h for _, h in sorted(values)[:N_CHEAPEST_HOURS])
-        horizon = min(_MODEL_HORIZONS[r.model_name] for r in slots)
+def _settled_hours(db: Session, area: str, target_date: date) -> dict[int, float] | None:
+    """
+    Settled Nord Pool prices for one local day, averaged per local hour.
 
-        days.append(
+    spot_prices holds 15-min settlement rows (kvartspris) since 2025-09-30,
+    so an hour normally holds four quarter rows; PT15M wins if a legacy PT60M
+    row coexists for the same hour. Returns None unless the day is complete
+    (≥ 23 distinct local hours — the March DST day only has 23), so a
+    half-fetched day never masquerades as settled.
+    """
+    buckets: dict[int, dict[str, list[float]]] = {}
+    for row in get_prices_for_date(db, target_date, area):
+        if row.price_sek_kwh is None:
+            continue
+        ts = row.timestamp_utc if row.timestamp_utc.tzinfo else row.timestamp_utc.replace(tzinfo=timezone.utc)
+        hour = ts.astimezone(STOCKHOLM).hour
+        buckets.setdefault(hour, {}).setdefault(row.resolution, []).append(float(row.price_sek_kwh))
+
+    if len(buckets) < 23:
+        return None
+    hours: dict[int, float] = {}
+    for hour, by_res in buckets.items():
+        prices = by_res.get("PT15M") or next(iter(by_res.values()))
+        hours[hour] = sum(prices) / len(prices)
+    return hours
+
+
+def _settled_day(
+    target_date: date,
+    horizon_days: int,
+    settled: dict[int, float],
+    pred_by_hour: dict[int, ForecastAccuracy],
+) -> dict:
+    """A kind="actual" day: value is the settled price, forecast/low/high preserve what the model had said."""
+    hours = []
+    for hour in sorted(settled):
+        start, end = _slot_times(target_date, hour)
+        pred = pred_by_hour.get(hour)
+        hours.append(
             {
-                "date": target_date.isoformat(),
-                "horizon_days": horizon,
-                "daily_avg": round(sum(v for v, _ in values) / len(values), 4),
-                "cheapest_hours": cheapest,
-                "hours": hours,
+                "start": start,
+                "end": end,
+                "value": round(settled[hour], 4),
+                "low": _opt_float(pred.predicted_low_sek_kwh) if pred else None,
+                "high": _opt_float(pred.predicted_high_sek_kwh) if pred else None,
+                "forecast": _opt_float(pred.predicted_sek_kwh) if pred else None,
             }
         )
+
+    ranked = sorted((value, hour) for hour, value in settled.items())
+    return {
+        "date": target_date.isoformat(),
+        "horizon_days": horizon_days,
+        "kind": "actual",
+        "daily_avg": round(sum(settled.values()) / len(settled), 4),
+        "cheapest_hours": sorted(hour for _, hour in ranked[:N_CHEAPEST_HOURS]),
+        "hours": hours,
+    }
+
+
+def _forecast_day(target_date: date, slots: list[ForecastAccuracy]) -> dict:
+    """A kind="forecast" day: value is the prediction (forecast repeats it until the day settles)."""
+    hours = []
+    for row in slots:
+        start, end = _slot_times(target_date, row.hour)
+        value = float(row.predicted_sek_kwh)
+        hours.append(
+            {
+                "start": start,
+                "end": end,
+                "value": value,
+                "low": _opt_float(row.predicted_low_sek_kwh),
+                "high": _opt_float(row.predicted_high_sek_kwh),
+                "forecast": value,
+            }
+        )
+
+    values = [(float(r.predicted_sek_kwh), r.hour) for r in slots]
+    return {
+        "date": target_date.isoformat(),
+        "horizon_days": min(_MODEL_HORIZONS[r.model_name] for r in slots),
+        "kind": "forecast",
+        "daily_avg": round(sum(v for v, _ in values) / len(values), 4),
+        "cheapest_hours": sorted(h for _, h in sorted(values)[:N_CHEAPEST_HOURS]),
+        "hours": hours,
+    }
+
+
+def build_forecast_export(db: Session, area: str = "SE3", today: date | None = None) -> dict:
+    """
+    Build the public v1 document for one bidding zone.
+
+    days[] runs from today through today+7. Today (and tomorrow, once the
+    ~13:00 CET Nord Pool publication has been fetched) is emitted as settled
+    actuals; every later day comes from the freshest stored prediction. Days
+    with neither settled prices nor predictions are omitted.
+    """
+    today = today or datetime.now(tz=STOCKHOLM).date()
+    predictions = _freshest_predictions(db, area, today, today + timedelta(days=7))
+
+    days = []
+    for offset in range(8):
+        target_date = today + timedelta(days=offset)
+        slots = predictions.get(target_date, [])
+        # Only today and tomorrow can be settled (day-ahead market).
+        settled = _settled_hours(db, area, target_date) if offset <= 1 else None
+
+        if settled is not None:
+            days.append(_settled_day(target_date, offset, settled, {r.hour: r for r in slots}))
+        elif slots:
+            days.append(_forecast_day(target_date, slots))
 
     return {
         "schema_version": SCHEMA_VERSION,

@@ -6,11 +6,13 @@ Static JSON files served from the Cloudflare CDN at `https://catch.unagieel.net`
 
 ```
 GET  /v1/index.json                        → area list + generation timestamp
-GET  /v1/forecast/{SE1|SE2|SE3|SE4}.json   → 7-day hourly forecast per zone
+GET  /v1/forecast/{SE1|SE2|SE3|SE4}.json   → today + 7 days ahead, hourly, per zone
 GET  /v1/archive/{YYYY-MM-DD}/{AREA}.json  → frozen daily snapshot (immutable)
 ```
 
-Each forecast file is self-describing: unit (SEK/kWh, excl. VAT/fees), timezone, per-hour `{start, end, value, low, high}` (80% interval), `cheapest_hours` per day, and a live `accuracy` block (28-day MAE incl. per-horizon breakdown, interval coverage). Within `/v1/`, fields are only ever added — breaking changes would go to `/v2/`.
+Each file covers today through d+7. Every day carries `kind`: settled days (`"actual"` — today, and tomorrow once Nord Pool publishes at ~13:00 CET) serve the real price in `value` with the model's prior prediction preserved in `forecast` (and its 80% interval in `low`/`high`), so forecast-vs-actual can be verified inside the file itself. Future days (`"forecast"`) serve the prediction in `value` (repeated in `forecast`). Select days by `date`/`kind`, never by array index. Settled hourly values are averages of the 15-minute settlement prices.
+
+Also per file: unit (SEK/kWh, excl. VAT/fees), timezone, `cheapest_hours` per day (ranked by settled prices once a day settles), and a live `accuracy` block (28-day MAE incl. per-horizon breakdown, interval coverage). Within `/v1/`, fields are only ever added — breaking changes would go to `/v2/`. The feed refreshes after the nightly prediction run (~02:20 CET) and again when tomorrow's prices settle (~14:30 CET).
 
 ---
 

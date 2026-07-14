@@ -564,6 +564,10 @@ def lambda_handler(event: dict, context) -> dict:
         all_results = []
         for area in areas:
             all_results.extend(fetch_dates([today, tomorrow], area))
+        # A late Nord Pool publication just landed ("ok" = fresh fetch, not
+        # "cached") — refresh the public feed so tomorrow serves as settled.
+        if any(r["status"] == "ok" for r in all_results):
+            all_results.extend(_publish_feed(archive=False))
         failed = [r for r in all_results if r["status"] == "error"]
         if failed:
             _send_pipeline_alert("price_retry", all_results)
@@ -646,11 +650,15 @@ def lambda_handler(event: dict, context) -> dict:
             hydro_results = backfill_hydro(hydro_days, area)
             all_results.extend(hydro_results)
 
-    failed = [r for r in all_results if r["status"] == "error"]
-
     # Record forecast predictions and fill yesterday's actuals for accuracy tracking.
     if is_daily_run:
         _record_forecasts_and_actuals(areas)
+        # Tomorrow's settled prices just landed (12:30 UTC fetch), and
+        # _fill_actuals refreshed the accuracy data — republish the feed so it
+        # serves settled values instead of stale forecasts. No new archive.
+        all_results.extend(_publish_feed(archive=False))
+
+    failed = [r for r in all_results if r["status"] == "error"]
 
     # Send push notifications for tomorrow's prices after the daily scheduled run.
     if is_daily_run:
@@ -857,6 +865,30 @@ def _check_generation_freshness() -> list[dict]:
     return issues
 
 
+def _publish_feed(archive: bool) -> list[dict]:
+    """
+    Rebuild and upload the public v1 feed (catch.unagieel.net).
+
+    No-op when R2 is not configured. Archive snapshots are immutable, so only
+    the nightly predict run passes archive=True; intraday refreshes (after the
+    12:30 UTC price fetch settles tomorrow) must not rewrite them.
+    Returns [] on success, or a one-element failure list for the caller's alerting.
+    """
+    db = SessionLocal()
+    try:
+        from app.services.forecast_export_service import publish_forecast_exports
+
+        published = publish_forecast_exports(db, archive=archive)
+        if published:
+            log.info("Published %d feed files to R2 (archive=%s)", len(published), archive)
+        return []
+    except Exception as exc:
+        log.warning("feed publish failed: %s", exc)
+        return [{"market": "feed publish", "status": "error", "error": str(exc)}]
+    finally:
+        db.close()
+
+
 def _record_predictions(areas: list[str], target_date: date | None = None) -> list[dict]:
     """
     Record predictions for both models (same_weekday_avg + lgbm).
@@ -920,17 +952,8 @@ def _record_predictions(areas: list[str], target_date: date | None = None) -> li
                 db.rollback()
 
         # Publish the public v1 feed (catch.unagieel.net) now that predictions
-        # are fresh. No-op unless R2 credentials are configured.
-        try:
-            from app.services.forecast_export_service import publish_forecast_exports
-
-            published = publish_forecast_exports(db)
-            if published:
-                log.info("Published %d feed files to R2", len(published))
-                results.append({"market": "feed publish", "status": "ok"})
-        except Exception as exc:
-            log.warning("feed publish failed: %s", exc)
-            failures.append({"market": "feed publish", "status": "error", "error": str(exc)})
+        # are fresh. This is the only run that writes archive snapshots.
+        failures.extend(_publish_feed(archive=True))
 
         if failures:
             _send_pipeline_alert("predict", results + failures)
