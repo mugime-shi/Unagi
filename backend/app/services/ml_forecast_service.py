@@ -481,16 +481,31 @@ def get_or_train_volatile_model(db: Session, target_date: date, area: str = "SE3
     return models
 
 
-def _active_bias_qhat(models: dict) -> tuple[np.ndarray | None, float]:
+def _bias_enabled_for(area: str) -> bool:
+    """Parse LGBM_BIAS_CORRECTION: '1'/'all' = every area, or a comma list of areas.
+
+    90-day A/B backtest (2026-07-14): the correction passes the adoption gate
+    in SE3/SE4 (all metrics improve or hold) but degrades calm-day MAE +6-7%
+    in SE1/SE2 (validation-window bias does not generalize to calm days in
+    the flat north), hence the per-area form: LGBM_BIAS_CORRECTION=SE3,SE4.
+    """
+    flag = os.environ.get("LGBM_BIAS_CORRECTION", "").strip()
+    if not flag:
+        return False
+    if flag in ("1", "all"):
+        return True
+    return area in {a.strip().upper() for a in flag.split(",")}
+
+
+def _active_bias_qhat(models: dict, area: str) -> tuple[np.ndarray | None, float]:
     """Resolve (per-row bias vector or None, q_hat to use) for a 24h prediction.
 
-    Honors LGBM_BIAS_CORRECTION=1 (read at call time so backtests can A/B the
-    flag against one trained cache, and production stays inert until the
-    Lambda env var is set). Model dicts without 'bias' (pre-v9 caches) are a
-    no-op regardless of the flag.
+    The flag is read at call time so backtests can A/B it against one trained
+    cache, and production stays inert until the Lambda env var is set. Model
+    dicts without 'bias' (pre-v9 caches) are a no-op regardless of the flag.
     """
     bias = models.get("bias")
-    if os.environ.get("LGBM_BIAS_CORRECTION") == "1" and bias and any(bias):
+    if _bias_enabled_for(area) and bias and any(bias):
         return np.array(bias), float(models.get("q_hat_bias", models.get("q_hat", 0.0)))
     return None, float(models.get("q_hat", 0.0))
 
@@ -521,7 +536,7 @@ def predict_with_model(
     point_model = models["point"]
     low_model = models.get("low")
     high_model = models.get("high")
-    bias, q_hat = _active_bias_qhat(models)
+    bias, q_hat = _active_bias_qhat(models, area)
 
     predictions = point_model.predict(X_pred)
     if bias is not None and len(predictions) == len(bias):

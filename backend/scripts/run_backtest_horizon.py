@@ -61,7 +61,7 @@ def _predict_with_model(models, db, target_date, area, price_overrides=None):
     point_model = models["point"]
     low_model = models.get("low")
     high_model = models.get("high")
-    bias, q_hat = _active_bias_qhat(models)  # honors LGBM_BIAS_CORRECTION
+    bias, q_hat = _active_bias_qhat(models, area)  # honors LGBM_BIAS_CORRECTION
 
     preds = point_model.predict(X)
     if bias is not None and len(preds) == len(bias):

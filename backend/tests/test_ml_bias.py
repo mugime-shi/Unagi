@@ -62,13 +62,13 @@ class TestActiveBiasQhat:
 
     def test_flag_off_is_noop(self, monkeypatch):
         monkeypatch.delenv("LGBM_BIAS_CORRECTION", raising=False)
-        bias, q_hat = _active_bias_qhat(self.MODELS)
+        bias, q_hat = _active_bias_qhat(self.MODELS, "SE4")
         assert bias is None
         assert q_hat == 0.2
 
     def test_flag_on_returns_bias_and_qhat_bias(self, monkeypatch):
         monkeypatch.setenv("LGBM_BIAS_CORRECTION", "1")
-        bias, q_hat = _active_bias_qhat(self.MODELS)
+        bias, q_hat = _active_bias_qhat(self.MODELS, "SE4")
         assert bias is not None
         assert list(bias) == [0.05] * 24
         assert q_hat == 0.18
@@ -76,19 +76,46 @@ class TestActiveBiasQhat:
     def test_flag_on_legacy_dict_without_bias(self, monkeypatch):
         """Pre-v9 cache dicts have no 'bias' → no-op even with the flag on."""
         monkeypatch.setenv("LGBM_BIAS_CORRECTION", "1")
-        bias, q_hat = _active_bias_qhat({"q_hat": 0.2})
+        bias, q_hat = _active_bias_qhat({"q_hat": 0.2}, "SE4")
         assert bias is None
         assert q_hat == 0.2
 
     def test_flag_on_all_zero_bias_is_noop(self, monkeypatch):
         """No-validation-set models store zeros → treated as absent."""
         monkeypatch.setenv("LGBM_BIAS_CORRECTION", "1")
-        bias, q_hat = _active_bias_qhat({"q_hat": 0.2, "bias": [0.0] * 24, "q_hat_bias": 0.0})
+        bias, q_hat = _active_bias_qhat({"q_hat": 0.2, "bias": [0.0] * 24, "q_hat_bias": 0.0}, "SE4")
         assert bias is None
         assert q_hat == 0.2
 
     def test_flag_on_missing_qhat_bias_falls_back(self, monkeypatch):
         monkeypatch.setenv("LGBM_BIAS_CORRECTION", "1")
-        bias, q_hat = _active_bias_qhat({"q_hat": 0.2, "bias": [0.05] * 24})
+        bias, q_hat = _active_bias_qhat({"q_hat": 0.2, "bias": [0.05] * 24}, "SE4")
         assert bias is not None
         assert q_hat == 0.2
+
+    def test_area_list_enables_only_listed_areas(self, monkeypatch):
+        """LGBM_BIAS_CORRECTION=SE3,SE4 applies to those areas only."""
+        monkeypatch.setenv("LGBM_BIAS_CORRECTION", "SE3,SE4")
+        for area, expect_on in [("SE1", False), ("SE2", False), ("SE3", True), ("SE4", True)]:
+            bias, q_hat = _active_bias_qhat(self.MODELS, area)
+            if expect_on:
+                assert bias is not None, area
+                assert q_hat == 0.18
+            else:
+                assert bias is None, area
+                assert q_hat == 0.2
+
+    def test_area_list_tolerates_spaces_and_case(self, monkeypatch):
+        monkeypatch.setenv("LGBM_BIAS_CORRECTION", " se3 , SE4 ")
+        bias, _ = _active_bias_qhat(self.MODELS, "SE3")
+        assert bias is not None
+
+    def test_all_keyword(self, monkeypatch):
+        monkeypatch.setenv("LGBM_BIAS_CORRECTION", "all")
+        bias, _ = _active_bias_qhat(self.MODELS, "SE1")
+        assert bias is not None
+
+    def test_empty_flag_is_off(self, monkeypatch):
+        monkeypatch.setenv("LGBM_BIAS_CORRECTION", "")
+        bias, _ = _active_bias_qhat(self.MODELS, "SE4")
+        assert bias is None
