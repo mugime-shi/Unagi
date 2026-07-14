@@ -54,6 +54,8 @@ def main() -> None:
             for path in written:
                 log.info("wrote %s", path)
             log.info("Exported %d files for %s", len(written), ", ".join(areas))
+    finally:
+        db.close()
 
 
 if __name__ == "__main__":
