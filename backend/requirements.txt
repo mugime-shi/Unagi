@@ -13,3 +13,4 @@ lightgbm>=4.0.0
 shap>=0.43.0
 holidays>=0.63
 astral>=3.2
+boto3>=1.35.0

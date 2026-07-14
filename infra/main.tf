@@ -10,6 +10,11 @@ terraform {
       source  = "hashicorp/archive"
       version = "~> 2.0"
     }
+    # cloudflare provider: R2 bucket + custom domain for the public feed
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 5.0"
+    }
   }
 
   # Local state is sufficient for a single-developer portfolio project.

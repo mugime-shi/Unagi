@@ -55,3 +55,28 @@ variable "api_key" {
   description = "API key for X-Unagi-Key header authentication"
   sensitive   = true
 }
+
+# ── Cloudflare (R2 public forecast feed — catch.unagieel.net) ────────────────
+
+variable "cloudflare_api_token" {
+  description = "Cloudflare API token for Terraform (Workers R2 Storage: Edit + Zone DNS: Edit on unagieel.net)"
+  sensitive   = true
+}
+
+variable "cloudflare_account_id" {
+  description = "Cloudflare account ID (dashboard sidebar)"
+}
+
+variable "cloudflare_zone_id" {
+  description = "Zone ID for unagieel.net"
+}
+
+variable "r2_access_key_id" {
+  description = "R2 API token access key (S3-compatible credentials for the Lambda uploader)"
+  sensitive   = true
+}
+
+variable "r2_secret_access_key" {
+  description = "R2 API token secret key"
+  sensitive   = true
+}

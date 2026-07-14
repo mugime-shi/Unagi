@@ -72,6 +72,12 @@ resource "aws_lambda_function" "scheduler" {
       # the (now-disabled) volatile specialist; reverting cuts the cold-retrain
       # read volume and Supabase egress. (2026-06-06)
       LGBM_TRAIN_DAYS     = "365"
+      # Public forecast feed (catch.unagieel.net) — uploaded via R2's
+      # S3-compatible API after each prediction run. Empty creds = disabled.
+      R2_ENDPOINT          = "https://${var.cloudflare_account_id}.r2.cloudflarestorage.com"
+      R2_BUCKET            = cloudflare_r2_bucket.catch.name
+      R2_ACCESS_KEY_ID     = var.r2_access_key_id
+      R2_SECRET_ACCESS_KEY = var.r2_secret_access_key
     }
   }
 
