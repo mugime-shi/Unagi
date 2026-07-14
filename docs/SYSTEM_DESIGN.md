@@ -23,11 +23,19 @@
 │                                                      │
 │  CloudWatch Alarms → SNS → alarm_handler Lambda      │
 │                           → Telegram failure alert    │
-└───┬──────────┬──────────┬──────────┬─────────────────┘
-    ▼          ▼          ▼          ▼
+└───┬──────────┬──────────┬──────────┬───────┬─────────┘
+    ▼          ▼          ▼          ▼       ▼
  ENTSO-E    SMHI       eSett    Riksbank    PostgreSQL
  (prices    (solar     (balance  (EUR/SEK)  (Supabase)
   + gen)    irrad.)    prices)
+                                             │ after each prediction run
+                                             ▼
+                              ┌────────────────────────────────┐
+                              │ Cloudflare R2 (S3-compatible)  │
+                              │ catch.unagieel.net (CDN)       │
+                              │ public v1 JSON feed:            │
+                              │  latest + daily frozen archive │
+                              └────────────────────────────────┘
 ```
 
 ## Key design decisions
@@ -63,6 +71,10 @@ Gradient boosting on tabular features outperforms deep learning for this data vo
 
 **Optuna tuning**: 100 trials with 4-fold walk-forward cross-validation. Walk-forward (not random k-fold) prevents future data leakage in time-series. Huber loss for robustness to price spikes.
 
+### Static JSON feed over a dynamic public API
+
+The public forecast feed (catch.unagieel.net) is a set of static files on Cloudflare R2, regenerated after each prediction run — not a served API. Forecasts only change a few times per day, so serving them dynamically would buy nothing and cost everything: every reader request would hit Lambda and read Supabase, and the 2026-06 egress incident showed how fast that burns the free tier. With static files behind the Cloudflare CDN, reader traffic never touches the origin stack (R2 egress is free), there is no auth surface, and bot storms are absorbed by the CDN. Archive snapshots are uploaded `immutable` — the feed doubles as a tamper-evident record of past forecasts. Schema contract: within `/v1/`, fields are only ever added; breaking changes require `/v2/`.
+
 ### Monitoring pipeline
 
 CloudWatch Alarms detect Lambda errors or missing data → SNS topic → dedicated alarm_handler Lambda → Telegram message. This avoids polling and provides sub-minute alerting.
@@ -91,12 +103,13 @@ CloudWatch Alarms detect Lambda errors or missing data → SNS topic → dedicat
 - **CloudWatch Alarms × 2**: error rate + missing data detection
 - **SNS**: alarm fan-out topic
 - **IAM**: least-privilege roles per Lambda
+- **Cloudflare R2**: `unagi-catch` bucket + custom domain `catch.unagieel.net` + CORS (public feed)
 
 ## CI/CD pipeline
 
 ```
 git push main
-  → pytest (214 tests, SQLite in-memory)
+  → pytest (222 tests, SQLite in-memory)
   → alembic migrate (Supabase)
   → Docker build --platform linux/arm64
   → ECR push (API + scheduler images)
@@ -106,7 +119,7 @@ git push main
 
 ## Cost
 
-Runs entirely on permanent free tiers (no 12-month expiry): Lambda, API Gateway, EventBridge, CloudWatch/SNS, Vercel, Supabase. All external data APIs (ENTSO-E, SMHI, eSett, Riksbank) are free.
+Runs entirely on permanent free tiers (no 12-month expiry): Lambda, API Gateway, EventBridge, CloudWatch/SNS, Vercel, Supabase, Cloudflare R2 (10 GB storage, free egress — the public feed stays free at any traffic volume). All external data APIs (ENTSO-E, SMHI, eSett, Riksbank) are free.
 
 ## ML performance
 

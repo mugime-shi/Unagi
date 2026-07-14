@@ -15,20 +15,32 @@ Unagi forecasts Swedish electricity spot prices up to 7 days ahead using machine
 - **Prediction accuracy on display** — MAE, prediction vs actual overlays, 80% confidence intervals with calibration tracking
 - **Generation mix** — hydro, wind, nuclear, solar breakdown with carbon intensity
 - **Cost simulators** — compare fixed vs dynamic contracts, estimate solar PV revenue
+- **Free JSON feed** — all forecasts as machine-readable files at [catch.unagieel.net](https://catch.unagieel.net/v1/index.json), no key required
 - **Light & dark themes** — marine blue by day, deep sea by night
 
 No account required. No ads. Source available.
 
 ## How accurate is it?
 
-Unagi publishes its forecast accuracy publicly — something [no other Swedish electricity tool does](https://unagieel.net).
+Unagi measures its own forecasts against reality and publishes the results live: MAE, 80% interval coverage, and per-horizon error over a rolling 28-day window — in the dashboard and inside every feed file. As of July 2026: d+1 MAE **0.19 SEK/kWh**, interval coverage 86% (target 80%). Every day's forecast is also frozen in a [public archive](https://catch.unagieel.net/v1/index.json), so past predictions can't be silently rewritten.
 
-| Model | MAE | vs Baseline |
-|-------|-----|-------------|
-| LightGBM (61 features, Huber loss) | **0.21 SEK/kWh** | 53% better than weekday average |
-| Weekday Average (baseline) | 0.48 SEK/kWh | — |
+The model (LightGBM, 61 features, Huber loss) is retrained daily on 365 days of data from ENTSO-E, SMHI, eSett, and Riksbank. Prediction intervals are calibrated using conformal quantile regression.
 
-The model is retrained daily on 365 days of data from ENTSO-E, SMHI, eSett, and Riksbank. Prediction intervals are calibrated using conformal quantile regression.
+## Public forecast feed
+
+Everything the dashboard shows is available as plain JSON — no account, no API key:
+
+```bash
+curl https://catch.unagieel.net/v1/forecast/SE3.json
+```
+
+| URL | Contents |
+|-----|----------|
+| `/v1/index.json` | Area list + latest generation time |
+| `/v1/forecast/{SE1..SE4}.json` | 7-day hourly forecast: point + 80% band, cheapest hours per day, live accuracy |
+| `/v1/archive/{YYYY-MM-DD}/{AREA}.json` | Frozen daily snapshots (audit trail) |
+
+Timestamps are ISO 8601 with Europe/Stockholm offsets; prices are SEK/kWh excl. VAT, grid fees and retailer markup. Free for personal, non-commercial use with attribution — see [LICENSE.md](LICENSE.md). Updated a few times daily after Nord Pool publication; cache-friendly (15 min).
 
 ## Data sources
 
@@ -56,6 +68,9 @@ React 19 (Vercel) → API Gateway → Lambda (FastAPI) → PostgreSQL (Supabase)
                                        ↑
                     EventBridge crons: price fetch, ML predictions, notifications
                     CloudWatch → SNS → Telegram alerts
+                                       │
+                                       └→ Cloudflare R2 → catch.unagieel.net
+                                          (public JSON feed, CDN-served)
 ```
 
 Full details: **[System Design](docs/SYSTEM_DESIGN.md)** · **[API Reference](docs/API.md)**

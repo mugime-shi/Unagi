@@ -1,5 +1,21 @@
 # API Reference
 
+## Public forecast feed (no key required)
+
+Static JSON files served from the Cloudflare CDN at `https://catch.unagieel.net`. CORS-enabled, cacheable (15 min). Free for personal, non-commercial use with attribution — see [LICENSE.md](../LICENSE.md).
+
+```
+GET  /v1/index.json                        → area list + generation timestamp
+GET  /v1/forecast/{SE1|SE2|SE3|SE4}.json   → 7-day hourly forecast per zone
+GET  /v1/archive/{YYYY-MM-DD}/{AREA}.json  → frozen daily snapshot (immutable)
+```
+
+Each forecast file is self-describing: unit (SEK/kWh, excl. VAT/fees), timezone, per-hour `{start, end, value, low, high}` (80% interval), `cheapest_hours` per day, and a live `accuracy` block (28-day MAE incl. per-horizon breakdown, interval coverage). Within `/v1/`, fields are only ever added — breaking changes would go to `/v2/`.
+
+---
+
+## Internal API
+
 22 endpoints across 5 routers. All responses are JSON. Swagger UI available in development mode (`DEBUG=true`).
 
 Authentication: `X-Unagi-Key` header required on all `/api/v1/*` endpoints.
