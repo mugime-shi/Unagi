@@ -22,7 +22,7 @@ No account required. No ads. Source available.
 
 ## How accurate is it?
 
-Unagi measures its own forecasts against reality and publishes the results live: MAE, 80% interval coverage, and per-horizon error over a rolling 28-day window — in the dashboard and inside every feed file. As of July 2026: d+1 MAE **0.19 SEK/kWh**; interval coverage is tracked live against its 80% target. Every day's forecast is also frozen in a [public archive](https://catch.unagieel.net/v1/index.json), so past predictions can't be silently rewritten.
+Unagi measures its own forecasts against reality and publishes the results live: MAE, 80% interval coverage, and per-horizon error over a rolling 28-day window — in the dashboard and inside every feed file. No figure is quoted here on purpose: a single accuracy number mostly reflects how volatile the last month was, so read the `accuracy` field and judge for yourself. Every day's forecast is also frozen in a [public archive](https://catch.unagieel.net/v1/index.json), so past predictions can't be silently rewritten.
 
 The model (LightGBM, 61 features, Huber loss) is retrained daily on 365 days of data from ENTSO-E, SMHI, eSett, and Riksbank. Prediction intervals are calibrated using conformal quantile regression.
 

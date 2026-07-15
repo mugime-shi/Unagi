@@ -125,11 +125,14 @@ Runs entirely on permanent free tiers (no 12-month expiry): Lambda, API Gateway,
 
 | Metric | Value |
 |---|---|
-| MAE improvement vs baseline | 58% (0.48 → 0.20 SEK/kWh) |
 | Features | 61 (calendar, lags, weather, generation, balancing, load, DE-LU, gas, hydro reservoir, holidays, solar) |
 | Training window | 365 days (full seasonal cycle) |
 | Tuning | Optuna 100 trials, 4-fold walk-forward CV |
-| Prediction intervals | Quantile regression (α=0.10/0.90) |
+| Prediction intervals | Conformal quantile regression, 80% target, per-area α override |
+
+No headline accuracy figure is quoted here on purpose. "% better than baseline" mostly measures how volatile the scoring window happened to be, not how good the model is: the same model scores +76% against a same-weekday-average baseline in a turbulent month and −8% in a calm one, because it is the baseline that swings, not the model. Live measured accuracy is published in the `accuracy` block of every [feed file](https://catch.unagieel.net/v1/forecast/SE3.json) and on the dashboard.
+
+The shape of the model's value, over 141 scored days (Feb–Jul 2026): on ordinary days it is roughly a coin flip against the naive baseline; on the days that baseline breaks down it wins ~90% of the time and roughly halves the error. It is insurance against irregular days, not a uniform improvement. `./unagi report` reproduces the regime split, the cheapest-hours capture rate, and interval coverage per area.
 
 ## Project structure
 
