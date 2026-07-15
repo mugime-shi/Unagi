@@ -72,6 +72,13 @@ resource "aws_lambda_function" "scheduler" {
       # the (now-disabled) volatile specialist; reverting cuts the cold-retrain
       # read volume and Supabase egress. (2026-06-06)
       LGBM_TRAIN_DAYS     = "365"
+      # Hourly bias correction + SE4 interval recalibration (2026-07-15).
+      # Adopted from a 90-day A/B backtest: SE3/SE4 improve on all three gate
+      # metrics (regime-split MAE, capture rate, coverage); SE1/SE2 excluded
+      # (calm-day MAE regressed +6-7%). Inference-only flags — rollback by
+      # removing them. Scheduler Lambda ONLY; never set these on the API Lambda.
+      LGBM_BIAS_CORRECTION = "SE3,SE4"
+      LGBM_CQR_ALPHA       = "SE4:0.17"
       # Public forecast feed (catch.unagieel.net) — uploaded via R2's
       # S3-compatible API after each prediction run. Empty creds = disabled.
       R2_ENDPOINT          = "https://${var.cloudflare_account_id}.r2.cloudflarestorage.com"
