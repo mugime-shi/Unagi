@@ -146,8 +146,12 @@ def _compute_shap_explanations(point_model, X_pred: np.ndarray, top_n: int = 5) 
 
 
 def _cache_key(area: str, target_date: date, variant: str = "A") -> str:
-    """Deterministic key from area + target_date + train_days + variant."""
-    raw = f"{area}:{target_date.isoformat()}:{_TRAIN_DAYS}:v8-cqr30:{variant}"
+    """Deterministic key from area + target_date + train_days + variant.
+
+    Bump the version token whenever the cached model-dict schema changes,
+    otherwise stale pickles from /tmp/unagi_lgbm are served with the old shape.
+    """
+    raw = f"{area}:{target_date.isoformat()}:{_TRAIN_DAYS}:v10-scores:{variant}"
     return hashlib.md5(raw.encode()).hexdigest()[:12]
 
 
@@ -199,6 +203,33 @@ _BASE_LGBM_PARAMS = {
 }
 
 
+def _hourly_bias(
+    y_val: np.ndarray,
+    val_preds: np.ndarray,
+    hours: np.ndarray,
+    *,
+    shrink_k: float = 10.0,
+    clip: float = 0.15,
+) -> list[float]:
+    """Per-hour-of-day mean residual (actual - predicted), shrunk and clipped.
+
+    Estimated on the held-out validation split (~30 samples per hour of day).
+    The n/(n+shrink_k) shrinkage pulls thin or noisy estimates toward 0, so
+    areas without a systematic bias are left essentially untouched; the clip
+    bounds the correction when the validation window is turbulent.
+    """
+    bias = [0.0] * 24
+    residuals = y_val - val_preds
+    for h in range(24):
+        mask = hours == h
+        n = int(mask.sum())
+        if n == 0:
+            continue
+        shrunk = float(residuals[mask].mean()) * n / (n + shrink_k)
+        bias[h] = round(max(-clip, min(clip, shrunk)), 4)
+    return bias
+
+
 def _fit_quantile_set(
     X_train: np.ndarray,
     y_train: np.ndarray,
@@ -210,7 +241,10 @@ def _fit_quantile_set(
 ) -> dict:
     """Train point + low/high quantile models with shared base params and CQR.
 
-    Returns {'point', 'low', 'high', 'q_hat'} ready for predict_with_model().
+    Returns {'point', 'low', 'high', 'q_hat', 'bias', 'q_hat_bias'} ready for
+    predict_with_model(). bias / q_hat_bias are always computed and stored;
+    they are only APPLIED at inference when LGBM_BIAS_CORRECTION=1, so one
+    trained cache serves both flag states.
     """
     import lightgbm as lgb
 
@@ -243,11 +277,37 @@ def _fit_quantile_set(
         quantile_level = min(1.0, (1 - 0.20) * (1 + 1 / n))
         q_hat = float(np.quantile(scores, quantile_level))
         logger.info("CQR calibration (%s): q_hat=%.4f (n=%d val samples)", log_label, q_hat, n)
+
+        # Hourly bias correction (applied only when LGBM_BIAS_CORRECTION=1),
+        # plus a conformal q_hat recomputed against the bias-shifted interval
+        # so coverage stays calibrated when the whole distribution is shifted.
+        hours = X_val[:, FEATURE_COLS.index("hour")]
+        bias = _hourly_bias(y_val, point_model.predict(X_val), hours)
+        row_bias = np.array([bias[int(h)] if not np.isnan(h) else 0.0 for h in hours])
+        scores_bias = np.maximum((val_low + row_bias) - y_val, y_val - (val_high + row_bias))
+        q_hat_bias = float(np.quantile(scores_bias, quantile_level))
+        logger.info(
+            "Hourly bias (%s): mean=%.4f max=|%.4f|, q_hat_bias=%.4f",
+            log_label, float(np.mean(bias)), float(np.max(np.abs(bias))), q_hat_bias,
+        )
     else:
         q_hat = 0.0
+        bias = [0.0] * 24
+        q_hat_bias = 0.0
         logger.warning("%s: no validation set — skipping CQR calibration", log_label)
 
-    return {"point": point_model, "low": low_model, "high": high_model, "q_hat": q_hat}
+    return {
+        "point": point_model,
+        "low": low_model,
+        "high": high_model,
+        "q_hat": q_hat,
+        "bias": bias,
+        "q_hat_bias": q_hat_bias,
+        # Raw conformal scores so LGBM_CQR_ALPHA can re-quantile per area at
+        # inference without retraining (~720 floats, negligible pickle cost).
+        "cqr_scores": scores.tolist() if len(X_val) > 0 else [],
+        "cqr_scores_bias": scores_bias.tolist() if len(X_val) > 0 else [],
+    }
 
 
 def _rows_to_xy(rows: list[dict]) -> tuple[np.ndarray, np.ndarray]:
@@ -425,6 +485,68 @@ def get_or_train_volatile_model(db: Session, target_date: date, area: str = "SE3
     return models
 
 
+def _bias_enabled_for(area: str) -> bool:
+    """Parse LGBM_BIAS_CORRECTION: '1'/'all' = every area, or a comma list of areas.
+
+    90-day A/B backtest (2026-07-14): the correction passes the adoption gate
+    in SE3/SE4 (all metrics improve or hold) but degrades calm-day MAE +6-7%
+    in SE1/SE2 (validation-window bias does not generalize to calm days in
+    the flat north), hence the per-area form: LGBM_BIAS_CORRECTION=SE3,SE4.
+    """
+    flag = os.environ.get("LGBM_BIAS_CORRECTION", "").strip()
+    if not flag:
+        return False
+    if flag in ("1", "all"):
+        return True
+    return area in {a.strip().upper() for a in flag.split(",")}
+
+
+def _area_cqr_alpha(area: str) -> float | None:
+    """Parse LGBM_CQR_ALPHA ('SE4:0.16' or 'SE4:0.16,SE3:0.18') for this area.
+
+    Overrides the default 0.20 miscoverage (80% interval) per area, re-quantiled
+    at inference from the stored conformal scores — no retraining needed.
+    """
+    flag = os.environ.get("LGBM_CQR_ALPHA", "").strip()
+    if not flag:
+        return None
+    for part in flag.split(","):
+        name, sep, value = part.partition(":")
+        if sep and name.strip().upper() == area:
+            try:
+                alpha = float(value)
+            except ValueError:
+                return None
+            return alpha if 0.0 < alpha < 1.0 else None
+    return None
+
+
+def _active_bias_qhat(models: dict, area: str) -> tuple[np.ndarray | None, float]:
+    """Resolve (per-row bias vector or None, q_hat to use) for a 24h prediction.
+
+    Both flags are read at call time so backtests can A/B them against one
+    trained cache, and production stays inert until the Lambda env vars are
+    set. Model dicts without 'bias'/'cqr_scores' (pre-v10 caches) are a no-op
+    regardless of the flags.
+    """
+    bias = models.get("bias")
+    bias_active = _bias_enabled_for(area) and bias and any(bias)
+    if bias_active:
+        q_hat = float(models.get("q_hat_bias", models.get("q_hat", 0.0)))
+    else:
+        q_hat = float(models.get("q_hat", 0.0))
+
+    alpha = _area_cqr_alpha(area)
+    if alpha is not None:
+        scores = models.get("cqr_scores_bias" if bias_active else "cqr_scores")
+        if scores:
+            n = len(scores)
+            quantile_level = min(1.0, (1 - alpha) * (1 + 1 / n))
+            q_hat = float(np.quantile(np.array(scores), quantile_level))
+
+    return (np.array(bias) if bias_active else None), q_hat
+
+
 def predict_with_model(
     models: dict,
     db: Session,
@@ -451,13 +573,18 @@ def predict_with_model(
     point_model = models["point"]
     low_model = models.get("low")
     high_model = models.get("high")
-    q_hat = models.get("q_hat", 0.0)
+    bias, q_hat = _active_bias_qhat(models, area)
 
     predictions = point_model.predict(X_pred)
+    if bias is not None and len(predictions) == len(bias):
+        predictions = predictions + bias  # slot index == hour of day
 
     if low_model is not None and high_model is not None:
         low_preds = low_model.predict(X_pred) - q_hat
         high_preds = high_model.predict(X_pred) + q_hat
+        if bias is not None and len(low_preds) == len(bias):
+            low_preds = low_preds + bias
+            high_preds = high_preds + bias
     else:
         low_preds = predictions - 0.10
         high_preds = predictions + 0.10

@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 from app.db.database import SessionLocal
 from app.services.backtest_service import fill_actuals, record_predictions
 from app.services.feature_service import FEATURE_COLS, build_feature_matrix
-from app.services.ml_forecast_service import _train_model
+from app.services.ml_forecast_service import _active_bias_qhat, _train_model
 
 logging.basicConfig(
     level=logging.INFO,
@@ -61,13 +61,18 @@ def _predict_with_model(models, db, target_date, area, price_overrides=None):
     point_model = models["point"]
     low_model = models.get("low")
     high_model = models.get("high")
-    q_hat = models.get("q_hat", 0.0)
+    bias, q_hat = _active_bias_qhat(models, area)  # honors LGBM_BIAS_CORRECTION
 
     preds = point_model.predict(X)
+    if bias is not None and len(preds) == len(bias):
+        preds = preds + bias
 
     if low_model is not None and high_model is not None:
         low_preds = low_model.predict(X) - q_hat
         high_preds = high_model.predict(X) + q_hat
+        if bias is not None and len(low_preds) == len(bias):
+            low_preds = low_preds + bias
+            high_preds = high_preds + bias
     else:
         low_preds = preds - 0.10
         high_preds = preds + 0.10

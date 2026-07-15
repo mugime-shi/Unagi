@@ -10,6 +10,8 @@ TRIALS=100
 HORIZON=3
 TRAIN_DAYS=270
 OUT=./export_out
+MODEL=lgbm
+THRESHOLD=0.35
 
 parse_flags() {
     while [[ $# -gt 0 ]]; do
@@ -21,6 +23,8 @@ parse_flags() {
             --horizon)    HORIZON="$2";    shift 2 ;;
             --train-days) TRAIN_DAYS="$2"; shift 2 ;;
             --out)        OUT="$2";        shift 2 ;;
+            --model)      MODEL="$2";      shift 2 ;;
+            --threshold)  THRESHOLD="$2";  shift 2 ;;
             *) echo "Unknown flag: $1" >&2; exit 1 ;;
         esac
     done
@@ -70,6 +74,11 @@ cmd_backfill_hydro() {
 cmd_backtest() {
     parse_flags "$@"
     python -m scripts.run_backtest --days "$DAYS" --area "$AREA"
+}
+
+cmd_report() {
+    parse_flags "$@"
+    python -m scripts.eval_report --days "$DAYS" --area "$AREA" --model "$MODEL" --threshold "$THRESHOLD"
 }
 
 cmd_tune() {
@@ -168,6 +177,8 @@ Data:
 
 ML:
   backtest [--days N] [--area]  LightGBM vs baseline comparison
+  report [--days N] [--area A|all] [--model M] [--threshold T]
+                                Regime-split MAE / capture rate / coverage report
   backtest-horizon [--days N] [--horizon H] [--train-days T]
                                 Multi-horizon backtest (d+1..d+H, recursive)
   ablation-gas [--days N]       Gas feature ON/OFF comparison (A/B test)
@@ -191,6 +202,8 @@ Flags:
   --date D      Target date YYYY-MM-DD (lambda-predict only)
   --horizon H   Max forecast horizon (default: 3, backtest-horizon only)
   --train-days T Training window days (default: 270, backtest-horizon only)
+  --model M     Model name for report (default: lgbm)
+  --threshold T Volatile-day threshold, baseline daily MAE (default: 0.35, report only)
 EOF
 }
 
@@ -208,6 +221,7 @@ case "$command" in
     backfill-bal)   cmd_backfill_bal "$@" ;;
     backfill-hydro) cmd_backfill_hydro "$@" ;;
     backtest)       cmd_backtest "$@" ;;
+    report)         cmd_report "$@" ;;
     backtest-horizon) cmd_backtest_horizon "$@" ;;
     ablation-gas)   cmd_ablation_gas "$@" ;;
     sweep)          cmd_sweep "$@" ;;

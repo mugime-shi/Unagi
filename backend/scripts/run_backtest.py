@@ -149,6 +149,15 @@ def main():
         print(f"  Winner: {best} (MAE {improvement:.1f}% lower)")
 
     print("=" * 65)
+
+    # Product-level metrics: regime-split MAE / capture rate / coverage
+    from scripts.eval_report import print_report
+
+    db = SessionLocal()
+    try:
+        print_report(db, args.area, args.days + 10, model="lgbm", threshold=0.35)
+    finally:
+        db.close()
     return 0
 
 
