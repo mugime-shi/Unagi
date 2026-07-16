@@ -1,4 +1,5 @@
 import time
+from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated
 from zoneinfo import ZoneInfo
@@ -27,8 +28,10 @@ from app.services.price_service import (
     build_forecast,
     find_cheapest_window,
     get_or_fetch_prices,
+    get_prices_for_date,
     get_prices_for_date_range,
 )
+from app.utils.timezone import stockholm_day_range_utc
 
 router = APIRouter(prefix="/prices", tags=["prices"])
 
@@ -605,6 +608,58 @@ def get_forecast_retrospective(
     return response
 
 
+def _published_hourly_slots(db: Session, target_date: date, area: str) -> list[dict] | None:
+    """
+    Hourly Stockholm-time averages of published spot prices for target_date.
+
+    Day-ahead prices for d+1 are published ~13:00 CET, hours after the 00:20 UTC
+    forecast cron runs, so the model prediction for tomorrow is superseded by fact
+    for most of the day. Read spot_prices directly rather than filling
+    forecast_accuracy.actual_sek_kwh — that column is the ML evaluation ground
+    truth and is write-once, so priming it from a still-incomplete day would lock
+    in a partial average permanently.
+
+    Returns None unless the day is fully published; a partial day would average
+    to a misleading daily figure. DST days legitimately have 23 or 25 hours.
+    """
+    rows = get_prices_for_date(db, target_date, area)
+    if not rows:
+        return None
+
+    by_hour: dict[int, list[float]] = defaultdict(list)
+    for r in rows:
+        if r.price_sek_kwh is None:
+            continue
+        ts = r.timestamp_utc
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        by_hour[ts.astimezone(_STOCKHOLM).hour].append(float(r.price_sek_kwh))
+
+    # Completeness is measured in distinct Stockholm hour labels, not elapsed
+    # hours: on the October fall-back day 02:00 occurs twice and both
+    # occurrences bucket into hour 2 (matching backtest_service.fill_actuals),
+    # so a full 25-hour day still yields 24 labels. March's spring-forward day
+    # yields 23 — hour 2 never happens.
+    start, end = stockholm_day_range_utc(target_date)
+    expected_hours = set()
+    cursor = start
+    while cursor < end:
+        expected_hours.add(cursor.astimezone(_STOCKHOLM).hour)
+        cursor += timedelta(hours=1)
+    if set(by_hour) != expected_hours:
+        return None
+
+    return [
+        {
+            "hour": hour,
+            "avg_sek_kwh": round(sum(prices) / len(prices), 4),
+            "low_sek_kwh": None,
+            "high_sek_kwh": None,
+        }
+        for hour, prices in sorted(by_hour.items())
+    ]
+
+
 @router.get("/forecast/weekly")
 def get_weekly_forecast(
     db: DbDep,
@@ -616,6 +671,9 @@ def get_weekly_forecast(
     Returns d+1 through d+7 predictions with daily averages, hourly slots,
     and a classification relative to the 30-day rolling average.
     Classification confidence is based on distance from threshold boundaries.
+
+    Once a day's day-ahead prices are published it is served as settled fact
+    (`is_actual: true`, no confidence) instead of the model prediction.
     """
     if area not in VALID_AREAS:
         raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
@@ -693,7 +751,9 @@ def get_weekly_forecast(
     days_response = []
     for tdate in sorted(days_data.keys()):
         dd = days_data[tdate]
-        slots = sorted(dd["slots"], key=lambda s: s["hour"])
+        published = _published_hourly_slots(db, tdate, area)
+        is_actual = published is not None
+        slots = published if is_actual else sorted(dd["slots"], key=lambda s: s["hour"])
         valid_prices = [s["avg_sek_kwh"] for s in slots if s.get("avg_sek_kwh") is not None]
 
         if not valid_prices:
@@ -731,12 +791,14 @@ def get_weekly_forecast(
                 "date": tdate.isoformat(),
                 "weekday": tdate.strftime("%A"),
                 "horizon": dd["horizon"],
-                "model": dd["model"],
+                "model": "actual" if is_actual else dd["model"],
+                "is_actual": is_actual,
                 "daily_avg": round(daily_avg, 4),
                 "daily_low": round(daily_low, 4),
                 "daily_high": round(daily_high, 4),
                 "classification": classification,
-                "confidence": round(confidence, 2),
+                # A settled day has no uncertainty left to report.
+                "confidence": None if is_actual else round(confidence, 2),
                 "slots": slots,
             }
         )
