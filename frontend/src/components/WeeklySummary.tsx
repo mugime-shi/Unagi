@@ -40,8 +40,16 @@ const SHORT_WEEKDAYS: Record<string, string> = {
   Sunday: "Sun",
 };
 
+const AREAS: Area[] = ["SE1", "SE2", "SE3", "SE4"];
+
 interface WeeklySummaryProps {
   area?: Area;
+  /**
+   * When provided, renders an SE1–SE4 selector in the header and calls this on
+   * change. Omit it (e.g. the Tomorrow tab, which has its own area control) to
+   * hide the selector.
+   */
+  onAreaChange?: (area: Area) => void;
   data: WeeklyClassifiedResponse | null;
   loading: boolean;
   onDateSelect?: (date: string) => void;
@@ -53,58 +61,88 @@ interface WeeklySummaryProps {
 }
 
 export function WeeklySummary({
+  area,
+  onAreaChange,
   data,
   loading,
   onDateSelect,
   includeTomorrow = false,
 }: WeeklySummaryProps) {
-  if (loading) {
-    return (
-      <div className="no-scrollbar flex gap-2 overflow-x-auto snap-x snap-mandatory pb-2 sm:grid sm:grid-cols-7 sm:gap-1.5 sm:overflow-visible sm:pb-0">
-        {Array.from({ length: 7 }).map((_, i) => (
-          <div
-            key={i}
-            className="min-w-[5.5rem] sm:min-w-0 h-28 rounded-xl border border-surface-tertiary/30 bg-surface-primary/30 animate-pulse"
-          />
-        ))}
-      </div>
-    );
-  }
+  const refAvg = data?.reference_avg_30d ?? null;
 
-  if (!data?.days?.length) return null;
-
-  const refAvg = data.reference_avg_30d;
-
-  return (
-    <div className="space-y-2">
-      {/* Header with color legend */}
-      <div className="flex items-center justify-between flex-wrap gap-1">
+  // Header stays mounted across states so the area pills don't flicker while a
+  // switch is loading (the hook keeps loading=true until the new area arrives).
+  const header = (
+    <div className="flex items-center justify-between flex-wrap gap-1">
+      <div className="flex items-center gap-2 flex-wrap">
         <h3 className="text-sm font-medium text-content-secondary">
           Weekly forecast{" "}
           <span className="text-xs font-normal text-content-faint">
             · daily avg
           </span>
         </h3>
-        <div className="flex items-center gap-3 text-xs text-content-muted">
-          <span className="flex items-center gap-1">
-            <span className="inline-block w-2 h-2 rounded-full bg-cyan-400" />
-            Cheap
+        {onAreaChange && area && (
+          <div className="flex gap-1" role="group" aria-label="Forecast area">
+            {AREAS.map((a) => (
+              <button
+                key={a}
+                onClick={() => onAreaChange(a)}
+                aria-pressed={a === area}
+                className={`px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
+                  a === area
+                    ? "bg-sky-600 text-white"
+                    : "bg-surface-secondary text-content-secondary hover:bg-surface-tertiary"
+                }`}
+              >
+                {a}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="flex items-center gap-3 text-xs text-content-muted">
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-2 h-2 rounded-full bg-cyan-400" />
+          Cheap
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-2 h-2 rounded-full bg-gray-400" />
+          Normal
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-2 h-2 rounded-full bg-orange-400" />
+          Expensive
+        </span>
+        {refAvg && (
+          <span className="hidden sm:inline text-content-faint">
+            vs 30d avg {formatPrice(refAvg)}
           </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block w-2 h-2 rounded-full bg-gray-400" />
-            Normal
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block w-2 h-2 rounded-full bg-orange-400" />
-            Expensive
-          </span>
-          {refAvg && (
-            <span className="hidden sm:inline text-content-faint">
-              vs 30d avg {formatPrice(refAvg)}
-            </span>
-          )}
+        )}
+      </div>
+    </div>
+  );
+
+  if (loading) {
+    return (
+      <div className="space-y-2">
+        {header}
+        <div className="no-scrollbar flex gap-2 overflow-x-auto snap-x snap-mandatory pb-2 sm:grid sm:grid-cols-7 sm:gap-1.5 sm:overflow-visible sm:pb-0">
+          {Array.from({ length: 7 }).map((_, i) => (
+            <div
+              key={i}
+              className="min-w-[5.5rem] sm:min-w-0 h-28 rounded-xl border border-surface-tertiary/30 bg-surface-primary/30 animate-pulse"
+            />
+          ))}
         </div>
       </div>
+    );
+  }
+
+  if (!data?.days?.length) return null;
+
+  return (
+    <div className="space-y-2">
+      {header}
 
       {/* Cards — skip tomorrow unless includeTomorrow (it's shown in the
           Tomorrow tab's main chart, but not on Overview) */}
@@ -128,7 +166,20 @@ export function WeeklySummary({
               day: "numeric",
               month: "short",
             });
-            const conf = Math.round(day.confidence * 100);
+            // Qualitative confidence in the cheap/normal/expensive *call* — not
+            // a probability the price lands on daily_avg. The underlying score
+            // is distance-from-classification-boundary (0.5 at the edge → 1.0
+            // deep in a bucket), so we show tiers, not a spurious percentage
+            // that saturates to "100% likely" on extreme days. A calibrated
+            // probability from forecast history is the planned replacement.
+            const confTier =
+              day.confidence === null
+                ? null
+                : day.confidence >= 0.8
+                  ? "High"
+                  : day.confidence >= 0.65
+                    ? "Med"
+                    : "Low";
 
             return (
               <div
@@ -152,9 +203,22 @@ export function WeeklySummary({
                     {Math.abs(pctDiff)}%
                   </p>
                 )}
-                <p className="text-xs text-content-faint mt-1">
-                  {conf}% likely
-                </p>
+                {day.is_actual ? (
+                  <p className="mt-1">
+                    <span className="inline-block rounded px-1.5 py-px text-[10px] font-medium uppercase tracking-wide border border-current/30 text-content-secondary">
+                      Actual
+                    </span>
+                  </p>
+                ) : (
+                  confTier !== null && (
+                    <p
+                      className="text-xs text-content-faint mt-1"
+                      title="Confidence in the cheap / normal / expensive call — not the probability the price hits this figure."
+                    >
+                      {confTier} conf.
+                    </p>
+                  )
+                )}
               </div>
             );
           })}

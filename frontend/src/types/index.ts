@@ -159,11 +159,14 @@ export interface WeeklyDayClassified {
   weekday: string;
   horizon: number;
   model: string;
+  /** Day-ahead prices are published; daily_avg is settled fact, not a prediction. */
+  is_actual: boolean;
   daily_avg: number;
   daily_low: number;
   daily_high: number;
   classification: "cheap" | "normal" | "expensive";
-  confidence: number;
+  /** Null once is_actual — a settled day has no uncertainty left to report. */
+  confidence: number | null;
   slots: ForecastSlot[];
 }
 
