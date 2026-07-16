@@ -684,6 +684,12 @@ def _fetch_weather() -> dict:
 
         from app.services.smhi_client import fetch_weather_slots, store_weather_slots
 
+        from app.services.openmeteo_client import (
+            fetch_recent_weather,
+            local_weather_areas,
+            store_weather_actuals,
+        )
+
         cutoff = datetime.now(timezone.utc) - timedelta(days=7)
         last_error = None
 
@@ -692,6 +698,9 @@ def _fetch_weather() -> dict:
                 slots = fetch_weather_slots()  # fetches latest-months from SMHI
                 recent = [s for s in slots if s.timestamp_utc >= cutoff]
                 count = store_weather_slots(db, recent)
+                # Local per-area actuals (Open-Meteo) for areas beyond SE3
+                for area in local_weather_areas():
+                    count += store_weather_actuals(db, fetch_recent_weather(area), area)
                 log.info("OK   weather — %d rows stored/updated (attempt %d)", count, attempt)
                 return {"market": "weather", "status": "ok", "rows": count}
             except Exception as exc:
@@ -715,16 +724,29 @@ def _fetch_weather() -> dict:
 
 
 def _fetch_weather_forecast() -> dict:
-    """Fetch weather forecast from Open-Meteo for ML features."""
+    """
+    Fetch weather forecast from Open-Meteo for ML features.
+
+    Always fetches SE3 (the historical single point). Extra areas come from
+    the LOCAL_WEATHER_AREAS env var (scheduler-only, e.g. "SE1,SE2") — unset
+    means single-point behaviour, unchanged.
+    """
     db = SessionLocal()
     try:
         from app.services.openmeteo_client import fetch_and_store as openmeteo_fetch_and_store
+        from app.services.openmeteo_client import local_weather_areas
 
+        areas = ["SE3"] + local_weather_areas()
         last_error = None
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                count = openmeteo_fetch_and_store(db, forecast_days=2)
-                log.info("OK   weather forecast — %d rows stored (attempt %d)", count, attempt)
+                count = sum(openmeteo_fetch_and_store(db, forecast_days=2, area=a) for a in areas)
+                log.info(
+                    "OK   weather forecast — %d rows stored, areas=%s (attempt %d)",
+                    count,
+                    ",".join(areas),
+                    attempt,
+                )
                 return {"market": "weather_forecast", "status": "ok", "rows": count}
             except Exception as exc:
                 last_error = exc

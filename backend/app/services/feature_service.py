@@ -277,23 +277,34 @@ def _load_hourly_weather(
     db: Session,
     start_date: date,
     end_date: date,
+    area: str = "SE3",
 ) -> dict[tuple[date, int], dict[str, float]]:
     """
     Load weather data and bucket into (stockholm_date, stockholm_hour).
     Returns {(date, hour): {"temperature_c": float, "radiation_wm2": float}}.
+
+    Falls back to SE3 (Göteborg, the historical single point) when the area
+    has no local weather rows in the range — behaviour is unchanged for
+    areas that were never backfilled.
     """
     range_start, _ = _cet_window(start_date)
     _, range_end = _cet_window(end_date)
 
-    rows = (
-        db.query(WeatherData)
-        .filter(
-            WeatherData.timestamp_utc >= range_start,
-            WeatherData.timestamp_utc < range_end,
+    def _query(a: str) -> list[WeatherData]:
+        return (
+            db.query(WeatherData)
+            .filter(
+                WeatherData.area == a,
+                WeatherData.timestamp_utc >= range_start,
+                WeatherData.timestamp_utc < range_end,
+            )
+            .order_by(WeatherData.timestamp_utc)
+            .all()
         )
-        .order_by(WeatherData.timestamp_utc)
-        .all()
-    )
+
+    rows = _query(area)
+    if not rows and area != "SE3":
+        rows = _query("SE3")
 
     result: dict[tuple[date, int], dict[str, float]] = {}
     for r in rows:
@@ -388,13 +399,16 @@ def _load_hourly_balancing_pylocal(
 def _load_hourly_forecast(
     db: Session,
     target_date: date,
+    area: str = "SE3",
 ) -> dict[int, dict[str, float]]:
     """
     Load weather forecast for target_date, keyed by hour.
     Returns {hour: {"wind_speed_10m": float, "wind_speed_100m": float,
                      "temp_forecast": float, "radiation_forecast": float}}.
 
-    Uses weather_forecast table (forecast-as-issued) when available.
+    Uses weather_forecast table (forecast-as-issued) when available,
+    preferring the area's local forecast and falling back to SE3 (Göteborg,
+    the historical single point) for dates without local rows.
     Falls back to weather_data actuals for historical dates where no
     forecast was stored (enables backtesting before forecast collection started).
     """
@@ -404,15 +418,22 @@ def _load_hourly_forecast(
     # Try forecast table first (issued on target_date - 1, which is when
     # the morning prediction would have fetched it)
     issued = target_date - timedelta(days=1)
-    forecast_rows = (
-        db.query(WeatherForecast)
-        .filter(
-            WeatherForecast.issued_date == issued,
-            WeatherForecast.target_utc >= range_start,
-            WeatherForecast.target_utc < range_end,
+
+    def _query(a: str) -> list[WeatherForecast]:
+        return (
+            db.query(WeatherForecast)
+            .filter(
+                WeatherForecast.area == a,
+                WeatherForecast.issued_date == issued,
+                WeatherForecast.target_utc >= range_start,
+                WeatherForecast.target_utc < range_end,
+            )
+            .all()
         )
-        .all()
-    )
+
+    forecast_rows = _query(area)
+    if not forecast_rows and area != "SE3":
+        forecast_rows = _query("SE3")
 
     if forecast_rows:
         result: dict[int, dict[str, float]] = {}
@@ -431,14 +452,20 @@ def _load_hourly_forecast(
         return result
 
     # Fallback: use actual weather data as pseudo-forecast (for backtest)
-    weather_rows = (
-        db.query(WeatherData)
-        .filter(
-            WeatherData.timestamp_utc >= range_start,
-            WeatherData.timestamp_utc < range_end,
+    def _query_actuals(a: str) -> list[WeatherData]:
+        return (
+            db.query(WeatherData)
+            .filter(
+                WeatherData.area == a,
+                WeatherData.timestamp_utc >= range_start,
+                WeatherData.timestamp_utc < range_end,
+            )
+            .all()
         )
-        .all()
-    )
+
+    weather_rows = _query_actuals(area)
+    if not weather_rows and area != "SE3":
+        weather_rows = _query_actuals("SE3")
     result = {}
     for r in weather_rows:
         local = _ensure_utc(r.timestamp_utc).astimezone(_STOCKHOLM)
@@ -711,7 +738,7 @@ def build_feature_matrix(
     if price_overrides:
         prices.update(price_overrides)
     gen = _load_hourly_generation(db, hist_start, end_date, area)
-    weather = _load_hourly_weather(db, hist_start, end_date)
+    weather = _load_hourly_weather(db, hist_start, end_date, area)
     balancing = _load_hourly_balancing(db, hist_start, end_date, area)
     load_fc = _load_hourly_load_forecast(db, hist_start, end_date, area)
     gas_prices = _load_gas_prices(db, hist_start, end_date)
@@ -779,7 +806,7 @@ def build_feature_matrix(
     while current <= end_date:
         # Load forecast for this date (lazy, cached per date)
         if current not in forecast_cache:
-            forecast_cache[current] = _load_hourly_forecast(db, current)
+            forecast_cache[current] = _load_hourly_forecast(db, current, area)
         forecast_day = forecast_cache[current]
 
         # Pre-compute per-day holiday + solar daylight features

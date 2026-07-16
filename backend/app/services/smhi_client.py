@@ -140,6 +140,7 @@ def store_weather_slots(
     rows = [
         {
             "station_id": station_id,
+            "area": "SE3",  # SMHI stations are Göteborg — the SE3 point
             "timestamp_utc": s.timestamp_utc,
             "global_radiation_wm2": s.global_radiation_wm2,
             "temperature_c": s.temperature_c,
