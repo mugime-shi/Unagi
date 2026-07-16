@@ -20,6 +20,7 @@ class WeatherForecast(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     issued_date: Mapped[datetime] = mapped_column(Date, nullable=False)
+    area: Mapped[str] = mapped_column(String(4), nullable=False, default="SE3", server_default="SE3")
     target_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     temperature_c: Mapped[float | None] = mapped_column(Numeric(5, 1), nullable=True)
     wind_speed_10m: Mapped[float | None] = mapped_column(Numeric(6, 1), nullable=True)
@@ -33,6 +34,7 @@ class WeatherForecast(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("issued_date", "target_utc", "source", name="uq_weather_forecast"),
+        UniqueConstraint("issued_date", "target_utc", "source", "area", name="uq_weather_forecast"),
         Index("idx_weather_forecast_issued", "issued_date", "target_utc"),
+        Index("idx_weather_forecast_area_issued", "area", "issued_date", "target_utc"),
     )
