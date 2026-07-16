@@ -22,6 +22,10 @@ frontend/node_modules/
 frontend/dist/
 frontend/.next/
 frontend/next-env.d.ts
+# TypeScript incremental build info
+*.tsbuildinfo
+# Stray Next.js build output if next is ever run from the repo root
+/.next/
 
 # Terraform
 infra/.terraform/
