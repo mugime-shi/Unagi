@@ -615,14 +615,16 @@ export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
     is24h ? 0 : rangeDays,
   );
 
-  // Next-7-days forecast + track record (SE3 default). Overview only mounts on
-  // its own layer, so these fetch only while the Overview is shown.
+  // Next-7-days forecast + track record. Area-selectable (SE3 default); the
+  // backend has forecasts for all four zones. Overview only mounts on its own
+  // layer, so these fetch only while the Overview is shown.
+  const [weeklyArea, setWeeklyArea] = useState<Area>("SE3");
   const { data: weekly, loading: weeklyLoading } = useWeeklyForecast(
-    "SE3",
+    weeklyArea,
     true,
   );
-  const { data: accuracy } = useForecastAccuracy("SE3", 28);
-  const { data: coverage } = useCoverage("SE3", 30);
+  const { data: accuracy } = useForecastAccuracy(weeklyArea, 28);
+  const { data: coverage } = useCoverage(weeklyArea, 30);
   const d1Mae = accuracy?.models?.lgbm?.mae_sek_kwh ?? null; // d+1 MAE (SEK/kWh)
   const baseMae = accuracy?.models?.same_weekday_avg?.mae_sek_kwh ?? null;
 
@@ -811,56 +813,9 @@ export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
         ))}
       </div>
 
-      {/* Generation chart */}
-      <div className="bg-surface-primary rounded-2xl p-4">
-        <div className="mb-1">
-          <h2 className="text-base font-medium text-content-primary">
-            Generation mix
-            <span className="text-content-muted ml-1.5 font-normal">
-              {chartSubtitle}
-            </span>
-          </h2>
-          {is24h && (envBadgeLine || lagText) && (
-            <p className="text-xs text-content-muted mt-0.5">
-              {envBadgeLine && <span>{envBadgeLine}</span>}
-              {envBadgeLine && lagText && <span> · </span>}
-              {lagText && <span>{lagText}</span>}
-            </p>
-          )}
-          {is24h && laggingZones.length > 0 && (
-            <p
-              className="text-[11px] text-amber-600 dark:text-amber-400 mt-1"
-              title="Some SE zones are lagging behind ENTSO-E publication. Totals include all zones that have reported; the shaded area may grow retroactively as missing slots arrive."
-            >
-              ⚠ Delayed:{" "}
-              {laggingZones
-                .map((z) => `${z.zone} ${z.hoursBehind}h behind`)
-                .join(" · ")}
-            </p>
-          )}
-        </div>
-        {chartLoading ? (
-          <div
-            className="bg-surface-secondary rounded-xl animate-pulse"
-            style={{ height: isMobile ? 280 : 360 }}
-          />
-        ) : genChartData.length > 0 ? (
-          <GenChart
-            data={genChartData}
-            cc={cc}
-            isMobile={isMobile}
-            shareByType={is24h ? shareByType : null}
-          />
-        ) : (
-          <p className="text-sm text-content-muted text-center py-16">
-            No generation data available
-          </p>
-        )}
-      </div>
-
-      {/* Zone prices — placed right under the generation chart so supply and
-          price sit side by side (same time range) for anyone who wants to
-          compare them by eye, without a dual-axis overlay. */}
+      {/* Zone prices lead the page: "what does it cost right now" is the most
+          common question. Generation mix (the background/context) moves below
+          the forecast so the actionable "what's coming" sits above the fold. */}
       {is24h ? (
         <div className="bg-surface-primary rounded-2xl p-4">
           <h2 className="text-base font-medium text-content-primary mb-1">
@@ -970,7 +925,8 @@ export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
       {(weeklyLoading || weekly?.days?.length || d1Mae != null) && (
         <div className="bg-surface-primary rounded-2xl p-4 space-y-3">
           <WeeklySummary
-            area="SE3"
+            area={weeklyArea}
+            onAreaChange={setWeeklyArea}
             data={weekly}
             loading={weeklyLoading}
             includeTomorrow
@@ -978,7 +934,7 @@ export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
           />
           {d1Mae != null && (
             <p className="text-xs text-content-muted">
-              Track record · SE3 · 28d: d+1 error{" "}
+              Track record · {weeklyArea} · 28d: d+1 error{" "}
               <span className="text-content-secondary tabular-nums">
                 {Math.round(d1Mae * 100)} öre
               </span>
@@ -1003,6 +959,54 @@ export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
           )}
         </div>
       )}
+
+      {/* Generation mix — the supply-side context behind the prices above.
+          Sits last: it's the "why", read after the "what" and "what's next". */}
+      <div className="bg-surface-primary rounded-2xl p-4">
+        <div className="mb-1">
+          <h2 className="text-base font-medium text-content-primary">
+            Generation mix
+            <span className="text-content-muted ml-1.5 font-normal">
+              {chartSubtitle}
+            </span>
+          </h2>
+          {is24h && (envBadgeLine || lagText) && (
+            <p className="text-xs text-content-muted mt-0.5">
+              {envBadgeLine && <span>{envBadgeLine}</span>}
+              {envBadgeLine && lagText && <span> · </span>}
+              {lagText && <span>{lagText}</span>}
+            </p>
+          )}
+          {is24h && laggingZones.length > 0 && (
+            <p
+              className="text-[11px] text-amber-600 dark:text-amber-400 mt-1"
+              title="Some SE zones are lagging behind ENTSO-E publication. Totals include all zones that have reported; the shaded area may grow retroactively as missing slots arrive."
+            >
+              ⚠ Delayed:{" "}
+              {laggingZones
+                .map((z) => `${z.zone} ${z.hoursBehind}h behind`)
+                .join(" · ")}
+            </p>
+          )}
+        </div>
+        {chartLoading ? (
+          <div
+            className="bg-surface-secondary rounded-xl animate-pulse"
+            style={{ height: isMobile ? 280 : 360 }}
+          />
+        ) : genChartData.length > 0 ? (
+          <GenChart
+            data={genChartData}
+            cc={cc}
+            isMobile={isMobile}
+            shareByType={is24h ? shareByType : null}
+          />
+        ) : (
+          <p className="text-sm text-content-muted text-center py-16">
+            No generation data available
+          </p>
+        )}
+      </div>
     </div>
   );
 }
