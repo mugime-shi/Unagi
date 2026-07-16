@@ -29,25 +29,30 @@ log = logging.getLogger(__name__)
 
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 
-# One representative point per bidding area. SE3 is the historical single
-# point (Göteborg) every area used before per-area weather existed.
+# One representative point per bidding area — every area gets its own local
+# weather. SE3's point (Göteborg) doubles as the fallback for areas that have
+# no backfilled local rows yet, because it was the single point all areas
+# shared before per-area weather existed. Adoption evidence per area:
+# work/SE12_LOCAL_WEATHER_2026-07-16.md.
 AREA_COORDS: dict[str, tuple[float, float]] = {
     "SE1": (65.58, 22.15),  # Luleå
     "SE2": (62.39, 17.31),  # Sundsvall
     "SE3": (57.7089, 11.9746),  # Göteborg
-    "SE4": (55.605, 13.0038),  # Malmö (not fetched by default — untested for ML)
+    "SE4": (55.605, 13.0038),  # Malmö
 }
 
 # station_id for open-meteo rows in weather_data (SMHI station ids are 5-digit)
 OPEN_METEO_STATION_ID = 0
 
-# Areas beyond SE3 to fetch in the daily task, e.g. "SE1,SE2".
-# Scheduler-only env var; unset = no extra areas = behaviour unchanged.
+# Areas beyond SE3 to fetch in the daily task, e.g. "SE1,SE2,SE4".
+# SE3 is always fetched (it is also the fallback point), so listing it here
+# is redundant and ignored. Scheduler-only env var; unset = single-point
+# behaviour, unchanged.
 LOCAL_WEATHER_ENV = "LOCAL_WEATHER_AREAS"
 
 
 def local_weather_areas() -> list[str]:
-    """Extra areas (beyond SE3) to fetch weather for, from env."""
+    """Areas beyond the always-fetched SE3 to fetch weather for, from env."""
     raw = os.environ.get(LOCAL_WEATHER_ENV, "")
     return [a.strip() for a in raw.split(",") if a.strip() in AREA_COORDS and a.strip() != "SE3"]
 

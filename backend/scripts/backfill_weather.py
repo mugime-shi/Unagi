@@ -117,7 +117,7 @@ def backfill_forecasts(db, area: str, start: date, end: date) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--area", required=True, choices=[a for a in AREA_COORDS if a != "SE3"])
+    parser.add_argument("--area", required=True, choices=sorted(AREA_COORDS))
     parser.add_argument("--start", default="2025-03-16", help="first date (default 2025-03-16)")
     parser.add_argument("--end", default=None, help="last date (default: yesterday)")
     args = parser.parse_args()
