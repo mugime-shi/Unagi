@@ -79,6 +79,14 @@ resource "aws_lambda_function" "scheduler" {
       # removing them. Scheduler Lambda ONLY; never set these on the API Lambda.
       LGBM_BIAS_CORRECTION = "SE3,SE4"
       LGBM_CQR_ALPHA       = "SE4:0.17"
+      # Per-area weather (2026-07-17). Daily Open-Meteo fetch for these areas'
+      # local points (SE3/Göteborg is always fetched). History backfilled via
+      # ./unagi backfill-weather before enabling — do NOT enable for an area
+      # that has no backfill, the loader would prefer sparse local rows over
+      # the SE3 fallback. Adopted from same-window 90-day A/B backtests
+      # (work/SE12_LOCAL_WEATHER_2026-07-16.md): capture SE1 54→61 / SE2
+      # 50→64 / SE4 94→96, volatile win rate up in all three. Scheduler only.
+      LOCAL_WEATHER_AREAS  = "SE1,SE2,SE4"
       # Public forecast feed (catch.unagieel.net) — uploaded via R2's
       # S3-compatible API after each prediction run. Empty creds = disabled.
       R2_ENDPOINT          = "https://${var.cloudflare_account_id}.r2.cloudflarestorage.com"
