@@ -66,3 +66,39 @@ export function currentCETTime15(): string {
   const floored = Math.floor(parseInt(m, 10) / 15) * 15;
   return `${h}:${String(floored).padStart(2, "0")}`;
 }
+
+/**
+ * Current timezone abbreviation for Stockholm: "CET" (winter) / "CEST" (summer).
+ */
+export function stockholmTzAbbr(): string {
+  return (
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/Stockholm",
+      timeZoneName: "short",
+    })
+      .formatToParts(new Date())
+      .find((p) => p.type === "timeZoneName")?.value ?? "CET"
+  );
+}
+
+/**
+ * Latest slot at or before the current Stockholm time, matching on zero-padded
+ * "HH:MM" labels. Handles both 15-min and hourly slot resolutions (falls back
+ * to the preceding slot when there is no exact match).
+ */
+export function findCurrentSlot<T>(
+  slots: T[],
+  getLabel: (slot: T) => string,
+): T | undefined {
+  const now = currentCETTime15();
+  let best: T | undefined;
+  let bestLabel = "";
+  for (const slot of slots) {
+    const label = getLabel(slot);
+    if (label <= now && label >= bestLabel) {
+      best = slot;
+      bestLabel = label;
+    }
+  }
+  return best;
+}

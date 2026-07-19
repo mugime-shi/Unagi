@@ -1,13 +1,12 @@
 import {
-  currentCETHour,
   currentCETTime15,
+  findCurrentSlot,
   formatPrice,
   PRICE_UNIT,
+  stockholmTzAbbr,
   toLocalHour,
 } from "../utils/formatters";
 import type { PricePoint } from "../types/index";
-
-const NOW_HOUR = currentCETHour();
 
 interface PriceIndicatorProps {
   prices: PricePoint[];
@@ -16,12 +15,9 @@ interface PriceIndicatorProps {
 export function PriceIndicator({ prices }: PriceIndicatorProps) {
   if (!prices?.length) return null;
 
-  // Find the slot matching the current CET hour
+  // Find the slot covering the current 15-min interval
   const current =
-    prices.find((p) => {
-      const h = parseInt(toLocalHour(p.timestamp_utc).split(":")[0], 10);
-      return h === NOW_HOUR;
-    }) ?? prices[0];
+    findCurrentSlot(prices, (p) => toLocalHour(p.timestamp_utc)) ?? prices[0];
 
   const sek = Number(current.price_sek_kwh);
   const avg =
@@ -48,7 +44,7 @@ export function PriceIndicator({ prices }: PriceIndicatorProps) {
   return (
     <div className={`rounded-xl border px-5 py-4 ${bg}`}>
       <p className="text-xs text-content-secondary mb-1">
-        Right now ({currentCETTime15()} CET)
+        Right now ({currentCETTime15()} {stockholmTzAbbr()})
       </p>
       <div className="flex items-baseline gap-2">
         <span className={`text-3xl font-bold ${color}`}>

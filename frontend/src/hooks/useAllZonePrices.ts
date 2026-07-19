@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../utils/api";
+import { findCurrentSlot, toLocalHour } from "../utils/formatters";
 import { useRefresh } from "./useRefresh";
 import type { Area, PricesResponse } from "../types/index";
 
@@ -18,15 +19,6 @@ interface UseAllZonePricesReturn {
   data: Record<Area, ZonePriceSummary> | null;
   loading: boolean;
   error: Error | null;
-}
-
-function currentStockholmHour(): number {
-  const s = new Date().toLocaleString("sv-SE", {
-    timeZone: "Europe/Stockholm",
-    hour: "2-digit",
-    hour12: false,
-  });
-  return parseInt(s, 10);
 }
 
 function summarizeZone(
@@ -66,12 +58,14 @@ function summarizeZone(
     }))
     .sort((a, b) => a.hour - b.hour);
 
-  const nowHour = currentStockholmHour();
-  const currentSlot =
-    slots.find((s) => s.hour === nowHour) ?? slots[slots.length - 1];
+  // NOW = the settled price of the current 15-min slot, not the hourly
+  // average (slots stay hourly for the sparkline and trend arrows)
+  const currentPoint =
+    findCurrentSlot(resp.prices, (p) => toLocalHour(p.timestamp_utc)) ??
+    resp.prices[resp.prices.length - 1];
   return {
     zone,
-    current_sek_kwh: currentSlot?.price ?? null,
+    current_sek_kwh: currentPoint?.price_sek_kwh ?? null,
     today_avg_sek_kwh: resp.summary?.avg_sek_kwh ?? null,
     today_min_sek_kwh: resp.summary?.min_sek_kwh ?? null,
     today_max_sek_kwh: resp.summary?.max_sek_kwh ?? null,

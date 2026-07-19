@@ -17,7 +17,7 @@ import type {
 } from "recharts/types/component/DefaultTooltipContent";
 import type { TooltipContentProps } from "recharts";
 import {
-  currentCETHour,
+  findCurrentSlot,
   formatPrice,
   PRICE_UNIT,
   toLocalHour,
@@ -36,8 +36,6 @@ import type {
   ShapExplanations,
   ShapFeature,
 } from "../types/index";
-
-const NOW_HOUR: number = currentCETHour();
 
 function priceColor(sek: number): string {
   if (sek <= 0.4) return "#22d3ee"; // cyan — bioluminescent (cheap)
@@ -414,10 +412,8 @@ export function PriceChart({
     domainKeys.push("lgbm_forecast", "lgbm_top");
   const { domain } = computeClippedDomain(chartData, domainKeys);
 
-  // Current hour data point for price annotation
-  const nowEntry = chartData.find(
-    (d) => parseInt(d.hour.split(":")[0], 10) === NOW_HOUR,
-  );
+  // Data point covering the current 15-min interval, for the now marker
+  const nowEntry = findCurrentSlot(chartData, (d) => d.hour);
 
   const chartHeight = isMobile ? 300 : 350;
 
