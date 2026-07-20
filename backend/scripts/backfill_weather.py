@@ -25,7 +25,9 @@ import httpx
 from app.db.database import SessionLocal
 from app.services.openmeteo_client import (
     AREA_COORDS,
+    AREA_WIND_POINTS,
     OpenMeteoError,
+    multi_point_wind_areas,
     store_forecast,
     store_weather_actuals,
 )
@@ -79,6 +81,46 @@ def backfill_actuals(db, area: str, start: date, end: date) -> int:
     return store_weather_actuals(db, slots, area)
 
 
+def _belt_wind_history(area: str, start: date, end: date) -> dict[datetime, tuple]:
+    """
+    Previous-runs wind averaged over AREA_WIND_POINTS, keyed by target_utc.
+    Mirrors openmeteo_client._fetch_belt_wind for the backfill path: a
+    timestamp is included only when every belt point has a value.
+    """
+    points = AREA_WIND_POINTS[area]
+    per_ts: dict[datetime, list[tuple]] = defaultdict(list)
+    for lat, lon in points:
+        hourly = _get(
+            PREVIOUS_RUNS_URL,
+            {
+                "latitude": lat,
+                "longitude": lon,
+                "start_date": start.isoformat(),
+                "end_date": end.isoformat(),
+                "hourly": "wind_speed_10m_previous_day1,wind_speed_100m_previous_day1",
+                "timezone": "UTC",
+            },
+        )
+        for i, ts_str in enumerate(hourly.get("time", [])):
+            ts = datetime.fromisoformat(ts_str).replace(tzinfo=timezone.utc)
+            per_ts[ts].append(
+                (
+                    hourly["wind_speed_10m_previous_day1"][i],
+                    hourly["wind_speed_100m_previous_day1"][i],
+                )
+            )
+
+    def _avg(values: list) -> float | None:
+        present = [v for v in values if v is not None]
+        return sum(present) / len(present) if len(present) == len(points) else None
+
+    return {
+        ts: (_avg([p[0] for p in pairs]), _avg([p[1] for p in pairs]))
+        for ts, pairs in per_ts.items()
+        if len(pairs) == len(points)
+    }
+
+
 def backfill_forecasts(db, area: str, start: date, end: date) -> int:
     lat, lon = AREA_COORDS[area]
     hourly = _get(
@@ -95,6 +137,12 @@ def backfill_forecasts(db, area: str, start: date, end: date) -> int:
             "timezone": "UTC",
         },
     )
+
+    belt: dict[datetime, tuple] = {}
+    if area in multi_point_wind_areas():
+        log.info("Backfill %s: belt-averaging wind over %d points", area, len(AREA_WIND_POINTS[area]))
+        belt = _belt_wind_history(area, start, end)
+
     by_issued: dict[date, list[dict]] = defaultdict(list)
     for i, ts_str in enumerate(hourly.get("time", [])):
         target = datetime.fromisoformat(ts_str).replace(tzinfo=timezone.utc)
@@ -105,6 +153,13 @@ def backfill_forecasts(db, area: str, start: date, end: date) -> int:
             "wind_speed_100m": hourly["wind_speed_100m_previous_day1"][i],
             "global_radiation_wm2": hourly["shortwave_radiation_previous_day1"][i],
         }
+        belt_entry = belt.get(target)
+        if belt_entry is not None:
+            w10, w100 = belt_entry
+            if w10 is not None:
+                slot["wind_speed_10m"] = w10
+            if w100 is not None:
+                slot["wind_speed_100m"] = w100
         if all(slot[k] is None for k in ("temperature_c", "wind_speed_10m", "wind_speed_100m")):
             continue
         by_issued[target.date() - timedelta(days=1)].append(slot)
