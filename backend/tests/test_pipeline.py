@@ -24,8 +24,12 @@ from unittest.mock import MagicMock, patch
     "app.tasks.fetch_prices.fetch_generation_date",
     return_value={"date": "2026-03-19", "market": "generation", "status": "ok", "rows": 24},
 )
+@patch(
+    "app.tasks.fetch_prices.fetch_hydro_date",
+    return_value={"date": "2026-03-20", "market": "hydro", "status": "ok", "rows": 1},
+)
 def test_midnight_collect_calls_fetch_not_predict(
-    mock_gen, mock_bal, mock_lf, mock_weather, mock_gas, mock_alert, mock_health
+    mock_hydro, mock_gen, mock_bal, mock_lf, mock_weather, mock_gas, mock_alert, mock_health
 ):
     from app.tasks.fetch_prices import lambda_handler
 
@@ -60,8 +64,12 @@ def test_midnight_collect_calls_fetch_not_predict(
     "app.tasks.fetch_prices.fetch_generation_date",
     return_value={"date": "2026-03-19", "market": "generation", "status": "ok", "rows": 24},
 )
+@patch(
+    "app.tasks.fetch_prices.fetch_hydro_date",
+    return_value={"date": "2026-03-20", "market": "hydro", "status": "ok", "rows": 1},
+)
 def test_midnight_collect_alerts_on_failure(
-    mock_gen, mock_bal, mock_lf, mock_weather, mock_gas, mock_alert, mock_health
+    mock_hydro, mock_gen, mock_bal, mock_lf, mock_weather, mock_gas, mock_alert, mock_health
 ):
     from app.tasks.fetch_prices import lambda_handler
 
@@ -73,7 +81,10 @@ def test_midnight_collect_alerts_on_failure(
     assert call_args[0][0] == "midnight_collect"
     results = call_args[0][1]
     failed = [r for r in results if r["status"] == "error"]
-    assert len(failed) >= 1
+    # only the injected load_forecast failure (one per area) — every other
+    # fetcher is mocked ok, so another market here means an unmocked fetcher
+    # reached the network
+    assert {r["market"] for r in failed} == {"load_forecast"}
 
 
 # ---------------------------------------------------------------------------
