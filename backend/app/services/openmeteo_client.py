@@ -50,6 +50,23 @@ OPEN_METEO_STATION_ID = 0
 # behaviour, unchanged.
 LOCAL_WEATHER_ENV = "LOCAL_WEATHER_AREAS"
 
+# Wind-belt sampling points per area. For areas flagged in
+# MULTI_POINT_WIND_AREAS, wind_speed_10m/100m become the MEAN over these
+# points instead of the single AREA_COORDS point (temperature and radiation
+# stay on the main point). Zone-aggregate wind explains northern price shape
+# beyond the single point — partial correlation SE1 −0.21 / SE2 −0.23 after
+# removing the single-point signal (probe 2026-07-20, work/IDEAS.md). SE4
+# probed at −0.07 → not listed. Open-Meteo's ~11 km grid makes wind-belt
+# coverage matter more than exact farm coordinates.
+AREA_WIND_POINTS: dict[str, list[tuple[float, float]]] = {
+    "SE1": [(65.30, 20.50), (66.60, 22.30), (65.00, 21.50)],
+    "SE2": [(63.28, 16.85), (64.55, 18.10), (62.20, 13.55)],
+}
+
+# Per-area flag, same style as LOCAL_WEATHER_AREAS / LGBM_BIAS_CORRECTION:
+# unset = single-point wind everywhere = behaviour unchanged.
+MULTI_POINT_WIND_ENV = "MULTI_POINT_WIND_AREAS"
+
 
 def local_weather_areas() -> list[str]:
     """Areas beyond the always-fetched SE3 to fetch weather for, from env."""
@@ -57,8 +74,83 @@ def local_weather_areas() -> list[str]:
     return [a.strip() for a in raw.split(",") if a.strip() in AREA_COORDS and a.strip() != "SE3"]
 
 
+def multi_point_wind_areas() -> list[str]:
+    """Areas whose forecast wind is averaged over AREA_WIND_POINTS, from env."""
+    raw = os.environ.get(MULTI_POINT_WIND_ENV, "")
+    return [a.strip() for a in raw.split(",") if a.strip() in AREA_WIND_POINTS]
+
+
 class OpenMeteoError(Exception):
     pass
+
+
+def _apply_belt_wind(slots: list[dict], belt: dict[datetime, tuple[float | None, float | None]]) -> int:
+    """
+    Replace each slot's wind fields with the belt average for its timestamp.
+    Slots without a belt entry keep their single-point values. Returns the
+    number of slots overridden. Pure function — unit-tested directly.
+    """
+    replaced = 0
+    for s in slots:
+        entry = belt.get(s["target_utc"])
+        if entry is None:
+            continue
+        w10, w100 = entry
+        if w10 is not None:
+            s["wind_speed_10m"] = w10
+        if w100 is not None:
+            s["wind_speed_100m"] = w100
+        replaced += 1
+    return replaced
+
+
+def _fetch_belt_wind(
+    area: str, forecast_days: int
+) -> dict[datetime, tuple[float | None, float | None]] | None:
+    """
+    Fetch wind for every belt point of an area and average per timestamp.
+    Returns None (caller keeps single-point wind) if any point fails —
+    a partial average would silently change the feature's meaning.
+    """
+    per_ts: dict[datetime, list[tuple[float | None, float | None]]] = {}
+    for lat, lon in AREA_WIND_POINTS[area]:
+        params = {
+            "latitude": lat,
+            "longitude": lon,
+            "hourly": "wind_speed_10m,wind_speed_100m",
+            "timezone": "UTC",
+            "forecast_days": forecast_days,
+        }
+        try:
+            resp = httpx.get(FORECAST_URL, params=params, timeout=30)
+            resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            log.warning("Open-Meteo belt point (%s, %s) failed: %s — keeping single-point wind", lat, lon, exc)
+            return None
+        hourly = resp.json().get("hourly", {})
+        times = hourly.get("time", [])
+        w10s = hourly.get("wind_speed_10m", [])
+        w100s = hourly.get("wind_speed_100m", [])
+        for i, ts_str in enumerate(times):
+            ts = datetime.fromisoformat(ts_str).replace(tzinfo=timezone.utc)
+            per_ts.setdefault(ts, []).append(
+                (
+                    w10s[i] if i < len(w10s) else None,
+                    w100s[i] if i < len(w100s) else None,
+                )
+            )
+
+    n_points = len(AREA_WIND_POINTS[area])
+
+    def _avg(values: list[float | None]) -> float | None:
+        present = [v for v in values if v is not None]
+        return sum(present) / len(present) if len(present) == n_points else None
+
+    return {
+        ts: (_avg([p[0] for p in pairs]), _avg([p[1] for p in pairs]))
+        for ts, pairs in per_ts.items()
+        if len(pairs) == n_points
+    }
 
 
 def fetch_forecast(forecast_days: int = 2, area: str = "SE3") -> list[dict]:
@@ -105,6 +197,12 @@ def fetch_forecast(forecast_days: int = 2, area: str = "SE3") -> list[dict]:
             "wind_speed_100m": wind100[i] if i < len(wind100) else None,
             "global_radiation_wm2": rads[i] if i < len(rads) else None,
         })
+
+    if area in multi_point_wind_areas():
+        belt = _fetch_belt_wind(area, forecast_days)
+        if belt:
+            replaced = _apply_belt_wind(slots, belt)
+            log.info("Open-Meteo: belt-averaged wind on %d/%d slots (area %s)", replaced, len(slots), area)
 
     log.info("Open-Meteo: fetched %d hourly forecast slots (area %s)", len(slots), area)
     return slots
