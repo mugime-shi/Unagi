@@ -87,6 +87,16 @@ resource "aws_lambda_function" "scheduler" {
       # (work/SE12_LOCAL_WEATHER_2026-07-16.md): capture SE1 54→61 / SE2
       # 50→64 / SE4 94→96, volatile win rate up in all three. Scheduler only.
       LOCAL_WEATHER_AREAS  = "SE1,SE2,SE4"
+      # Wind-belt averaged forecast wind (2026-07-21). Zone-aggregate wind
+      # explains northern price shape beyond a single point — 150-day A/B:
+      # SE2 capture 51→64% (base 46), volatile MAE −11.7%, win rate 93→96%;
+      # SE1 capture 53→56%, win rate 94→97%; calm MAE improved in both.
+      # SE4 probed at partial r −0.07 → excluded. History rewritten to belt
+      # averages via `MULTI_POINT_WIND_AREAS=SE1,SE2 ./unagi backfill-weather`
+      # BEFORE enabling — enabling first would train on single-point history
+      # while predicting on belt wind. Rollback: remove the var, re-run the
+      # backfill without the flag. Scheduler only.
+      MULTI_POINT_WIND_AREAS = "SE1,SE2"
       # Public forecast feed (catch.unagieel.net) — uploaded via R2's
       # S3-compatible API after each prediction run. Empty creds = disabled.
       R2_ENDPOINT          = "https://${var.cloudflare_account_id}.r2.cloudflarestorage.com"
