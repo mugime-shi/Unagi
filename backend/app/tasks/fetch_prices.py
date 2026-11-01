@@ -520,6 +520,23 @@ def lambda_handler(event: dict, context) -> dict:
     if event.get("predict_only"):
         target_date = date.fromisoformat(event["target_date"]) if event.get("target_date") else None
         label = target_date.isoformat() if target_date else "tomorrow"
+        # The 04:20 retry passes skip_if_recorded: re-running a successful
+        # 00:20 run retrains every model (~400 s, ~480 MB of 512 MB) and
+        # re-reads the training window from Supabase (egress free tier).
+        if event.get("skip_if_recorded"):
+            recorded = set(areas) - set(_areas_missing_predictions(areas, target_date))
+            if recorded:
+                log.info("predict_only — SKIP %s, lgbm predictions for %s already recorded", sorted(recorded), label)
+            areas = [a for a in areas if a not in recorded]
+            if not areas:
+                return {
+                    "statusCode": 200,
+                    "mode": "predict_only",
+                    "target_date": label,
+                    "areas": [],
+                    "skipped": sorted(recorded),
+                    "failures": [],
+                }
         log.info("predict_only mode — recording %s predictions for %s", label, areas)
         failures = _record_predictions(areas, target_date=target_date)
         return {
@@ -909,6 +926,33 @@ def _publish_feed(archive: bool) -> list[dict]:
         return [{"market": "feed publish", "status": "error", "error": str(exc)}]
     finally:
         db.close()
+
+
+def _areas_missing_predictions(areas: list[str], target_date: date | None = None) -> list[str]:
+    """
+    Return the areas that have no d+1 "lgbm" predictions for target_date
+    (default: tomorrow). Only the same-day predict run writes model_name
+    "lgbm" for a target; the previous days' runs write lgbm_d2..lgbm_d7.
+    """
+    from app.models.forecast_accuracy import ForecastAccuracy
+
+    target = target_date or (date.today() + timedelta(days=1))
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(ForecastAccuracy.area)
+            .filter(
+                ForecastAccuracy.target_date == target,
+                ForecastAccuracy.model_name == "lgbm",
+                ForecastAccuracy.area.in_(areas),
+            )
+            .distinct()
+            .all()
+        )
+    finally:
+        db.close()
+    recorded = {r.area for r in rows}
+    return [a for a in areas if a not in recorded]
 
 
 def _record_predictions(areas: list[str], target_date: date | None = None) -> list[dict]:
