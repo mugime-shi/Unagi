@@ -497,7 +497,13 @@ def test_dst_fall_back_day_has_25_hourly_slots(client, db):
     ]
     upsert_prices(db, points)
 
-    response = client.get("/api/v1/prices/history?days=365")
+    # Freeze "now" shortly after the fixture so the 365-day window always covers it.
+    # wraps= (not a datetime subclass): combine() must keep returning plain
+    # datetimes, since sqlite3 refuses to bind subclasses.
+    frozen_now = datetime(2025, 11, 1, 12, 0, tzinfo=timezone.utc)
+    with patch("app.routers.prices.datetime", wraps=datetime) as mock_dt:
+        mock_dt.now.side_effect = lambda tz=None: frozen_now.astimezone(tz)
+        response = client.get("/api/v1/prices/history?days=365")
     assert response.status_code == 200
     by_date = {d["date"]: d for d in response.json()["daily"] if d.get("avg_sek_kwh") is not None}
 

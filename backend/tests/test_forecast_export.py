@@ -228,7 +228,17 @@ def test_dst_march_day_counts_as_complete(db):
     assert day["hours"][0]["value"] is not None
 
 
-def test_accuracy_block(db):
+class _FrozenDate(date):
+    @classmethod
+    def today(cls):
+        return TODAY
+
+
+def test_accuracy_block(db, monkeypatch):
+    # The accuracy window is computed by backtest_service from date.today(),
+    # not from build_forecast_export's today= — freeze it so the seeded
+    # history stays inside the 28-day window.
+    monkeypatch.setattr("app.services.backtest_service.date", _FrozenDate)
     _seed_prediction(db, TODAY + timedelta(days=1), "lgbm")
     _seed_scored_history(db)
     doc = build_forecast_export(db, "SE3", today=TODAY)

@@ -46,7 +46,9 @@ resource "aws_cloudwatch_event_target" "retry_collect_lambda" {
 }
 
 # ── Nightly retry: predictions (04:20 UTC = 05:20 CET / 06:20 CEST) ─────────
-# Idempotent — predictions upsert, so a no-op if 00:20 succeeded.
+# skip_if_recorded: areas whose d+1 lgbm predictions already exist are skipped.
+# Without it this re-ran the full retrain every night even after a successful
+# 00:20 run (~400 s, ~480 MB, a second Supabase read of the training window).
 resource "aws_cloudwatch_event_rule" "retry_predict" {
   name                = "${var.project}-retry-predict"
   description         = "Retry predictions at 04:20 UTC if midnight run failed"
@@ -57,7 +59,7 @@ resource "aws_cloudwatch_event_target" "retry_predict_lambda" {
   rule      = aws_cloudwatch_event_rule.retry_predict.name
   target_id = "${var.project}-retry-predict"
   arn       = aws_lambda_function.scheduler.arn
-  input     = jsonencode({ predict_only = true })
+  input     = jsonencode({ predict_only = true, skip_if_recorded = true })
 }
 
 # ── Daily price fetch (12:30 UTC = 13:30 CET / 14:30 CEST) ──────────────────

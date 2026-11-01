@@ -44,7 +44,11 @@ resource "aws_lambda_function" "scheduler" {
   package_type  = "Image"
   image_uri     = "${aws_ecr_repository.scheduler.repository_url}:${var.image_tag}"
   architectures = ["arm64"]
-  memory_size   = 512  # LightGBM training needs >256 MB
+  # 512 → 1024 (2026-11): predict runs peaked at 483 MB / 476 s, one notch
+  # from the 2026-06-06 OOM/timeout. Lambda CPU scales with memory, so this
+  # also shortens training. Worst case (no speed-up) ~91k GB-s/mo, within
+  # the 400k always-free tier (Oct 2026 actual: ~47k at 512 MB).
+  memory_size   = 1024
   timeout       = 600  # data collection + ML training can take several minutes
 
   environment {
