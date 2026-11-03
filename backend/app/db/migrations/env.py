@@ -10,6 +10,7 @@ import app.models.generation_mix  # noqa: F401
 import app.models.load_forecast  # noqa: F401
 import app.models.push_subscription  # noqa: F401
 import app.models.spot_price  # noqa: F401 — ensure model is registered
+import app.models.usage_event  # noqa: F401
 from app.config import settings
 from app.db.database import Base
 

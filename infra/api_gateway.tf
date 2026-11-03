@@ -23,6 +23,25 @@ resource "aws_apigatewayv2_stage" "default" {
     throttling_burst_limit = 50
     throttling_rate_limit  = 30
   }
+
+  # Per-path request counts (the Lambda does not log paths). Source IP and
+  # user agent are deliberately left out; requests arrive via the Vercel
+  # rewrite proxy anyway, so the IP would be Vercel's.
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.api_access.arn
+    format = jsonencode({
+      time    = "$context.requestTime"
+      method  = "$context.httpMethod"
+      path    = "$context.path"
+      status  = "$context.status"
+      latency = "$context.responseLatency"
+    })
+  }
+}
+
+resource "aws_cloudwatch_log_group" "api_access" {
+  name              = "/aws/apigateway/${var.project}-api-access"
+  retention_in_days = 90
 }
 
 resource "aws_apigatewayv2_integration" "lambda" {
