@@ -40,8 +40,10 @@ resource "aws_apigatewayv2_stage" "default" {
 }
 
 resource "aws_cloudwatch_log_group" "api_access" {
-  name              = "/aws/apigateway/${var.project}-api-access"
-  retention_in_days = 90
+  name = "/aws/apigateway/${var.project}-api-access"
+  # ~10 MB/year at current traffic, so keeping two years (year-over-year
+  # comparison across winter price spikes) costs effectively nothing.
+  retention_in_days = 731
 }
 
 resource "aws_apigatewayv2_integration" "lambda" {
