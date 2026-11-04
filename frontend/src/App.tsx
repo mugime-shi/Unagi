@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CheapHoursWidget } from "./components/CheapHoursWidget";
 import { CostFloor } from "./components/CostFloor";
 import { Overview } from "./components/Overview";
@@ -25,6 +25,7 @@ import { WeeklySummary } from "./components/WeeklySummary";
 import { TodaysDrivers } from "./components/TodaysDrivers";
 import { ShapNarrative } from "./components/ShapNarrative";
 import { dateWithWeekday, formatPrice, PRICE_UNIT } from "./utils/formatters";
+import { trackEvent, trackVisit } from "./utils/track";
 import type {
   Area,
   Tab,
@@ -102,6 +103,25 @@ function AppInner() {
   const [tab, setTab] = useState<Tab>("today");
   const [forecastDate, setForecastDate] = useState<string>(tomorrowISO);
   const [area, setArea] = useState<Area>("SE3");
+
+  useEffect(() => {
+    trackVisit();
+  }, []);
+  useEffect(() => {
+    trackEvent("layer_view", layer);
+  }, [layer]);
+  useEffect(() => {
+    if (layer === "prices") trackEvent("tab_view", tab);
+  }, [layer, tab]);
+  // Skip the default SE3 on mount; only deliberate zone changes count.
+  const areaMounted = useRef(false);
+  useEffect(() => {
+    if (!areaMounted.current) {
+      areaMounted.current = true;
+      return;
+    }
+    trackEvent("area_select", area);
+  }, [area]);
 
   const isTomorrow: boolean = forecastDate === tomorrowISO();
   const isPastDate: boolean = forecastDate < todayISO();

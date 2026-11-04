@@ -159,6 +159,17 @@ export default function AboutPage() {
           </p>
         </Section>
 
+        <Section title="Privacy">
+          <p>
+            Page views are counted with Vercel Web Analytics, which uses no
+            cookies. To see whether people come back, your browser also keeps
+            the dates of your first and latest visit in local storage, and we
+            receive only the number of days since then — no identifier, IP
+            address or browser details are stored. Browsers that send Do Not
+            Track or Global Privacy Control are not counted.
+          </p>
+        </Section>
+
         <Section title="Contact">
           <p>
             Questions, corrections or data-source suggestions are welcome at{" "}

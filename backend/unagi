@@ -125,6 +125,11 @@ cmd_publish() {
     python -m scripts.export_forecast --upload
 }
 
+cmd_usage() {
+    parse_flags "$@"
+    python -m scripts.usage_report --days "$DAYS"
+}
+
 cmd_smoke() {
     python scripts/fetch_prices_smoke.py
 }
@@ -193,6 +198,7 @@ ML:
   features [--days N] [--area]  Build feature matrix (CSV to stdout)
 
 Diagnostics:
+  usage [--days N]              Visits, 7-day return rate, referrers, tab usage
   smoke                         ENTSO-E API connectivity check
   test                          Run pytest suite
 
@@ -236,6 +242,7 @@ case "$command" in
     features)       cmd_features "$@" ;;
     export)         cmd_export "$@" ;;
     publish)        cmd_publish ;;
+    usage)          cmd_usage "$@" ;;
     smoke)          cmd_smoke ;;
     test)           cmd_test "$@" ;;
     lambda-backfill) cmd_lambda_backfill "$@" ;;
