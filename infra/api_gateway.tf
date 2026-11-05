@@ -26,15 +26,17 @@ resource "aws_apigatewayv2_stage" "default" {
 
   # Per-path request counts (the Lambda does not log paths). Source IP and
   # user agent are deliberately left out; requests arrive via the Vercel
-  # rewrite proxy anyway, so the IP would be Vercel's.
+  # rewrite proxy anyway, so the IP would be Vercel's. API Gateway rejects a
+  # format without requestId.
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.api_access.arn
     format = jsonencode({
-      time    = "$context.requestTime"
-      method  = "$context.httpMethod"
-      path    = "$context.path"
-      status  = "$context.status"
-      latency = "$context.responseLatency"
+      requestId = "$context.requestId"
+      time      = "$context.requestTime"
+      method    = "$context.httpMethod"
+      path      = "$context.path"
+      status    = "$context.status"
+      latency   = "$context.responseLatency"
     })
   }
 }
