@@ -130,3 +130,23 @@ resource "aws_cloudwatch_event_target" "weekly_backfill_lambda" {
   arn       = aws_lambda_function.scheduler.arn
   input     = jsonencode({ backfill_generation = 7 })
 }
+
+# ── API Lambda warmer (every 5 minutes) ─────────────────────────────────────
+# ~4 page views/day means nearly every visit hit a cold start (~3 s init) plus
+# an uncached story build. Invoking the API Lambda directly (not via API
+# Gateway) keeps ticks out of access logs and usage_events. The handler routes
+# {"warmer": true} away from Mangum and refreshes the story cache.
+# DEPLOY THE NEW IMAGE FIRST: an older image would pass the event to Mangum and
+# error every tick. Cost: ~8.6k invocations/mo, inside the always-free tier.
+resource "aws_cloudwatch_event_rule" "api_warmer" {
+  name                = "${var.project}-api-warmer"
+  description         = "Keep the API Lambda warm and the story cache filled"
+  schedule_expression = "rate(5 minutes)"
+}
+
+resource "aws_cloudwatch_event_target" "api_warmer_lambda" {
+  rule      = aws_cloudwatch_event_rule.api_warmer.name
+  target_id = "${var.project}-api-warmer"
+  arn       = aws_lambda_function.api.arn
+  input     = jsonencode({ warmer = true })
+}

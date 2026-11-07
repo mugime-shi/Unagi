@@ -5,6 +5,7 @@ Endpoints:
   GET /api/v1/story/today?date=YYYY-MM-DD   — headline + up to 3 supporting facts
 """
 
+import logging
 import time
 from datetime import date, datetime
 from typing import Annotated
@@ -12,9 +13,11 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.db.database import get_db
+from app.db.database import SessionLocal, get_db
 from app.services.story_service import get_story
 from app.utils.timezone import STOCKHOLM
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/story", tags=["story"])
 
@@ -32,6 +35,32 @@ def _get_cached(key: str) -> dict | None:
             return resp
         del _story_cache[key]
     return None
+
+
+def _compute_and_cache(db: Session, day: date, today: date) -> dict:
+    result = get_story(db, day, today)
+    if len(_story_cache) >= _CACHE_MAX:
+        _story_cache.clear()
+    _story_cache[day.isoformat()] = (result, time.time())
+    return result
+
+
+def refresh_today_story(min_age: float = 20 * 60) -> bool:
+    """Warmer entry point: recompute today's story unless the cached one is younger than min_age.
+
+    Opens its own session (no request scope). min_age < _CACHE_TTL so the cache never
+    expires between warmer ticks and real visitors always hit it.
+    """
+    today = datetime.now(STOCKHOLM).date()
+    entry = _story_cache.get(today.isoformat())
+    if entry is not None and time.time() - entry[1] < min_age:
+        return False
+    db = SessionLocal()
+    try:
+        _compute_and_cache(db, today, today)
+    finally:
+        db.close()
+    return True
 
 
 @router.get("/today")
@@ -52,8 +81,4 @@ def get_today_story(
     if cached is not None:
         return cached
 
-    result = get_story(db, day, today)
-    if len(_story_cache) >= _CACHE_MAX:
-        _story_cache.clear()
-    _story_cache[key] = (result, time.time())
-    return result
+    return _compute_and_cache(db, day, today)
