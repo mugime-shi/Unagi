@@ -179,14 +179,17 @@ def _worst_per_resource(rows: list[GenerationOutage], day_start: datetime, day_e
     return out
 
 
-def outages_for_day(db: Session, day: date) -> dict:
+def active_outage_rows(db: Session) -> list[GenerationOutage]:
+    """All active outage documents; pass to outages_for_day(rows=...) to build many days from one query."""
+    return list(db.execute(select(GenerationOutage).where(GenerationOutage.status == "active")).scalars())
+
+
+def outages_for_day(db: Session, day: date, rows: list[GenerationOutage] | None = None) -> dict:
     """Nuclear status (6 reactors) and large non-nuclear outages for a Stockholm-local day."""
     day_start, day_end = stockholm_day_range_utc(day)
-    rows = [
-        r
-        for r in db.execute(select(GenerationOutage).where(GenerationOutage.status == "active")).scalars()
-        if _aware(r.start_utc) < day_end and _aware(r.end_utc) > day_start
-    ]
+    if rows is None:
+        rows = active_outage_rows(db)
+    rows = [r for r in rows if _aware(r.start_utc) < day_end and _aware(r.end_utc) > day_start]
 
     nuclear_rows: dict[str, list[GenerationOutage]] = {n: [] for n, _ in NUCLEAR_UNITS}
     other_rows: list[GenerationOutage] = []
@@ -243,3 +246,39 @@ def outages_for_day(db: Session, day: date) -> dict:
         "nuclear_offline_mw": offline_mw,
         "other": other,
     }
+
+
+def nuclear_avg_mw_for_day(rows: list[GenerationOutage], day: date) -> dict[str, float]:
+    """
+    Time-weighted average available MW per reactor over the Stockholm day.
+
+    Nominal where no document applies; at each instant the minimum across the unit's
+    overlapping documents. Unlike outages_for_day (per-day minimum, for the board) a
+    few-hour dip barely moves this number.
+    """
+    day_start, day_end = stockholm_day_range_utc(day)
+    per_unit: dict[str, list[tuple[datetime, datetime, float]]] = {n: [] for n, _ in NUCLEAR_UNITS}
+    for r in rows:
+        unit = _NUCLEAR_BY_NORM.get(normalize_unit_name(r.resource_name))
+        if unit is None or not (_aware(r.start_utc) < day_end and _aware(r.end_utc) > day_start):
+            continue
+        periods = r.available_periods or [
+            {"start": _aware(r.start_utc).isoformat(), "end": _aware(r.end_utc).isoformat(), "mw": 0.0}
+        ]
+        for p in periods:
+            ps, pe = datetime.fromisoformat(p["start"]), datetime.fromisoformat(p["end"])
+            ps, pe = max(_aware(ps), day_start), min(_aware(pe), day_end)
+            if ps < pe:
+                per_unit[unit[0]].append((ps, pe, float(p["mw"])))
+
+    total = (day_end - day_start).total_seconds()
+    out = {}
+    for name, nominal in NUCLEAR_UNITS:
+        spans = per_unit[name]
+        cuts = sorted({day_start, day_end, *(t for s, e, _ in spans for t in (s, e))})
+        acc = 0.0
+        for a, b in zip(cuts, cuts[1:]):
+            avail = min([float(nominal)] + [mw for s, e, mw in spans if s <= a and e >= b])
+            acc += max(avail, 0.0) * (b - a).total_seconds()
+        out[name] = acc / total
+    return out

@@ -23,6 +23,7 @@ import { useChartColors } from "../hooks/useChartColors";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { UpdateBadge } from "./UpdateBadge";
 import { TodayStory } from "./TodayStory";
+import { OutageBoard } from "./OutageBoard";
 import { WeeklySummary } from "./WeeklySummary";
 import { formatPrice, PRICE_UNIT, currentCETHour } from "../utils/formatters";
 import type { Area } from "../types/index";
@@ -962,6 +963,10 @@ export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
           )}
         </div>
       )}
+
+      {/* Nuclear status sits right above the generation mix: both are supply-side
+          context, and a missing reactor is the most common reason prices move. */}
+      <OutageBoard />
 
       {/* Generation mix — the supply-side context behind the prices above.
           Sits last: it's the "why", read after the "what" and "what's next". */}

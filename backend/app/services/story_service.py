@@ -17,8 +17,10 @@ from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.services.outage_service import NUCLEAR_UNITS, active_outage_rows, nuclear_avg_mw_for_day, outages_for_day
 from app.utils.timezone import STOCKHOLM, stockholm_midnight_utc
 
 AREAS = ("SE1", "SE2", "SE3", "SE4")
@@ -41,8 +43,12 @@ AREA_WEIGHT = {"SE1": 0.8, "SE2": 0.85, "SE3": 1.0, "SE4": 1.0}
 NOVELTY_STEP = 0.2  # headline score loss per earlier headline of the same kind in the replay
 NOVELTY_FLOOR = 0.4
 # Tie-break order when scores are equal (deterministic output).
+NUCLEAR_MIN_CHANGE_MW = 500  # a reactor must gain/lose this much availability between two days to headline
+NUCLEAR_MIN_OUTAGE_HOURS = 48  # trips and tests shorter than this (by the document's own start/end) never headline
+NUCLEAR_CONTEXT_MIN_MW = 1000  # offline nuclear capacity that earns a cause line under spread/high headlines
 KIND_ORDER = [
     "negative",
+    "nuclear",
     "low",
     "high",
     "spread",
@@ -90,6 +96,8 @@ class StoryData:
     hourly: dict[tuple[str, date, int], list[float]] = field(default_factory=dict)
     wind: dict[date, list[float]] = field(default_factory=dict)  # day -> [wind MW sum, total MW sum, slots]
     forecast: dict[str, dict[date, list[tuple[int, float]]]] = field(default_factory=dict)
+    outages: dict[date, dict] = field(default_factory=dict)  # day -> outages_for_day() result; empty if unavailable
+    nuclear_avg: dict[date, dict[str, float]] = field(default_factory=dict)  # day -> reactor -> mean available MW
     _cache: dict[date, list[Candidate]] = field(default_factory=dict)
 
 
@@ -237,7 +245,24 @@ def load_story_data(db: Session, first_day: date, last_day: date) -> StoryData:
         w[0] += float(wind_mw or 0)
         w[1] += float(total_mw or 0)
         w[2] += 1
+    _load_outages(db, data, replay_start - timedelta(days=2), last_day)
     return data
+
+
+def _load_outages(db: Session, data: StoryData, first: date, last: date) -> None:
+    """Per-day nuclear status for first..last from one query. Missing data just means no outage rules fire."""
+    try:
+        rows = active_outage_rows(db)
+    except SQLAlchemyError:
+        db.rollback()
+        return
+    if not rows:
+        return
+    d = first
+    while d <= last:
+        data.outages[d] = outages_for_day(db, d, rows)
+        data.nuclear_avg[d] = nuclear_avg_mw_for_day(rows, d)
+        d += timedelta(days=1)
 
 
 # ---------------------------------------------------------------------------
@@ -480,6 +505,90 @@ def _rule_wind(data: StoryData, day: date, today: date) -> list[Candidate]:
     ]
 
 
+def _units_phrase(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def _nuclear_context(data: StoryData, day: date) -> str | None:
+    """Cause line for price headlines: which reactors are out and how much capacity that removes."""
+    out = data.outages.get(day)
+    if not out or out["nuclear_offline_mw"] < NUCLEAR_CONTEXT_MIN_MW:
+        return None
+    down = [u for u in out["nuclear"] if u["status"] != "running"]
+    names = [u["name"] for u in down]
+    gw = f"{out['nuclear_offline_mw'] / 1000:.1f} GW"
+    lead = (
+        f"{len(down)} reactors are" if len(down) >= 4 else f"{_units_phrase(names)} {'is' if len(down) == 1 else 'are'}"
+    )
+    state = {"offline": "offline", "reduced": "running reduced"}
+    kinds = {u["status"] for u in down}
+    word = state[kinds.pop()] if len(kinds) == 1 else "offline or reduced"
+    text_ = f"{lead} {word}"
+    if len(down) >= 4:
+        text_ += f": {_units_phrase(names)}"
+        return f"{text_} — {gw} of nuclear missing"
+    return f"{text_}: {gw} of nuclear missing"
+
+
+def _rule_nuclear(data: StoryData, day: date) -> list[Candidate]:
+    """Fires only on a state change: a reactor's mean availability moves >= 500 MW versus the previous day.
+
+    Day means (not per-day minimums) keep a few-hour dip from reading as a whole-day event. A step that
+    already fired on the previous day (e.g. a mid-day return finishing the next day) is not repeated.
+    """
+    cur, prev = data.outages.get(day), data.outages.get(day - timedelta(days=1))
+    avg = [data.nuclear_avg.get(day - timedelta(days=k)) for k in range(3)]
+    if not cur or not prev or not avg[0] or not avg[1]:
+        return []
+    before = {u["name"]: u for u in prev["nuclear"]}
+    off, drop, back, full = [], [], [], []
+    moved_mw = 0.0
+    for u in cur["nuclear"]:
+        name = u["name"]
+        p = before[name]
+        delta = avg[0][name] - avg[1][name]
+        if abs(delta) < NUCLEAR_MIN_CHANGE_MW:
+            continue
+        prev_delta = avg[1][name] - avg[2][name] if avg[2] else 0.0
+        if prev_delta * delta > 0 and abs(prev_delta) >= NUCLEAR_MIN_CHANGE_MW:
+            continue  # same-direction step already headlined yesterday
+        driver = u["outage"] if delta < 0 else p["outage"]  # doc behind the drop / the doc that just ended
+        if not driver:
+            continue
+        span = datetime.fromisoformat(driver["end"]) - datetime.fromisoformat(driver["start"])
+        if span < timedelta(hours=NUCLEAR_MIN_OUTAGE_HOURS):
+            continue
+        moved_mw += abs(delta)
+        if delta < 0:
+            (off if u["status"] == "offline" else drop).append(name)
+        elif p["status"] == "offline" and p["outage"]:
+            start = _local(datetime.fromisoformat(p["outage"]["start"])).date()
+            back.append((name, (day - start).days))
+        else:
+            full.append(name)
+    parts = []
+    if off:
+        parts.append(f"{_units_phrase(off)} {'goes' if len(off) == 1 else 'go'} offline")
+    if drop:
+        parts.append(f"{_units_phrase(drop)} {'cuts' if len(drop) == 1 else 'cut'} output")
+    if back:
+        names = [n for n, _ in back]
+        tail = f" after {back[0][1]} days" if len(back) == 1 and back[0][1] > 1 else ""
+        parts.append(f"{_units_phrase(names)} {'is' if len(names) == 1 else 'are'} back online{tail}")
+    if full:
+        parts.append(f"{_units_phrase(full)} {'is' if len(full) == 1 else 'are'} back at full power")
+    if not parts:
+        return []
+    mw = cur["nuclear_offline_mw"]
+    total = sum(nom for _, nom in NUCLEAR_UNITS)
+    sub = (
+        f"{mw / 1000:.1f} GW of Sweden's {total / 1000:.1f} GW nuclear capacity is offline."
+        if mw > 0
+        else "All six reactors are running."
+    )
+    return [Candidate("nuclear", "SE3", min(85, 60 + 8 * moved_mw / 1000), "; ".join(parts), sub)]
+
+
 def _daily_mae(data: StoryData, area: str, day: date) -> float | None:
     errs = []
     for hour, pred in data.forecast.get(area, {}).get(day, []):
@@ -583,6 +692,7 @@ def candidates_for(data: StoryData, day: date, today: date) -> list[Candidate]:
     if day not in data._cache:
         raw = (
             _rule_negative(data, day)
+            + _rule_nuclear(data, day)
             + _rule_low_high(data, day)
             + _rule_spread(data, day)
             + _rule_coupled(data, day)
@@ -639,8 +749,10 @@ def build_story(data: StoryData, day: date, today: date) -> dict:
     headlines, cands = replay_headlines(data, day, today)
     headline = headlines[-1]
     facts = [{"kind": c.kind, "area": c.area, "text": c.text} for c in cands if c.kind != headline.kind][:3]
+    context = _nuclear_context(data, day) if headline.kind in ("spread", "high") else None
     return {
         "date": day.isoformat(),
+        "context": context,
         "headline": {
             "kind": headline.kind,
             "area": headline.area,

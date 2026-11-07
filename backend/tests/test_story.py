@@ -15,9 +15,17 @@ from app.db.database import Base, get_db
 from app.main import app
 from app.models.forecast_accuracy import ForecastAccuracy
 from app.models.generation_mix import GenerationMix
+from app.models.generation_outage import GenerationOutage
 from app.models.spot_price import SpotPrice
 from app.routers import story as story_router
-from app.services.story_service import Candidate, StoryData, candidates_for, load_story_data, replay_headlines
+from app.services.story_service import (
+    Candidate,
+    StoryData,
+    build_story,
+    candidates_for,
+    load_story_data,
+    replay_headlines,
+)
 from app.utils.timezone import STOCKHOLM, stockholm_midnight_utc
 
 engine = create_engine(
@@ -436,6 +444,243 @@ def test_tomorrow_ignores_ratio_on_near_zero_days(db):
 
 
 # ── baseline / rotation / API ────────────────────────────────────────────────
+
+
+# ── nuclear (cause line + state-change headline) ────────────────────────────
+
+NOMINAL = {
+    "Forsmark 1": 1100,
+    "Forsmark 2": 1121,
+    "Forsmark 3": 1172,
+    "Ringhals 3": 1063,
+    "Ringhals 4": 1134,
+    "Oskarshamn 3": 1400,
+}
+
+
+def add_outage(db, name, first, last, mw=0.0):
+    """Reactor available at `mw` from Stockholm midnight of `first` through the end of `last`."""
+    start, end = stockholm_midnight_utc(first), stockholm_midnight_utc(last + timedelta(days=1))
+    db.add(
+        GenerationOutage(
+            mrid=f"{name}-{first}-{mw}",
+            document_type="A80",
+            business_type="A53",
+            status="active",
+            area="SE3",
+            resource_eic=f"EIC-{name}",
+            resource_name=name,
+            psr_type="B14",
+            nominal_mw=NOMINAL[name],
+            start_utc=start,
+            end_utc=end,
+            available_periods=[{"start": start.isoformat(), "end": end.isoformat(), "mw": mw}],
+            reason_text="Revision",
+            last_seen_utc=start,
+        )
+    )
+    db.commit()
+
+
+def add_outage_between(db, name, start, end, mw=0.0):
+    db.add(
+        GenerationOutage(
+            mrid=f"{name}-{start.isoformat()}-{mw}",
+            document_type="A80",
+            business_type="A54",
+            status="active",
+            area="SE3",
+            resource_eic=f"EIC-{name}",
+            resource_name=name,
+            psr_type="B14",
+            nominal_mw=NOMINAL[name],
+            start_utc=start,
+            end_utc=end,
+            available_periods=[{"start": start.isoformat(), "end": end.isoformat(), "mw": mw}],
+            reason_text="Trip",
+            last_seen_utc=start,
+        )
+    )
+    db.commit()
+
+
+def noon(day):
+    return stockholm_midnight_utc(day) + timedelta(hours=12)
+
+
+def story(db, day=D):
+    return build_story(load_story_data(db, day, day), day, day)
+
+
+def seed_high(db):
+    seed_history(db, "SE3", D, 90, lambda k: 0.3)
+    seed_day(db, "SE3", D, [1.0] * 24)
+
+
+def long_out(db, *names):
+    for n in names:
+        add_outage(db, n, D - timedelta(days=60), D + timedelta(days=20))
+
+
+def test_context_set_for_high_with_one_unit(db):
+    seed_high(db)
+    long_out(db, "Ringhals 4")
+    s = story(db)
+    assert s["headline"]["kind"] == "high"
+    assert s["context"] == "Ringhals 4 is offline: 1.1 GW of nuclear missing"
+
+
+def test_context_lists_three_units(db):
+    seed_high(db)
+    long_out(db, "Forsmark 1", "Ringhals 3", "Ringhals 4")
+    assert story(db)["context"] == "Forsmark 1, Ringhals 3 and Ringhals 4 are offline: 3.3 GW of nuclear missing"
+
+
+def test_context_uses_count_from_four_units(db):
+    seed_high(db)
+    long_out(db, "Forsmark 1", "Forsmark 2", "Ringhals 3", "Ringhals 4")
+    assert story(db)["context"] == (
+        "4 reactors are offline: Forsmark 1, Forsmark 2, Ringhals 3 and Ringhals 4 — 4.4 GW of nuclear missing"
+    )
+
+
+def test_context_set_for_spread(db):
+    _seed_spread(db, 0.85)
+    long_out(db, "Ringhals 3", "Ringhals 4")
+    s = story(db)
+    assert s["headline"]["kind"] == "spread"
+    assert s["context"] == "Ringhals 3 and Ringhals 4 are offline: 2.2 GW of nuclear missing"
+
+
+def test_context_needs_one_gw_offline(db):
+    seed_high(db)
+    long_out(db, "Forsmark 2")  # 1121 MW -> shown
+    assert story(db)["context"] is not None
+    db.query(GenerationOutage).delete()
+    db.commit()
+    add_outage(db, "Forsmark 2", D - timedelta(days=60), D + timedelta(days=20), mw=300)  # 821 MW missing
+    assert story(db)["context"] is None
+
+
+def test_context_not_set_for_other_kinds(db):
+    seed_day(db, "SE2", D, [-0.1] * 6 + [0.3] * 18)
+    seed_day(db, "SE3", D, [0.5] * 24)
+    long_out(db, "Forsmark 1", "Ringhals 3")
+    s = story(db)
+    assert s["headline"]["kind"] == "negative"
+    assert s["context"] is None
+
+
+def test_nuclear_headline_when_reactor_goes_offline(db):
+    seed_day(db, "SE3", D, [0.4] * 24)
+    add_outage(db, "Forsmark 1", D, D + timedelta(days=30))
+    c = kinds(db)["nuclear"]
+    assert c.text == "Forsmark 1 goes offline"
+    assert c.area == "SE3"
+    assert c.sub == "1.1 GW of Sweden's 7.0 GW nuclear capacity is offline."
+    assert c.score == pytest.approx(60 + 8 * 1.1)
+    assert story(db)["headline"]["kind"] == "nuclear"
+
+
+def test_nuclear_headline_combines_names(db):
+    add_outage(db, "Ringhals 3", D, D + timedelta(days=30))
+    add_outage(db, "Ringhals 4", D, D + timedelta(days=30))
+    assert kinds(db)["nuclear"].text == "Ringhals 3 and Ringhals 4 go offline"
+
+
+def test_nuclear_headline_when_reactor_returns_with_days(db):
+    add_outage(db, "Ringhals 4", D - timedelta(days=80), D - timedelta(days=1))
+    c = kinds(db)["nuclear"]
+    assert c.text == "Ringhals 4 is back online after 80 days"
+    assert c.sub == "All six reactors are running."
+
+
+def test_nuclear_headline_on_drop_and_return_to_full_power(db):
+    add_outage(db, "Forsmark 3", D, D + timedelta(days=5), mw=500)
+    assert kinds(db)["nuclear"].text == "Forsmark 3 cuts output"
+    db.query(GenerationOutage).delete()
+    db.commit()
+    add_outage(db, "Forsmark 3", D - timedelta(days=5), D - timedelta(days=1), mw=500)
+    assert kinds(db)["nuclear"].text == "Forsmark 3 is back at full power"
+
+
+def test_nuclear_headline_ignores_changes_under_500_mw(db):
+    add_outage(db, "Forsmark 3", D, D + timedelta(days=5), mw=1172 - 499)
+    assert "nuclear" not in kinds(db)
+
+
+def test_nuclear_short_dip_does_not_fire(db):
+    # 4 h at 200 of 1121 MW: day mean falls only ~150 MW even though the day minimum is 200
+    start = noon(D)
+    add_outage_between(db, "Forsmark 2", start, start + timedelta(hours=4), mw=200)
+    assert "nuclear" not in kinds(db)
+
+
+def test_nuclear_fires_on_the_day_a_unit_returns_mid_day_and_only_once(db):
+    add_outage(db, "Ringhals 4", D - timedelta(days=10), D - timedelta(days=1))
+    add_outage_between(db, "Ringhals 4", stockholm_midnight_utc(D), noon(D))  # back at noon on D
+    assert kinds(db)["nuclear"].text == "Ringhals 4 is back online after 10 days"
+    # next day the remaining half-day gain was already headlined
+    assert "nuclear" not in kinds(db, D + timedelta(days=1), D + timedelta(days=1))
+
+
+def test_nuclear_fires_when_unit_goes_offline_mid_day_and_only_once(db):
+    add_outage_between(db, "Forsmark 1", noon(D), noon(D) + timedelta(days=10))
+    assert kinds(db)["nuclear"].text == "Forsmark 1 goes offline"
+    assert "nuclear" not in kinds(db, D + timedelta(days=1), D + timedelta(days=1))
+
+
+def test_nuclear_ignores_outages_shorter_than_48_hours(db):
+    # 30 h: both the drop (D) and the return (D+2) move the day mean by >= 500 MW, yet neither headlines
+    add_outage_between(db, "Forsmark 1", noon(D), noon(D) + timedelta(hours=30))
+    for k in range(4):
+        d = D + timedelta(days=k)
+        assert "nuclear" not in kinds(db, d, d)
+
+
+def test_nuclear_headlines_a_four_day_outage_both_ways(db):
+    add_outage_between(db, "Forsmark 1", noon(D), noon(D) + timedelta(days=4))
+    assert kinds(db)["nuclear"].text == "Forsmark 1 goes offline"
+    back = D + timedelta(days=4)
+    assert kinds(db, back, back)["nuclear"].text == "Forsmark 1 is back online after 4 days"
+
+
+def test_nuclear_avg_weights_by_time_and_takes_min_of_overlapping_docs(db):
+    from app.services.outage_service import active_outage_rows, nuclear_avg_mw_for_day
+
+    s = stockholm_midnight_utc(D)
+    add_outage_between(db, "Forsmark 1", s, s + timedelta(hours=12), mw=600)
+    add_outage_between(db, "Forsmark 1", s + timedelta(hours=6), s + timedelta(hours=12), mw=100)
+    avg = nuclear_avg_mw_for_day(active_outage_rows(db), D)["Forsmark 1"]
+    assert avg == pytest.approx((600 * 6 + 100 * 6 + 1100 * 12) / 24)
+    assert nuclear_avg_mw_for_day([], D)["Ringhals 3"] == 1063
+
+
+def test_nuclear_headline_silent_when_nothing_changes(db):
+    long_out(db, "Forsmark 1", "Ringhals 3")
+    assert "nuclear" not in kinds(db)
+
+
+def test_nuclear_loses_to_a_strong_negative_day(db):
+    seed_day(db, "SE2", D, [-0.1] * 12 + [0.3] * 12)  # 12 h negative -> 93
+    add_outage(db, "Forsmark 1", D, D + timedelta(days=30))
+    cands = {c.kind: c for c in candidates_for(load_story_data(db, D, D), D, D)}
+    assert cands["negative"].score > cands["nuclear"].score
+
+
+def test_no_outage_rows_behaves_as_before(db):
+    seed_high(db)
+    s = story(db)
+    assert s["headline"]["kind"] == "high"
+    assert s["context"] is None
+    assert "nuclear" not in kinds(db)
+    assert load_story_data(db, D, D).outages == {}
+
+
+def test_outages_loaded_once_for_the_replay_window(db):
+    long_out(db, "Forsmark 1")
+    data = load_story_data(db, D, D)
+    assert sorted(data.outages) == [D - timedelta(days=k) for k in range(8, -1, -1)]
 
 
 def test_baseline_text(db):

@@ -33,9 +33,12 @@ def main() -> None:
     print(f"Story {start} .. {end} (Europe/Stockholm)")
     for i in range(args.days):
         day = start + timedelta(days=i)
-        h = build_story(data, day, today)["headline"]
+        story = build_story(data, day, today)
+        h = story["headline"]
         kinds.append(h["kind"])
         print(f"{day}  {h['kind']:<9} {h['area']:<4} {h['text']}")
+        if story["context"]:
+            print(f"{'':27}{story['context']}")
 
     runs, run = 0, 1
     for prev, cur in zip(kinds, kinds[1:] + [None]):
