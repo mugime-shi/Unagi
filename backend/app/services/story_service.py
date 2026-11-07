@@ -5,8 +5,10 @@ Spec: work/SPEC_2026-11-07_today_story.md. Every rule turns already-stored data
 into a scored candidate; the highest score wins, with a rotation so the same
 kind never headlines three days in a row. Pure templates, no LLM.
 
-Timestamps are stored in UTC. SQL stays portable to SQLite (tests), so rows are
-fetched plain and bucketed into Europe/Stockholm days here in Python.
+Timestamps are stored in UTC. The recent window (rotation replay + forecast MAE)
+is fetched as raw rows and bucketed into Europe/Stockholm days in Python. The long
+percentile history only needs per-day aggregates, so on PostgreSQL those are
+grouped in SQL; SQLite (tests) has no time zones and keeps the Python path.
 """
 
 import math
@@ -106,6 +108,60 @@ def _utc_naive(d: date) -> datetime:
     return stockholm_midnight_utc(d).replace(tzinfo=None)
 
 
+def _load_daily_aggregates(db: Session, data: StoryData, start: datetime, end: datetime) -> None:
+    """Fill DayStats for [start, end) with Stockholm-day aggregates computed in PostgreSQL.
+
+    Same numbers as the Python bucketing (resolution-aware minutes, SEK*minutes sum), minus
+    min/max times and negative minutes, which only matter for days inside the raw window.
+    """
+    rows = db.execute(
+        text(
+            """
+            SELECT area,
+                   (timestamp_utc AT TIME ZONE 'Europe/Stockholm')::date AS day,
+                   SUM(CASE WHEN resolution = 'PT15M' THEN 15.0 ELSE 60.0 END)::float8 AS minutes,
+                   SUM(price_sek_kwh::float8 * CASE WHEN resolution = 'PT15M' THEN 15.0 ELSE 60.0 END) AS weighted_sum,
+                   MIN(price_sek_kwh::float8) AS min_price,
+                   MAX(price_sek_kwh::float8) AS max_price
+            FROM spot_prices
+            WHERE timestamp_utc >= :start AND timestamp_utc < :end
+              AND price_sek_kwh IS NOT NULL
+              AND area IN ('SE1', 'SE2', 'SE3', 'SE4')
+            GROUP BY area, 2
+            """
+        ),
+        {"start": start, "end": end},
+    ).all()
+    for area, day, minutes, weighted_sum, lo, hi in rows:
+        data.prices[area][day] = DayStats(
+            minutes=float(minutes), weighted_sum=float(weighted_sum), min_price=float(lo), max_price=float(hi)
+        )
+
+
+def _bucket_price_rows(data: StoryData, price_rows, fc_start: date) -> None:
+    """Bucket raw slots into Stockholm days (full DayStats) and, inside the forecast window, hours."""
+    for area, ts, price, resolution in price_rows:
+        if area not in data.prices:
+            continue
+        price = float(price)
+        minutes = 15.0 if resolution == "PT15M" else 60.0
+        local = _local(ts)
+        day = local.date()
+        st = data.prices[area].setdefault(day, DayStats())
+        st.minutes += minutes
+        st.weighted_sum += price * minutes
+        if price < st.min_price:
+            st.min_price, st.min_time = price, local
+        if price > st.max_price:
+            st.max_price, st.max_time = price, local
+        if price < 0:
+            st.neg_minutes += minutes
+        if day >= fc_start and area in data.forecast:
+            h = data.hourly.setdefault((area, day, local.hour), [0.0, 0.0])
+            h[0] += price * minutes
+            h[1] += minutes
+
+
 def load_story_data(db: Session, first_day: date, last_day: date) -> StoryData:
     """Load everything the rules need to build stories for first_day..last_day.
 
@@ -129,6 +185,15 @@ def load_story_data(db: Session, first_day: date, last_day: date) -> StoryData:
     for area, target_date, hour, pred in fc_rows:
         data.forecast.setdefault(area, defaultdict(list))[_as_date(target_date)].append((int(hour), float(pred)))
 
+    # Only [fc_start, D+1] needs slot detail (times of min/max, negative minutes,
+    # hourly means); older days feed the percentile rules via avg/min/max/coverage.
+    raw_start = _utc_naive(fc_start)
+    long_start = _utc_naive(replay_start - timedelta(days=PRICE_HISTORY_DAYS))
+    if db.bind.dialect.name == "postgresql":
+        _load_daily_aggregates(db, data, long_start, raw_start)
+        price_start = raw_start
+    else:
+        price_start = long_start
     price_rows = db.execute(
         text(
             """
@@ -139,30 +204,11 @@ def load_story_data(db: Session, first_day: date, last_day: date) -> StoryData:
             """
         ),
         {
-            "start": _utc_naive(replay_start - timedelta(days=PRICE_HISTORY_DAYS)),
+            "start": price_start,
             "end": _utc_naive(last_day + timedelta(days=2)),  # through D+1
         },
     ).all()
-    for area, ts, price, resolution in price_rows:
-        if area not in data.prices:
-            continue
-        price = float(price)
-        minutes = 15.0 if resolution == "PT15M" else 60.0
-        local = _local(ts)
-        day = local.date()
-        st = data.prices[area].setdefault(day, DayStats())
-        st.minutes += minutes
-        st.weighted_sum += price * minutes
-        if price < st.min_price:
-            st.min_price, st.min_time = price, local
-        if price > st.max_price:
-            st.max_price, st.max_time = price, local
-        if price < 0:
-            st.neg_minutes += minutes
-        if day >= fc_start and area in data.forecast:
-            h = data.hourly.setdefault((area, day, local.hour), [0.0, 0.0])
-            h[0] += price * minutes
-            h[1] += minutes
+    _bucket_price_rows(data, price_rows, fc_start)
 
     gen_rows = db.execute(
         text(
