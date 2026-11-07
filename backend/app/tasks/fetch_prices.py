@@ -29,6 +29,7 @@ from app.services.balancing_service import fetch_and_store_balancing, get_balanc
 from app.services.entsoe_client import EntsoEError
 from app.services.esett_client import BalancingError
 from app.services.generation_service import fetch_and_store_generation, get_generation_for_date
+from app.services.outage_service import fetch_and_store_outages
 from app.services.price_service import fetch_and_store, get_prices_for_date
 
 logging.basicConfig(
@@ -460,6 +461,35 @@ def backfill_gas_prices(days: int) -> list[dict]:
 ALL_AREAS = ["SE1", "SE2", "SE3", "SE4"]
 
 
+OUTAGE_PAST_DAYS = 7
+OUTAGE_FUTURE_DAYS = 60
+
+
+def _fetch_outages(past_days: int = OUTAGE_PAST_DAYS, future_days: int = OUTAGE_FUTURE_DAYS, areas=None) -> dict:
+    """
+    Pull ENTSO-E generation outages (A77/A80) for [today-past_days, now+future_days].
+    Never raises — an outage failure must not break the price / ML steps.
+    """
+    try:
+        now = datetime.now(timezone.utc)
+        db = SessionLocal()
+        try:
+            summary = fetch_and_store_outages(
+                db,
+                now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=past_days),
+                now + timedelta(days=future_days),
+                areas or ALL_AREAS,
+            )
+        finally:
+            db.close()
+        log.info("outages — %s", {k: v for k, v in summary.items() if k != "failures"})
+        status = "error" if summary["errors"] and not summary["fetched"] else "ok"
+        return {"market": "outages", "status": status, **summary}
+    except Exception as exc:
+        log.exception("FAIL outages: %s", exc)
+        return {"market": "outages", "status": "error", "error": str(exc)}
+
+
 def lambda_handler(event: dict, context) -> dict:
     """
     Lambda entry point.
@@ -469,6 +499,7 @@ def lambda_handler(event: dict, context) -> dict:
     event = {"backfill_days": N, "area": "SE3"}   → past N days for one area
     event = {"backfill_generation": N}             → past N days generation mix (A75) for ALL areas
     event = {"backfill_generation": N, "area": "SE3"} → generation backfill for one area
+    event = {"backfill_outages": N}                → generation outages (A77/A80) for [today-N, today+60d]
     event = {"date": "YYYY-MM-DD"}                 → single date for ALL areas
     event = {"predict_only": true}                  → record predictions only (manual)
     event = {"midnight_predict": true}              → nightly data completion + ML prediction
@@ -497,6 +528,7 @@ def lambda_handler(event: dict, context) -> dict:
 
         results.append(_fetch_weather_forecast())
         results.append(_fetch_gas_prices())
+        results.append(_fetch_outages())
 
         # Data-freshness health check: detect cases where fetchers succeeded
         # but upstream still hasn't delivered recent slots (ENTSO-E publishing
@@ -513,6 +545,15 @@ def lambda_handler(event: dict, context) -> dict:
             "mode": "midnight_collect",
             "areas": areas,
             "results": results,
+        }
+
+    # Outage backfill: window [today-N, today+60d]; outages only, nothing else runs.
+    if event.get("backfill_outages"):
+        result = _fetch_outages(past_days=int(event["backfill_outages"]), areas=areas)
+        return {
+            "statusCode": 200 if result["status"] != "error" else 207,
+            "mode": "backfill_outages",
+            "results": [result],
         }
 
     # Prediction-only run (00:20 UTC scheduled, or manual invocation).
@@ -645,6 +686,9 @@ def lambda_handler(event: dict, context) -> dict:
         # as "today". SKIPs when already stored.
         for de_date in [yesterday, today]:
             all_results.append(fetch_de_price_date(de_date))
+
+        # Generation outages (A77/A80) — isolated: never breaks price/ML steps.
+        all_results.append(_fetch_outages())
 
     # Generation backfill via Lambda event
     if event.get("backfill_generation"):
@@ -1177,6 +1221,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Fetch hydro reservoir stored energy (ENTSO-E A72)",
     )
+    parser.add_argument(
+        "--outages",
+        action="store_true",
+        help="Fetch generation outages (ENTSO-E A77/A80), all areas; --backfill N = [today-N, today+60d]",
+    )
     return parser.parse_args()
 
 
@@ -1189,7 +1238,9 @@ def main() -> int:
             log.info("Aborted.")
             return 1
 
-    if args.generation:
+    if args.outages:
+        results = [_fetch_outages(past_days=args.backfill or OUTAGE_PAST_DAYS)]
+    elif args.generation:
         # Generation mix mode
         if args.backfill:
             results = backfill_generation(args.backfill, args.area)
