@@ -22,6 +22,7 @@ import { useCoverage } from "../hooks/useCoverage";
 import { useChartColors } from "../hooks/useChartColors";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { UpdateBadge } from "./UpdateBadge";
+import { TodayStory } from "./TodayStory";
 import { WeeklySummary } from "./WeeklySummary";
 import { formatPrice, PRICE_UNIT, currentCETHour } from "../utils/formatters";
 import type { Area } from "../types/index";
@@ -795,6 +796,8 @@ export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
         </h1>
         <UpdateBadge />
       </div>
+
+      <TodayStory />
 
       {/* Time range selector */}
       <div className="flex gap-1">

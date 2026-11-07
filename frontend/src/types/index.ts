@@ -197,6 +197,21 @@ export interface ForecastAccuracyResponse {
   };
 }
 
+// ─── Today Story ──────────────────────────────────────────────────────────────
+
+export interface StoryItem {
+  kind: string;
+  area: string;
+  text: string;
+}
+
+export interface StoryResponse {
+  date: string;
+  headline: StoryItem & { sub: string | null };
+  facts: StoryItem[];
+  generated_at: string;
+}
+
 export interface BreakdownBucket {
   bucket: string | number;
   mae: number;

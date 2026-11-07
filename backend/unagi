@@ -12,6 +12,7 @@ TRAIN_DAYS=270
 OUT=./export_out
 MODEL=lgbm
 THRESHOLD=0.35
+END=""
 
 parse_flags() {
     while [[ $# -gt 0 ]]; do
@@ -25,6 +26,7 @@ parse_flags() {
             --out)        OUT="$2";        shift 2 ;;
             --model)      MODEL="$2";      shift 2 ;;
             --threshold)  THRESHOLD="$2";  shift 2 ;;
+            --end)        END="$2";        shift 2 ;;
             *) echo "Unknown flag: $1" >&2; exit 1 ;;
         esac
     done
@@ -130,6 +132,11 @@ cmd_usage() {
     python -m scripts.usage_report --days "$DAYS"
 }
 
+cmd_story() {
+    parse_flags "$@"
+    python -m scripts.story_report --days "$DAYS" ${END:+--end "$END"}
+}
+
 cmd_smoke() {
     python scripts/fetch_prices_smoke.py
 }
@@ -199,6 +206,7 @@ ML:
 
 Diagnostics:
   usage [--days N]              Visits, 7-day return rate, referrers, tab usage
+  story [--days N] [--end D]    Replay the today-story headline per day (rotation check)
   smoke                         ENTSO-E API connectivity check
   test                          Run pytest suite
 
@@ -211,6 +219,7 @@ Flags:
   --days N      Number of days (default: 30)
   --area CODE   Price area SE1-SE4 (default: SE3)
   --trials N    Optuna trials (default: 100)
+  --end D       Last day YYYY-MM-DD (default: today, story only)
   --date D      Target date YYYY-MM-DD (lambda-predict only)
   --horizon H   Max forecast horizon (default: 3, backtest-horizon only)
   --train-days T Training window days (default: 270, backtest-horizon only)
@@ -243,6 +252,7 @@ case "$command" in
     export)         cmd_export "$@" ;;
     publish)        cmd_publish ;;
     usage)          cmd_usage "$@" ;;
+    story)          cmd_story "$@" ;;
     smoke)          cmd_smoke ;;
     test)           cmd_test "$@" ;;
     lambda-backfill) cmd_lambda_backfill "$@" ;;
