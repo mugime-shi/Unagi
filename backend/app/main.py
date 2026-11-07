@@ -12,6 +12,7 @@ from app.routers import (
     prices,
     simulate,
     solar,
+    story,
     weather,
 )
 
@@ -49,6 +50,7 @@ app.include_router(grid.router, prefix="/api/v1")
 app.include_router(elhandlare.router, prefix="/api/v1")
 app.include_router(weather.router, prefix="/api/v1")
 app.include_router(events.router, prefix="/api/v1")
+app.include_router(story.router, prefix="/api/v1")
 
 
 @app.get("/health")
