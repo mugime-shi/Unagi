@@ -17,7 +17,7 @@ export function TodayStory() {
     ) : null;
   }
 
-  const { headline, facts } = data;
+  const { headline, facts, context } = data;
   return (
     <div className="bg-surface-primary rounded-2xl p-4 space-y-2">
       <p className="text-base font-medium text-content-primary">
@@ -26,6 +26,7 @@ export function TodayStory() {
       {headline.sub && (
         <p className="text-sm text-content-secondary">{headline.sub}</p>
       )}
+      {context && <p className="text-xs text-content-muted">{context}</p>}
       {facts.length > 0 && (
         <div className="flex flex-wrap gap-2 pt-1">
           {facts.map((f) => (

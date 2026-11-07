@@ -209,7 +209,43 @@ export interface StoryResponse {
   date: string;
   headline: StoryItem & { sub: string | null };
   facts: StoryItem[];
+  /** Optional cause line (e.g. nuclear outages behind a price headline). */
+  context?: string | null;
   generated_at: string;
+}
+
+// ─── Generation outages ───────────────────────────────────────────────────────
+
+export interface OutageInfo {
+  start: string;
+  end: string;
+  type: "planned" | "forced";
+  reason: string;
+}
+
+export interface NuclearUnit {
+  name: string;
+  area: string;
+  nominal_mw: number;
+  status: "running" | "reduced" | "offline";
+  available_mw: number;
+  outage: OutageInfo | null;
+}
+
+export interface OtherOutage {
+  name: string;
+  area: string;
+  psr_type: string | null;
+  nominal_mw: number;
+  available_mw: number;
+  outage: OutageInfo | null;
+}
+
+export interface OutagesResponse {
+  date: string;
+  nuclear: NuclearUnit[];
+  nuclear_offline_mw: number;
+  other: OtherOutage[];
 }
 
 export interface BreakdownBucket {
