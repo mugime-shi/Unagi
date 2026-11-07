@@ -4,6 +4,7 @@ Generation mix router — ENTSO-E A75 actual generation per production type.
 Endpoints:
   GET /api/v1/generation/today   — today's generation mix with renewable % badge
   GET /api/v1/generation/date    — generation mix for an arbitrary date (DB only)
+  GET /api/v1/generation/outages — nuclear reactor status + large outages for a day (ENTSO-E A77/A80)
 """
 
 import time
@@ -11,6 +12,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
@@ -22,6 +24,8 @@ from app.services.generation_service import (
     fetch_and_store_generation,
     get_generation_for_date,
 )
+from app.services.outage_service import outages_for_day
+from app.utils.timezone import STOCKHOLM
 
 # Shared SQL fragment: ENTSO-E psr_type -> Unagi semantic group.
 # Kept as raw SQL so /national-24h and /history can do the national aggregation
@@ -419,3 +423,52 @@ def get_hydro_reservoir(db: DbDep):
         if prev_mwh:
             result["change_pct"] = round(diff / float(prev_mwh) * 100, 1)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Outages (A77 / A80)
+# ---------------------------------------------------------------------------
+
+
+class OutageInfo(BaseModel):
+    start: str
+    end: str
+    type: str  # planned | forced
+    reason: str
+
+
+class NuclearUnit(BaseModel):
+    name: str
+    area: str
+    nominal_mw: float
+    status: str  # running | reduced | offline
+    available_mw: float
+    outage: OutageInfo | None = None
+
+
+class OtherOutage(BaseModel):
+    name: str
+    area: str
+    psr_type: str | None = None
+    nominal_mw: float
+    available_mw: float
+    outage: OutageInfo
+
+
+class OutagesResponse(BaseModel):
+    date: str
+    nuclear: list[NuclearUnit]
+    nuclear_offline_mw: float
+    other: list[OtherOutage]
+
+
+@router.get("/outages", response_model=OutagesResponse)
+def get_outages(
+    db: DbDep,
+    day_param: Annotated[
+        date | None, Query(alias="date", description="Stockholm-local day, YYYY-MM-DD (default: today)")
+    ] = None,
+):
+    """Nuclear reactor availability and large non-nuclear outages for a day (DB only)."""
+    day = day_param or datetime.now(STOCKHOLM).date()
+    return outages_for_day(db, day)

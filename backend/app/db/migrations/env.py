@@ -7,6 +7,7 @@ import app.models.de_spot_price  # noqa: F401
 import app.models.forecast_accuracy  # noqa: F401
 import app.models.gas_price  # noqa: F401
 import app.models.generation_mix  # noqa: F401
+import app.models.generation_outage  # noqa: F401
 import app.models.load_forecast  # noqa: F401
 import app.models.push_subscription  # noqa: F401
 import app.models.spot_price  # noqa: F401 — ensure model is registered

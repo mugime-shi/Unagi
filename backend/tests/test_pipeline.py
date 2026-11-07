@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 # ---------------------------------------------------------------------------
 
 
+@patch("app.tasks.fetch_prices._fetch_outages", return_value={"market": "outages", "status": "ok"})
 @patch("app.tasks.fetch_prices._check_generation_freshness", return_value=[])
 @patch("app.tasks.fetch_prices._send_pipeline_alert")
 @patch("app.tasks.fetch_prices._fetch_gas_prices", return_value={"market": "gas_price", "status": "ok", "rows": 5})
@@ -29,7 +30,7 @@ from unittest.mock import MagicMock, patch
     return_value={"date": "2026-03-20", "market": "hydro", "status": "ok", "rows": 1},
 )
 def test_midnight_collect_calls_fetch_not_predict(
-    mock_hydro, mock_gen, mock_bal, mock_lf, mock_weather, mock_gas, mock_alert, mock_health
+    mock_hydro, mock_gen, mock_bal, mock_lf, mock_weather, mock_gas, mock_alert, mock_health, mock_outages
 ):
     from app.tasks.fetch_prices import lambda_handler
 
@@ -48,6 +49,7 @@ def test_midnight_collect_calls_fetch_not_predict(
     mock_alert.assert_not_called()
 
 
+@patch("app.tasks.fetch_prices._fetch_outages", return_value={"market": "outages", "status": "ok"})
 @patch("app.tasks.fetch_prices._check_generation_freshness", return_value=[])
 @patch("app.tasks.fetch_prices._send_pipeline_alert")
 @patch("app.tasks.fetch_prices._fetch_gas_prices", return_value={"market": "gas_price", "status": "ok", "rows": 5})
@@ -69,7 +71,7 @@ def test_midnight_collect_calls_fetch_not_predict(
     return_value={"date": "2026-03-20", "market": "hydro", "status": "ok", "rows": 1},
 )
 def test_midnight_collect_alerts_on_failure(
-    mock_hydro, mock_gen, mock_bal, mock_lf, mock_weather, mock_gas, mock_alert, mock_health
+    mock_hydro, mock_gen, mock_bal, mock_lf, mock_weather, mock_gas, mock_alert, mock_health, mock_outages
 ):
     from app.tasks.fetch_prices import lambda_handler
 

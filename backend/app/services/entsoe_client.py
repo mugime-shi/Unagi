@@ -6,10 +6,12 @@ actual generation per production type (document type A75).
 API docs: https://transparency.entsoe.eu/content/static_content/Static%20content/web%20api/Guide.html
 """
 
+import io
 import xml.etree.ElementTree as ET
+import zipfile
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
-from typing import Optional
+from datetime import date, datetime, timedelta, timezone
+from typing import Literal, Optional
 
 import httpx
 
@@ -612,3 +614,196 @@ def _parse_hydro_xml(xml_text: str) -> list[HydroReservoirPoint]:
             )
 
     return sorted(points, key=lambda p: p.week_start)
+
+
+# ---------------------------------------------------------------------------
+# A77 / A80: Unavailability of generation / production units (outages)
+# ---------------------------------------------------------------------------
+
+NS_OUTAGE = {"ns": "urn:iec62325.351:tc57wg16:451-6:outagedocument:3:0"}
+_EIC_TO_AREA = {eic: name for name, eic in _AREA_TO_EIC.items()}
+_OUTAGE_PAGE_SIZE = 200  # ENTSO-E returns at most 200 documents per request
+_OUTAGE_TIMEOUT = 60.0  # cold requests take up to ~13 s
+
+
+def _parse_outage_dt(text: str) -> datetime:
+    """Parse '2026-10-06T08:00Z' / '...:00Z' into an aware UTC datetime."""
+    return datetime.fromisoformat(text.strip().replace("Z", "+00:00")).astimezone(timezone.utc)
+
+
+def _outage_dt_pair(ts: ET.Element, prefix: str) -> Optional[datetime]:
+    d = ts.findtext(f"ns:{prefix}_DateAndOrTime.date", namespaces=NS_OUTAGE)
+    t = ts.findtext(f"ns:{prefix}_DateAndOrTime.time", namespaces=NS_OUTAGE)
+    if not d:
+        return None
+    return _parse_outage_dt(f"{d.strip()}T{(t or '00:00:00Z').strip()}")
+
+
+def _available_periods(ts: ET.Element) -> list[dict]:
+    """
+    Convert Available_Period/Point step functions into absolute periods.
+
+    A point holds its quantity until the next point's position (curveType A03),
+    the last one until the period end. Consecutive equal quantities are merged.
+    """
+    out: list[dict] = []
+    for ap in ts.findall("ns:Available_Period", NS_OUTAGE):
+        start_el = ap.find("ns:timeInterval/ns:start", NS_OUTAGE)
+        end_el = ap.find("ns:timeInterval/ns:end", NS_OUTAGE)
+        res_el = ap.find("ns:resolution", NS_OUTAGE)
+        if start_el is None or end_el is None or res_el is None:
+            continue
+        p_start, p_end = _parse_outage_dt(start_el.text), _parse_outage_dt(end_el.text)
+        step = _parse_outage_resolution(res_el.text)
+        pts = sorted(
+            (
+                int(p.findtext("ns:position", namespaces=NS_OUTAGE)),
+                float(p.findtext("ns:quantity", namespaces=NS_OUTAGE)),
+            )
+            for p in ap.findall("ns:Point", NS_OUTAGE)
+        )
+        for i, (pos, qty) in enumerate(pts):
+            seg_start = p_start + step * (pos - 1)
+            seg_end = p_start + step * (pts[i + 1][0] - 1) if i + 1 < len(pts) else p_end
+            seg_end = min(seg_end, p_end)
+            if seg_end <= seg_start:
+                continue
+            if out and out[-1]["mw"] == qty and out[-1]["end"] == seg_start.isoformat():
+                out[-1]["end"] = seg_end.isoformat()
+            else:
+                out.append({"start": seg_start.isoformat(), "end": seg_end.isoformat(), "mw": qty})
+    return out
+
+
+def _parse_outage_resolution(text: str) -> timedelta:
+    """Generic ISO-8601 'PT<n>M' / 'PT<n>H' resolution (PT1M, PT15M, PT60M, PT1H ...)."""
+    t = text.strip()
+    if t.startswith("PT") and t[-1] in "MH" and t[2:-1].isdigit():
+        n = int(t[2:-1])
+        return timedelta(minutes=n) if t[-1] == "M" else timedelta(hours=n)
+    raise EntsoEError(f"Unknown resolution: {text}")
+
+
+def _parse_unavailability_xml(xml_text: str | bytes, area: str = "") -> list[dict]:
+    """
+    Parse one Unavailability_MarketDocument into outage dicts (one per TimeSeries,
+    in practice one per document). Raises EntsoEError on an unexpected acknowledgement.
+    """
+    root = ET.fromstring(xml_text)
+    if root.tag.split("}")[-1] != "Unavailability_MarketDocument":
+        code = root.findtext(".//{*}Reason/{*}code")
+        text = root.findtext(".//{*}Reason/{*}text") or ""
+        if code == "999":
+            return []
+        raise EntsoEError(f"ENTSO-E API error {code}: {text}")
+
+    mrid = root.findtext("ns:mRID", namespaces=NS_OUTAGE)
+    revision = int(root.findtext("ns:revisionNumber", default="1", namespaces=NS_OUTAGE) or 1)
+    doc_type = root.findtext("ns:type", namespaces=NS_OUTAGE)
+    doc_status = root.findtext("ns:docStatus/ns:value", namespaces=NS_OUTAGE)
+    created = root.findtext("ns:createdDateTime", namespaces=NS_OUTAGE)
+    doc_reason_code = root.findtext("ns:Reason/ns:code", namespaces=NS_OUTAGE)
+    doc_start = root.findtext("ns:unavailability_Time_Period.timeInterval/ns:start", namespaces=NS_OUTAGE)
+    doc_end = root.findtext("ns:unavailability_Time_Period.timeInterval/ns:end", namespaces=NS_OUTAGE)
+
+    series = root.findall("ns:TimeSeries", NS_OUTAGE)
+    out: list[dict] = []
+    for idx, ts in enumerate(series):
+        r = "production_RegisteredResource"
+        eic_zone = ts.findtext("ns:biddingZone_Domain.mRID", namespaces=NS_OUTAGE)
+        start = _outage_dt_pair(ts, "start") or (_parse_outage_dt(doc_start) if doc_start else None)
+        end = _outage_dt_pair(ts, "end") or (_parse_outage_dt(doc_end) if doc_end else None)
+        if start is None or end is None:
+            continue
+        nominal = ts.findtext(f"ns:{r}.pSRType.powerSystemResources.nominalP", namespaces=NS_OUTAGE)
+        # TimeSeries-level reason (A95 + free text) is more specific than the doc-level B18/B19
+        ts_code = ts.findtext("ns:Reason/ns:code", namespaces=NS_OUTAGE)
+        ts_text = ts.findtext("ns:Reason/ns:text", namespaces=NS_OUTAGE)
+        ts_mrid = ts.findtext("ns:mRID", namespaces=NS_OUTAGE)
+        out.append(
+            {
+                "mrid": mrid if len(series) == 1 else f"{mrid}:{ts_mrid or idx + 1}",
+                "revision": revision,
+                "document_type": doc_type,
+                "business_type": ts.findtext("ns:businessType", namespaces=NS_OUTAGE),
+                "status": "cancelled" if doc_status == "A09" else "active",
+                "area": _EIC_TO_AREA.get((eic_zone or "").strip(), area),
+                "resource_eic": (ts.findtext(f"ns:{r}.mRID", namespaces=NS_OUTAGE) or "").strip() or None,
+                "resource_name": (ts.findtext(f"ns:{r}.name", namespaces=NS_OUTAGE) or "").strip() or None,
+                "psr_type": ts.findtext(f"ns:{r}.pSRType.psrType", namespaces=NS_OUTAGE),
+                "nominal_mw": float(nominal) if nominal else None,
+                "start_utc": start,
+                "end_utc": end,
+                "available_periods": _available_periods(ts),
+                "reason_code": (ts_code or doc_reason_code),
+                "reason_text": (ts_text.strip() if ts_text else None),
+                "created_utc": _parse_outage_dt(created) if created else None,
+            }
+        )
+    return out
+
+
+def _parse_unavailability_response(content: bytes, area: str) -> tuple[list[dict], int]:
+    """Return (outages, number_of_documents) for one HTTP response body."""
+    if content[:2] == b"PK":
+        try:
+            zf = zipfile.ZipFile(io.BytesIO(content))
+        except zipfile.BadZipFile as exc:
+            raise EntsoEError(f"Corrupt zip from ENTSO-E: {exc}") from exc
+        names = [n for n in zf.namelist() if n.lower().endswith(".xml")]
+        outages: list[dict] = []
+        for n in names:
+            outages.extend(_parse_unavailability_xml(zf.read(n), area))
+        return outages, len(names)
+    # No zip: single document or an Acknowledgement (999 = no data)
+    return _parse_unavailability_xml(content, area), 0
+
+
+def fetch_unavailability(
+    area: str,
+    doc_type: Literal["A77", "A80"],
+    start_utc: datetime,
+    end_utc: datetime,
+    api_key: Optional[str] = None,
+) -> list[dict]:
+    """
+    Fetch unavailability of generation (A77) or production (A80) units for an
+    area over [start_utc, end_utc). Pages through `offset` (200 docs/request).
+
+    Returns outage dicts (see _parse_unavailability_xml). Empty list when
+    ENTSO-E reports no data (acknowledgement 999). Raises EntsoEError otherwise.
+    """
+    key = api_key or settings.entsoe_api_key
+    if not key:
+        raise EntsoEError("ENTSOE_API_KEY is not set. Add it to backend/.env")
+    eic = _AREA_TO_EIC.get(area)
+    if eic is None:
+        raise EntsoEError(f"Unknown area: {area}")
+
+    def fmt(dt: datetime) -> str:
+        return dt.astimezone(timezone.utc).strftime("%Y%m%d%H%M")
+
+    results: list[dict] = []
+    offset = 0
+    while True:
+        params: dict[str, str | int] = {
+            "securityToken": key,
+            "documentType": doc_type,
+            "biddingZone_Domain": eic,
+            "periodStart": fmt(start_utc),
+            "periodEnd": fmt(end_utc),
+        }
+        if offset:
+            params["offset"] = offset
+        try:
+            with httpx.Client(timeout=_OUTAGE_TIMEOUT) as client:
+                response = client.get(ENTSOE_BASE, params=params)
+        except httpx.RequestError as exc:
+            raise EntsoEError(f"Network error contacting ENTSO-E: {exc}") from exc
+        if response.status_code != 200:
+            raise EntsoEError(f"ENTSO-E {doc_type} returned HTTP {response.status_code}: {response.text[:200]}")
+        page, n_docs = _parse_unavailability_response(response.content, area)
+        results.extend(page)
+        if n_docs < _OUTAGE_PAGE_SIZE:
+            return results
+        offset += _OUTAGE_PAGE_SIZE
