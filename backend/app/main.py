@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -15,6 +17,9 @@ from app.routers import (
     story,
     weather,
 )
+from app.routers.story import refresh_today_story
+
+log = logging.getLogger(__name__)
 
 app = FastAPI(
     title=settings.app_name,
@@ -62,6 +67,19 @@ def health():
 try:
     from mangum import Mangum
 
-    handler = Mangum(app, lifespan="off")
+    _mangum = Mangum(app, lifespan="off")
 except ImportError:
-    pass
+    _mangum = None
+
+
+def handler(event, context):
+    # EventBridge warmer (direct invoke, not an HTTP event): Mangum would raise on it and
+    # feed the api-errors alarm, so it must never get here. Failures are swallowed for the same reason.
+    if event.get("warmer"):
+        refreshed = False
+        try:
+            refreshed = refresh_today_story()
+        except Exception:
+            log.exception("warmer: story refresh failed")
+        return {"warmed": True, "story_refreshed": refreshed}
+    return _mangum(event, context)

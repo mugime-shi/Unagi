@@ -195,3 +195,12 @@ resource "aws_lambda_permission" "eventbridge_weekly_backfill" {
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.weekly_backfill.arn
 }
+
+# Allow EventBridge to invoke the API Lambda directly (warmer)
+resource "aws_lambda_permission" "eventbridge_api_warmer" {
+  statement_id  = "AllowEventBridgeApiWarmer"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.api.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.api_warmer.arn
+}
