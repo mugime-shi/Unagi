@@ -13,7 +13,7 @@ grouped in SQL; SQLite (tests) has no time zones and keeps the Python path.
 
 import math
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import text
@@ -34,6 +34,12 @@ MIN_FORECAST_HOURS = 18
 FORECAST_GOOD_MAX_SEK = 0.10
 FORECAST_MISS_MIN_SEK = 0.20
 TOMORROW_MIN_DELTA_SEK = 0.15
+NEGATIVE_MIN_MINUTES = 60  # a quarter of an hour below zero is not a story
+FORECAST_AREAS = ("SE3", "SE4")  # SE1/SE2 prices are so small that "within 5 öre" says nothing
+# Most readers live in SE3/SE4, so northern zones need a clearly stronger signal to lead.
+AREA_WEIGHT = {"SE1": 0.8, "SE2": 0.85, "SE3": 1.0, "SE4": 1.0}
+NOVELTY_STEP = 0.2  # headline score loss per earlier headline of the same kind in the replay
+NOVELTY_FLOOR = 0.4
 # Tie-break order when scores are equal (deterministic output).
 KIND_ORDER = [
     "negative",
@@ -290,7 +296,9 @@ def _best_per_kind(cands: list[Candidate]) -> list[Candidate]:
 
 
 def _rule_negative(data: StoryData, day: date) -> list[Candidate]:
-    zones = [(a, st.neg_minutes) for a in AREAS if (st := data.prices[a].get(day)) and st.neg_minutes >= 15]
+    zones = [
+        (a, st.neg_minutes) for a in AREAS if (st := data.prices[a].get(day)) and st.neg_minutes >= NEGATIVE_MIN_MINUTES
+    ]
     if not zones:
         return []
     zones.sort(key=lambda z: (-z[1], z[0]))
@@ -303,7 +311,7 @@ def _rule_negative(data: StoryData, day: date) -> list[Candidate]:
         Candidate(
             "negative",
             area,
-            60 + 3 * min(minutes / 60, 12),
+            45 + 4 * min(minutes / 60, 12),
             f"Prices dip below zero for {_fmt_hours(minutes)} in {area}",
             sub,
         )
@@ -483,7 +491,7 @@ def _daily_mae(data: StoryData, area: str, day: date) -> float | None:
 
 def _rule_forecast(data: StoryData, day: date) -> list[Candidate]:
     out = []
-    for area in data.forecast:
+    for area in FORECAST_AREAS:
         mae = _daily_mae(data, area, day)
         if mae is None:
             continue
@@ -573,7 +581,7 @@ def _rule_baseline(data: StoryData, day: date) -> list[Candidate]:
 def candidates_for(data: StoryData, day: date, today: date) -> list[Candidate]:
     """All fired candidates for a day, one per kind, best first."""
     if day not in data._cache:
-        cands = (
+        raw = (
             _rule_negative(data, day)
             + _rule_low_high(data, day)
             + _rule_spread(data, day)
@@ -584,6 +592,8 @@ def candidates_for(data: StoryData, day: date, today: date) -> list[Candidate]:
             + _rule_tomorrow(data, day)
             + _rule_baseline(data, day)
         )
+        # Weight before picking the best zone per kind, so a southern zone can win within a kind.
+        cands = [replace(c, score=c.score * AREA_WEIGHT.get(c.area, 1.0)) for c in raw]
         data._cache[day] = sorted(
             _best_per_kind(cands),
             key=lambda c: (-c.score, KIND_ORDER.index(c.kind), c.area),
@@ -599,7 +609,8 @@ def candidates_for(data: StoryData, day: date, today: date) -> list[Candidate]:
 def replay_headlines(data: StoryData, day: date, today: date) -> tuple[list[Candidate], list[Candidate]]:
     """Headlines for D-6..D (oldest first) and the sorted candidates of D.
 
-    A kind that headlined the previous two days is skipped. Days before D-7
+    A kind that headlined the previous two days is skipped, and each earlier headline
+    of a kind in the replay discounts its score (baseline exempt). Days before D-7
     count as "no headline", which keeps the result a pure function of the
     loaded data (no stored state between requests).
     """
@@ -610,8 +621,17 @@ def replay_headlines(data: StoryData, day: date, today: date) -> tuple[list[Cand
         blocked = None
         if len(headlines) >= 2 and headlines[-1].kind == headlines[-2].kind:
             blocked = headlines[-1].kind
+
+        def adjusted(c: Candidate) -> float:
+            if c.kind == "baseline":
+                return c.score
+            n = sum(1 for h in headlines if h.kind == c.kind)
+            return c.score * max(NOVELTY_FLOOR, 1 - NOVELTY_STEP * n)
+
         # Baseline is the last resort: if it is the only thing left it must still show.
-        headlines.append(next((c for c in cands if c.kind != blocked), cands[-1]))
+        allowed = [c for c in cands if c.kind != blocked]
+        best = min(allowed, key=lambda c: (-adjusted(c), KIND_ORDER.index(c.kind), c.area), default=None)
+        headlines.append(best or cands[-1])
     return headlines, cands
 
 

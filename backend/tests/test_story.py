@@ -17,7 +17,7 @@ from app.models.forecast_accuracy import ForecastAccuracy
 from app.models.generation_mix import GenerationMix
 from app.models.spot_price import SpotPrice
 from app.routers import story as story_router
-from app.services.story_service import candidates_for, load_story_data, replay_headlines
+from app.services.story_service import Candidate, StoryData, candidates_for, load_story_data, replay_headlines
 from app.utils.timezone import STOCKHOLM, stockholm_midnight_utc
 
 engine = create_engine(
@@ -116,17 +116,18 @@ def add_slot(db, area, ts, price, resolution="PT60M"):
     )
 
 
-def test_negative_fires_from_one_slot_of_15_minutes(db):
-    seed_day(db, "SE2", D, [0.3] * 96, "PT15M")
+def test_negative_needs_60_minutes(db):
+    prices = [0.3] * 96
+    prices[40:43] = [-0.01] * 3  # 45 minutes
+    seed_day(db, "SE2", D, prices, "PT15M")
     assert "negative" not in kinds(db)
 
     db.query(SpotPrice).delete()
-    prices = [0.3] * 96
-    prices[40] = -0.01
-    seed_day(db, "SE2", D, prices, "PT15M")
+    prices[43] = -0.01  # 60 minutes
+    seed_day(db, "SE3", D, prices, "PT15M")
     c = kinds(db)["negative"]
-    assert c.text == "Prices dip below zero for 15 minutes in SE2"
-    assert c.score == pytest.approx(60 + 3 * 0.25)
+    assert c.text == "Prices dip below zero for 1 hour in SE3"
+    assert c.score == pytest.approx(49)
 
 
 def test_negative_counts_mixed_resolutions_and_lists_other_zones(db):
@@ -141,6 +142,7 @@ def test_negative_counts_mixed_resolutions_and_lists_other_zones(db):
     db.commit()
     c = kinds(db)["negative"]
     assert c.text == "Prices dip below zero for 3 hours in SE2"
+    assert c.score == pytest.approx((45 + 4 * 3) * 0.85)  # SE2 area weight
     assert c.sub.endswith("Also negative in SE1.")
 
 
@@ -381,6 +383,20 @@ def test_forecast_needs_absolute_bounds(db):
     assert "forecast" not in kinds(db)
 
 
+def test_forecast_ignores_se1_and_se2(db):
+    for area in ("SE1", "SE2"):
+        for k in range(0, 21):
+            d = D - timedelta(days=k)
+            seed_day(db, area, d, [0.5] * 24)
+            err = 0.03 if k == 0 else 0.05 + 0.01 * k
+            for h in range(24):
+                db.add(
+                    ForecastAccuracy(target_date=d, area=area, model_name="lgbm", hour=h, predicted_sek_kwh=0.5 + err)
+                )
+    db.commit()
+    assert "forecast" not in kinds(db)
+
+
 def test_forecast_not_fired_in_the_middle_or_without_history(db):
     _seed_forecast(db, 0.15)
     assert "forecast" not in kinds(db)
@@ -442,6 +458,39 @@ def test_rotation_never_three_in_a_row(db):
     assert len(seq) == 7
     assert seq[0] == seq[1] == "negative"
     assert seq[2] != "negative"
+    assert not any(seq[i] == seq[i + 1] == seq[i + 2] for i in range(len(seq) - 2))
+
+
+def test_area_weight_lets_se3_beat_se1_within_a_kind(db):
+    # Both zones are cheapest in 90 days (raw 40 + 15*log2(90/14) ~ 80.2), so only the weight separates them.
+    for area in ("SE1", "SE3"):
+        seed_history(db, area, D, 90, lambda k: 0.5)
+        seed_day(db, area, D, [0.1] * 24)
+    c = kinds(db)["low"]
+    assert c.area == "SE3"
+    assert c.score == pytest.approx(40 + 15 * math.log2(90 / 14))
+
+    db.query(SpotPrice).filter(SpotPrice.area == "SE3").delete()
+    db.commit()
+    c = kinds(db)["low"]
+    assert c.area == "SE1"
+    assert c.score == pytest.approx((40 + 15 * math.log2(90 / 14)) * 0.8)
+
+
+def test_novelty_penalty_demotes_a_repeating_kind():
+    # 'negative' has the top raw score every day; the 3-in-a-row rule alone would give it 5 of 7 days.
+    data = StoryData()
+    for k in range(7):
+        data._cache[D - timedelta(days=k)] = [
+            Candidate("negative", "SE3", 49, "n"),
+            Candidate("tomorrow", "SE3", 30, "t"),
+            Candidate("wind", "ALL", 25, "w"),
+            Candidate("baseline", "SE3", 10, "b"),
+        ]
+    headlines, _ = replay_headlines(data, D, D)
+    seq = [h.kind for h in headlines]
+    assert seq[:2] == ["negative", "negative"]
+    assert seq.count("negative") <= 4
     assert not any(seq[i] == seq[i + 1] == seq[i + 2] for i in range(len(seq) - 2))
 
 
