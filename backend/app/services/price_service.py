@@ -9,7 +9,7 @@ Design decisions:
 
 import math
 from collections import defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import text
@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.models.spot_price import SpotPrice
 from app.services.entsoe_client import EntsoEError, PricePoint, fetch_day_ahead_prices
 from app.services.riksbank_client import get_eur_sek_rate as _get_eur_sek
-from app.utils.timezone import stockholm_day_range_utc, stockholm_midnight_utc
+from app.utils.timezone import STOCKHOLM, stockholm_day_range_utc, stockholm_midnight_utc
 
 # Map friendly area names (used in DB/API) to ENTSO-E EIC codes
 _AREA_TO_EIC = {
@@ -255,16 +255,30 @@ def _generate_fallback_prices(target_date: date) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
+# Day-ahead (SDAC) results for day D are published ~12:45 CET on D-1. Before this
+# cutoff a live ENTSO-E call can only fail, and it takes 4-30 s to do so.
+_DAY_AHEAD_PUBLISH_CUTOFF = time(12, 30)
+
+
+def day_ahead_may_be_published(target_date: date, now: Optional[datetime] = None) -> bool:
+    """False while target_date's day-ahead prices cannot exist yet (Stockholm time)."""
+    local = (now or datetime.now(timezone.utc)).astimezone(STOCKHOLM)
+    publish_day = target_date - timedelta(days=1)
+    return (local.date(), local.time()) >= (publish_day, _DAY_AHEAD_PUBLISH_CUTOFF)
+
+
 def get_or_fetch_prices(
     db: Session,
     target_date: date,
     area: str = "SE3",
+    now: Optional[datetime] = None,
 ) -> tuple[list, bool]:
     """
     Returns (price_data, is_estimate).
     1. Try DB first (fastest, no external call)
     2. If empty, try ENTSO-E (requires API key)
     3. If that fails (no key, API down, future date), return fallback estimates
+    Step 2 is skipped before the day-ahead publication cutoff.
     """
     rows = get_prices_for_date(db, target_date, area)
     if rows:
@@ -279,6 +293,9 @@ def get_or_fetch_prices(
             for r in rows
         ]
         return data, False
+
+    if not day_ahead_may_be_published(target_date, now):
+        return _generate_fallback_prices(target_date), True
 
     # Try live fetch
     try:
