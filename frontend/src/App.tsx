@@ -7,7 +7,7 @@ import { GenerationChart } from "./components/GenerationChart";
 import { NotificationBell } from "./components/NotificationBell";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { PriceChart } from "./components/PriceChart";
-import { PriceHistory } from "./components/PriceHistory";
+import { PriceHistory, type TrendsView } from "./components/PriceHistory";
 import { PriceIndicator } from "./components/PriceIndicator";
 import { ConsumptionSimulator } from "./components/ConsumptionSimulator";
 import { SolarSimulator } from "./components/SolarSimulator";
@@ -103,6 +103,8 @@ function AppInner() {
   const [tab, setTab] = useState<Tab>("today");
   const [forecastDate, setForecastDate] = useState<string>(tomorrowISO);
   const [area, setArea] = useState<Area>("SE3");
+  // Sub-tab PriceHistory mounts with (Overview's "Trends →" link opens "generation")
+  const [trendsView, setTrendsView] = useState<TrendsView>("history");
 
   useEffect(() => {
     trackVisit();
@@ -143,7 +145,7 @@ function AppInner() {
     loading: tomorrowLoading,
     error: tomorrowError,
   } = usePrices(
-    tab === "tomorrow" && isTomorrow ? "tomorrow" : undefined,
+    tab === "tomorrow" && isTomorrow ? "tomorrow" : null,
     area,
   );
   const {
@@ -419,6 +421,11 @@ function AppInner() {
               setTab("tomorrow");
               setLayer("prices");
             }}
+            onOpenTrends={() => {
+              setTrendsView("generation");
+              setTab("trends");
+              setLayer("prices");
+            }}
           />
         )}
 
@@ -442,7 +449,10 @@ function AppInner() {
               ).map(({ id, label }) => (
                 <button
                   key={id}
-                  onClick={() => setTab(id)}
+                  onClick={() => {
+                    setTab(id);
+                    setTrendsView("history");
+                  }}
                   className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
                     tab === id
                       ? "bg-sky-600 text-white"
@@ -916,7 +926,9 @@ function AppInner() {
               </>
             )}
             {/* ── Trends tab ── */}
-            {tab === "trends" && <PriceHistory area={area} />}
+            {tab === "trends" && (
+              <PriceHistory area={area} initialView={trendsView} />
+            )}
           </>
         )}
 

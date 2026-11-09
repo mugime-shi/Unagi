@@ -17,6 +17,7 @@ import type {
 import { formatPrice, PRICE_UNIT } from "../utils/formatters";
 import { useChartColors, type ChartColors } from "../hooks/useChartColors";
 import { useMultiZone } from "../hooks/useMultiZone";
+import { chunkByRange, granularityLabel, meanOf } from "../utils/bucket";
 import type { Area, ZoneDaily } from "../types/index";
 
 interface ZoneDataPoint {
@@ -37,7 +38,7 @@ function formatTick(iso: string, days: number): string {
     return d.toLocaleDateString("en-SE", { month: "short", day: "numeric" });
   }
   if (days <= 180) {
-    return d.toLocaleDateString("en-SE", { month: "short" });
+    return d.toLocaleDateString("en-SE", { month: "short", day: "numeric" });
   }
   return `${d.toLocaleDateString("en-SE", { month: "short" })} '${String(d.getFullYear()).slice(2)}`;
 }
@@ -50,12 +51,8 @@ function getAdaptiveTicks(points: ZoneDataPoint[], days: number): string[] {
       .filter((_, i) => i % step === 0 || i === points.length - 1)
       .map((d) => d.date);
   }
-  return points
-    .filter((d, i) => {
-      if (i === 0 || i === points.length - 1) return true;
-      return new Date(d.date + "T12:00:00").getDate() === 1;
-    })
-    .map((d) => d.date);
+  // Bucket starts rarely fall on the 1st; there are only ~13 buckets, so show all.
+  return points.map((d) => d.date);
 }
 
 const ZONE_KEYS: Area[] = ["SE1", "SE2", "SE3", "SE4"];
@@ -129,6 +126,24 @@ function mergeZones(
   });
 }
 
+/**
+ * Average long ranges into weekly / bi-weekly / monthly buckets (see
+ * utils/bucket.ts). Each bucket keeps its first ISO date so the axis ticks and
+ * formatTick keep working; ≤30 days is returned unchanged.
+ */
+function bucketZonePoints(
+  points: ZoneDataPoint[],
+  days: number,
+): ZoneDataPoint[] {
+  return chunkByRange(points, days).map((chunk) => ({
+    date: chunk[0].date,
+    SE1: meanOf(chunk.map((p) => p.SE1)),
+    SE2: meanOf(chunk.map((p) => p.SE2)),
+    SE3: meanOf(chunk.map((p) => p.SE3)),
+    SE4: meanOf(chunk.map((p) => p.SE4)),
+  }));
+}
+
 interface ZoneComparisonProps {
   days?: number;
 }
@@ -153,11 +168,12 @@ export function ZoneComparison({ days = 90 }: ZoneComparisonProps) {
       <p className="text-red-500 text-sm">Failed to load: {error.message}</p>
     );
 
-  const points = mergeZones(data?.zones).filter((d) =>
+  const dailyPoints = mergeZones(data?.zones).filter((d) =>
     ZONE_KEYS.some((z) => d[z] != null),
   );
+  const points = bucketZonePoints(dailyPoints, days);
 
-  if (points.length === 0) {
+  if (dailyPoints.length === 0) {
     return (
       <div className="bg-surface-primary rounded-2xl p-4 space-y-2">
         <h2 className="text-base font-medium text-content-primary">
@@ -185,7 +201,7 @@ python -m app.tasks.fetch_prices --backfill 90 --area SE4`}
 
   // Overall avg per zone (for summary cards)
   const summaries: ZoneSummary[] = ZONE_KEYS.map((area) => {
-    const vals = points
+    const vals = dailyPoints
       .map((d) => d[area])
       .filter((v): v is number => v != null);
     return {
@@ -202,7 +218,7 @@ python -m app.tasks.fetch_prices --backfill 90 --area SE4`}
           Zone Comparison -- SE1-SE4
         </h2>
         <span className="text-xs text-content-muted">
-          {PRICE_UNIT} - daily avg
+          {PRICE_UNIT} - {granularityLabel(days)} avg
         </span>
       </div>
 

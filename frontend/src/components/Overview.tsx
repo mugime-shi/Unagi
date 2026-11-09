@@ -1,21 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import {
-  AreaChart,
-  Area as RechartsArea,
-  CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { useEffect, useMemo, useState } from "react";
 import { useNational24h } from "../hooks/useNational24h";
+import type { ZonePriceSummary } from "../hooks/useAllZonePrices";
 import { useAllZonePrices } from "../hooks/useAllZonePrices";
-import { useGenerationHistory } from "../hooks/useGenerationHistory";
 import { useWeeklyForecast } from "../hooks/useWeeklyForecast";
 import { useForecastAccuracy } from "../hooks/useForecastAccuracy";
 import { useCoverage } from "../hooks/useCoverage";
@@ -23,17 +11,21 @@ import { useChartColors } from "../hooks/useChartColors";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { UpdateBadge } from "./UpdateBadge";
 import { TodayStory } from "./TodayStory";
-import { OutageBoard } from "./OutageBoard";
+import { MapAttribution, SwedenMap } from "./SwedenMap";
+import { TrendArrow } from "./TrendArrow";
+import { useOutages } from "../hooks/useOutages";
 import { WeeklySummary } from "./WeeklySummary";
 import { formatPrice, PRICE_UNIT, currentCETHour } from "../utils/formatters";
 import type { Area } from "../types/index";
-import type { GenHistoryDay } from "../hooks/useGenerationHistory";
-import type { National24hEntry } from "../hooks/useNational24h";
+import { GenChart } from "./GenChart";
+import { national24hToRows, type GenChartRow } from "../utils/genHistory";
 
 interface OverviewProps {
   onZoneClick: (zone: Area) => void;
   /** Jump to the Prices/Tomorrow tab for a forecast date (from the 7-day cards). */
   onDateSelect?: (date: string) => void;
+  /** Open Prices → Trends → Generation (long-range history). */
+  onOpenTrends?: () => void;
 }
 
 const ZONE_LABELS: Record<Area, string> = {
@@ -42,17 +34,6 @@ const ZONE_LABELS: Record<Area, string> = {
   SE3: "SE3 · Stockholm, Göteborg",
   SE4: "SE4 · Malmö, Helsingborg",
 };
-
-type TimeRange = "24h" | "7d" | "30d" | "90d" | "180d" | "365d";
-
-const RANGES: { id: TimeRange; label: string; days: number }[] = [
-  { id: "24h", label: "24H", days: 1 },
-  { id: "7d", label: "7d", days: 7 },
-  { id: "30d", label: "30d", days: 30 },
-  { id: "90d", label: "3mo", days: 90 },
-  { id: "180d", label: "6mo", days: 180 },
-  { id: "365d", label: "1yr", days: 365 },
-];
 
 // ── Small components ──
 
@@ -112,510 +93,18 @@ function priceTrend(
   return null;
 }
 
-function TrendArrow({ trend }: { trend: "up" | "down" | null }) {
-  if (!trend) return null;
-  const up = trend === "up";
-  return (
-    <span
-      className={`text-xs ${up ? "text-rose-500 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}
-      title={
-        up
-          ? "Heading up over the next few hours (day-ahead)"
-          : "Heading down over the next few hours (day-ahead)"
-      }
-      aria-label={up ? "price rising" : "price falling"}
-    >
-      {up ? "▲" : "▼"}
-    </span>
-  );
-}
-
-// ── Unified chart data type ──
-interface GenChartRow {
-  label: string;
-  hydro: number;
-  nuclear: number;
-  wind: number;
-  solar: number;
-  other: number;
-}
-
-function national24hToRows(hourly: National24hEntry[]): GenChartRow[] {
-  return hourly.map((h) => ({
-    label: h.hour_label,
-    hydro: h.hydro,
-    nuclear: h.nuclear,
-    wind: h.wind,
-    solar: h.solar,
-    other: h.other + h.fossil,
-  }));
-}
-
-function historyToRows(
-  daily: GenHistoryDay[],
-  rangeDays: number,
-): GenChartRow[] {
-  // Aggregate based on range for appropriate granularity
-  // 7d/30d: daily (no aggregation)
-  // 90d (3mo): weekly
-  // 180d (6mo): bi-weekly
-  // 365d (1yr): monthly
-  if (rangeDays <= 30) {
-    return daily.map((d) => ({
-      label: d.date.slice(5),
-      hydro: d.hydro,
-      nuclear: d.nuclear,
-      wind: d.wind,
-      solar: d.solar,
-      other: d.other + d.fossil,
-    }));
-  }
-
-  // Aggregate into buckets
-  const bucketDays = rangeDays <= 90 ? 7 : rangeDays <= 180 ? 14 : 30;
-  const buckets: {
-    label: string;
-    hydro: number[];
-    nuclear: number[];
-    wind: number[];
-    solar: number[];
-    other: number[];
-  }[] = [];
-  let current: (typeof buckets)[0] | null = null;
-  let count = 0;
-
-  for (const d of daily) {
-    if (count % bucketDays === 0) {
-      current = {
-        label:
-          bucketDays >= 30
-            ? (() => {
-                // "2025-04" → "Apr '25"
-                const [y, m] = d.date.split("-");
-                const months = [
-                  "Jan",
-                  "Feb",
-                  "Mar",
-                  "Apr",
-                  "May",
-                  "Jun",
-                  "Jul",
-                  "Aug",
-                  "Sep",
-                  "Oct",
-                  "Nov",
-                  "Dec",
-                ];
-                return `${months[parseInt(m, 10) - 1]} '${y.slice(2)}`;
-              })()
-            : d.date.slice(5), // "MM-DD" for weekly/bi-weekly
-        hydro: [],
-        nuclear: [],
-        wind: [],
-        solar: [],
-        other: [],
-      };
-      buckets.push(current);
-    }
-    current!.hydro.push(d.hydro);
-    current!.nuclear.push(d.nuclear);
-    current!.wind.push(d.wind);
-    current!.solar.push(d.solar);
-    current!.other.push(d.other + d.fossil);
-    count++;
-  }
-
-  const avg = (arr: number[]) =>
-    arr.length > 0
-      ? Math.round(arr.reduce((s, v) => s + v, 0) / arr.length)
-      : 0;
-
-  return buckets.map((b) => ({
-    label: b.label,
-    hydro: avg(b.hydro),
-    nuclear: avg(b.nuclear),
-    wind: avg(b.wind),
-    solar: avg(b.solar),
-    other: avg(b.other),
-  }));
-}
-
-// ── Generation stacked area chart (unified) ──
-function GenChart({
-  data,
-  cc,
-  isMobile,
-  shareByType,
-}: {
-  data: GenChartRow[];
-  cc: ReturnType<typeof useChartColors>;
-  isMobile: boolean;
-  shareByType?: Record<string, number> | null;
-}) {
-  return (
-    <>
-      <ResponsiveContainer width="100%" height={isMobile ? 300 : 380}>
-        <AreaChart
-          data={data}
-          stackOffset="none"
-          margin={{ top: 4, right: 4, left: 0, bottom: 28 }}
-        >
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke={cc.grid}
-            vertical={false}
-          />
-          <XAxis
-            dataKey="label"
-            tick={{ fill: cc.axis, fontSize: 10, dy: 4 }}
-            tickLine={false}
-            axisLine={{ stroke: cc.grid }}
-            angle={-45}
-            textAnchor="end"
-            interval={isMobile ? Math.max(1, Math.floor(data.length / 10)) : 0}
-          />
-          <YAxis
-            width={isMobile ? 36 : 48}
-            tick={{ fill: cc.axisDim, fontSize: 10 }}
-            tickLine={false}
-            axisLine={false}
-            tickFormatter={(v: number) =>
-              v >= 1000 ? `${(v / 1000).toFixed(1)}k` : `${v}`
-            }
-          />
-          <Tooltip
-            content={({ active, payload, label }) => {
-              if (!active || !payload || payload.length === 0) return null;
-              const order: Record<string, number> = {
-                Solar: 0,
-                Wind: 1,
-                Hydro: 2,
-                Other: 3,
-                Nuclear: 4,
-              };
-              const sorted = [...payload].sort(
-                (a, b) =>
-                  (order[a.name ?? ""] ?? 99) - (order[b.name ?? ""] ?? 99),
-              );
-              const total = payload.reduce(
-                (sum, p) => sum + (typeof p.value === "number" ? p.value : 0),
-                0,
-              );
-              return (
-                <div
-                  style={{
-                    background: cc.tooltipBg,
-                    border: `1px solid ${cc.tooltipBorder}`,
-                    color: cc.tooltipText,
-                    borderRadius: 8,
-                    fontSize: 12,
-                    padding: "8px 12px",
-                    minWidth: 140,
-                  }}
-                >
-                  <div style={{ fontWeight: 600, marginBottom: 6 }}>
-                    {label}
-                  </div>
-                  {sorted.map((p) => (
-                    <div
-                      key={String(p.dataKey)}
-                      style={{
-                        color: p.color,
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        lineHeight: 1.6,
-                      }}
-                    >
-                      <span>{p.name}</span>
-                      <span className="tabular-nums">
-                        {Math.round((p.value as number) ?? 0)} MW
-                      </span>
-                    </div>
-                  ))}
-                  <div
-                    style={{
-                      borderTop: `1px solid ${cc.tooltipBorder}`,
-                      marginTop: 6,
-                      paddingTop: 4,
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      fontWeight: 600,
-                    }}
-                  >
-                    <span>Total</span>
-                    <span className="tabular-nums">
-                      {Math.round(total).toLocaleString()} MW
-                    </span>
-                  </div>
-                </div>
-              );
-            }}
-          />
-          <RechartsArea
-            dataKey="nuclear"
-            name="Nuclear"
-            stackId="gen"
-            fill={cc.nuclear + "99"}
-            stroke={cc.nuclear}
-          />
-          <RechartsArea
-            dataKey="other"
-            name="Other"
-            stackId="gen"
-            fill={cc.other + "99"}
-            stroke={cc.other}
-          />
-          <RechartsArea
-            dataKey="hydro"
-            name="Hydro"
-            stackId="gen"
-            fill={cc.hydro + "99"}
-            stroke={cc.hydro}
-          />
-          <RechartsArea
-            dataKey="wind"
-            name="Wind"
-            stackId="gen"
-            fill={cc.wind + "99"}
-            stroke={cc.wind}
-          />
-          <RechartsArea
-            dataKey="solar"
-            name="Solar"
-            stackId="gen"
-            fill={cc.solar + "99"}
-            stroke={cc.solar}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
-      {/* Legend outside chart — share % from the latest slot when available */}
-      <div
-        className="flex flex-wrap justify-center gap-3 mt-2"
-        style={{ fontSize: 11, color: cc.axis }}
-      >
-        {[
-          { label: "Solar", color: cc.solar },
-          { label: "Wind", color: cc.wind },
-          { label: "Hydro", color: cc.hydro },
-          { label: "Other", color: cc.other },
-          { label: "Nuclear", color: cc.nuclear },
-        ].map(({ label, color }) => {
-          const pct = shareByType?.[label];
-          return (
-            <span key={label} className="flex items-center gap-1">
-              <span
-                className="inline-block w-2.5 h-2.5 rounded-sm"
-                style={{ backgroundColor: color + "99" }}
-              />
-              {label}
-              {pct != null && (
-                <span className="tabular-nums opacity-70"> {pct}%</span>
-              )}
-            </span>
-          );
-        })}
-      </div>
-    </>
-  );
-}
-
-// ── Zone price line chart (7d+) ──
-function ZonePriceHistoryChart({
-  zones,
-  cc,
-  isMobile,
-  rangeDays,
-  onZoneClick,
-}: {
-  zones: Record<Area, { date: string; avg: number | null }[]>;
-  cc: ReturnType<typeof useChartColors>;
-  isMobile: boolean;
-  rangeDays: number;
-  onZoneClick: (zone: Area) => void;
-}) {
-  const zoneKeys: Area[] = ["SE1", "SE2", "SE3", "SE4"];
-  const zoneColors: Record<Area, string> = {
-    SE1: cc.SE1,
-    SE2: cc.SE2,
-    SE3: cc.SE3,
-    SE4: cc.SE4,
-  };
-
-  // Merge all dates
-  const allDates = new Set<string>();
-  for (const z of zoneKeys) {
-    for (const d of zones[z] ?? []) allDates.add(d.date);
-  }
-  const datesSorted = Array.from(allDates).sort();
-
-  // Build raw daily data
-  const rawData = datesSorted.map((date) => {
-    const row: { date: string; [key: string]: string | number | null } = {
-      date,
-    };
-    for (const z of zoneKeys) {
-      const entry = zones[z]?.find((d) => d.date === date);
-      row[z] = entry?.avg != null ? Math.round(entry.avg * 100) : null;
-    }
-    return row;
-  });
-
-  // Aggregate for longer ranges (same bucketing as generation)
-  const bucketDays =
-    rangeDays <= 30 ? 1 : rangeDays <= 90 ? 7 : rangeDays <= 180 ? 14 : 30;
-  const granLabel =
-    bucketDays === 1
-      ? "daily"
-      : bucketDays === 7
-        ? "weekly"
-        : bucketDays === 14
-          ? "bi-weekly"
-          : "monthly";
-
-  const chartData: Record<string, string | number | null>[] = [];
-  if (bucketDays === 1) {
-    for (const row of rawData) {
-      chartData.push({
-        date: row.date.slice(5),
-        ...Object.fromEntries(zoneKeys.map((z) => [z, row[z]])),
-      });
-    }
-  } else {
-    for (let i = 0; i < rawData.length; i += bucketDays) {
-      const chunk = rawData.slice(i, i + bucketDays);
-      const label =
-        bucketDays >= 30
-          ? (() => {
-              const [y, m] = chunk[0].date.split("-");
-              const months = [
-                "Jan",
-                "Feb",
-                "Mar",
-                "Apr",
-                "May",
-                "Jun",
-                "Jul",
-                "Aug",
-                "Sep",
-                "Oct",
-                "Nov",
-                "Dec",
-              ];
-              return `${months[parseInt(m, 10) - 1]} '${y.slice(2)}`;
-            })()
-          : chunk[0].date.slice(5);
-      const row: Record<string, string | number | null> = { date: label };
-      for (const z of zoneKeys) {
-        const vals = chunk
-          .map((c) => c[z])
-          .filter((v): v is number => v != null);
-        row[z] =
-          vals.length > 0
-            ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length)
-            : null;
-      }
-      chartData.push(row);
-    }
-  }
-
-  return (
-    <div className="bg-surface-primary rounded-2xl p-4">
-      <h2 className="text-base font-medium text-content-primary mb-1">
-        Spot price by zone
-        <span className="text-content-muted ml-1.5 font-normal">
-          {PRICE_UNIT}, {granLabel} average
-        </span>
-      </h2>
-      <ResponsiveContainer width="100%" height={isMobile ? 220 : 280}>
-        <LineChart
-          data={chartData}
-          margin={{ top: 4, right: 4, left: 0, bottom: 36 }}
-        >
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke={cc.grid}
-            vertical={false}
-          />
-          <XAxis
-            dataKey="date"
-            tick={{ fill: cc.axis, fontSize: 10, dy: 4 }}
-            tickLine={false}
-            axisLine={{ stroke: cc.grid }}
-            angle={-45}
-            textAnchor="end"
-            interval={
-              isMobile ? Math.max(1, Math.floor(chartData.length / 10)) : 0
-            }
-          />
-          <YAxis
-            width={isMobile ? 36 : 48}
-            tick={{ fill: cc.axisDim, fontSize: 10 }}
-            tickLine={false}
-            axisLine={false}
-          />
-          <Tooltip
-            contentStyle={{
-              background: cc.tooltipBg,
-              border: `1px solid ${cc.tooltipBorder}`,
-              color: cc.tooltipText,
-              borderRadius: 8,
-              fontSize: 12,
-            }}
-            formatter={(v) => [`${v} ${PRICE_UNIT}`, ""]}
-          />
-          {zoneKeys.map((z) => (
-            <Line
-              key={z}
-              dataKey={z}
-              name={z}
-              stroke={zoneColors[z]}
-              strokeWidth={2}
-              dot={false}
-              connectNulls
-            />
-          ))}
-        </LineChart>
-      </ResponsiveContainer>
-      {/* Legend outside chart */}
-      <div
-        className="flex justify-center gap-4 mt-2"
-        style={{ fontSize: 11, color: cc.axis }}
-      >
-        {zoneKeys.map((z) => (
-          <button
-            key={z}
-            onClick={() => onZoneClick(z)}
-            className="flex items-center gap-1 hover:opacity-80 cursor-pointer"
-          >
-            <span
-              className="inline-block w-3 h-0.5 rounded"
-              style={{ backgroundColor: zoneColors[z] }}
-            />
-            {z}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ── Main Overview ──
 
-export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
-  const [range, setRange] = useState<TimeRange>("24h");
-  const is24h = range === "24h";
-  const rangeDays = RANGES.find((r) => r.id === range)?.days ?? 1;
-
-  // 24H data (single API call)
+export function Overview({
+  onZoneClick,
+  onDateSelect,
+  onOpenTrends,
+}: OverviewProps) {
+  // Today's national hourly generation (single API call)
   const { data: nat24h, loading: nat24hLoading } = useNational24h();
   const { data: priceData, loading: priceLoading } = useAllZonePrices();
-
-  // Historical data (7d+)
-  const { data: genHistory, loading: genHistLoading } = useGenerationHistory(
-    is24h ? 0 : rangeDays,
-  );
+  // One outages fetch, shared by the zone map and the nuclear board
+  const outages = useOutages();
 
   // Next-7-days forecast + track record. Area-selectable (SE3 default); the
   // backend has forecasts for all four zones. Overview only mounts on its own
@@ -632,6 +121,9 @@ export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
 
   const cc = useChartColors();
   const isMobile = useIsMobile();
+  // Map layout switches at 900 px: below that the overlay cards would not fit
+  const isNarrow = useIsMobile(900);
+  const [hoverZone, setHoverZone] = useState<Area | null>(null);
   const nowHour = currentCETHour(); // for zone-tile price trend arrows
   const zones: Area[] = ["SE1", "SE2", "SE3", "SE4"];
   const zoneColors: Record<Area, string> = {
@@ -641,52 +133,13 @@ export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
     SE4: cc.SE4,
   };
 
-  // Multi-zone prices (7d+)
-  const [multiZone, setMultiZone] = useState<Record<
-    Area,
-    { date: string; avg: number | null }[]
-  > | null>(null);
-  const [multiZoneLoading, setMultiZoneLoading] = useState(false);
-
-  useMemo(() => {
-    if (is24h) {
-      setMultiZone(null);
-      return;
-    }
-    setMultiZoneLoading(true);
-    import("../utils/api").then(({ apiFetch }) => {
-      apiFetch(`/api/v1/prices/multi-zone?days=${rangeDays}`)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((json) => {
-          if (!json?.zones) return;
-          const result: Record<string, { date: string; avg: number | null }[]> =
-            {};
-          for (const [zone, days] of Object.entries(json.zones)) {
-            result[zone] = (
-              days as { date: string; avg_sek_kwh: number | null }[]
-            ).map((d) => ({ date: d.date, avg: d.avg_sek_kwh }));
-          }
-          setMultiZone(
-            result as Record<Area, { date: string; avg: number | null }[]>,
-          );
-        })
-        .finally(() => setMultiZoneLoading(false));
-    });
-  }, [range, rangeDays, is24h]);
-
   // ── Chart data ──
   const genChartData: GenChartRow[] = useMemo(() => {
-    if (is24h) {
-      if (!nat24h?.hourly?.length) return [];
-      return national24hToRows(nat24h.hourly);
-    }
-    if (!genHistory?.daily?.length) return [];
-    return historyToRows(genHistory.daily, rangeDays);
-  }, [is24h, nat24h, genHistory, rangeDays]);
+    if (!nat24h?.hourly?.length) return [];
+    return national24hToRows(nat24h.hourly);
+  }, [nat24h]);
 
-  const chartLoading = is24h
-    ? nat24hLoading && !nat24h
-    : genHistLoading && !genHistory;
+  const chartLoading = nat24hLoading && !nat24h;
 
   // Generation mix share % at the latest slot (drives legend % annotations)
   const shareByType = useMemo<Record<string, number> | null>(() => {
@@ -704,13 +157,12 @@ export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
     };
   }, [genChartData]);
 
-  // Zone price spread (SE4 − SE1 current price, öre/kWh) — bottleneck indicator
-  const zoneSpread = useMemo<number | null>(() => {
-    const se1 = priceData?.SE1?.current_sek_kwh ?? null;
-    const se4 = priceData?.SE4?.current_sek_kwh ?? null;
-    if (se1 == null || se4 == null) return null;
-    return Math.round((se4 - se1) * 100); // to öre
-  }, [priceData]);
+  // Wall clock for the lag label; ticking state keeps render pure (react-hooks/purity).
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   // Lag info
   const lagText = useMemo(() => {
@@ -728,16 +180,11 @@ export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
       })
       .split(" ")
       .pop();
-    const ageMin = Math.round((Date.now() - d.getTime()) / 60000);
+    const ageMin = Math.round((now - d.getTime()) / 60000);
     const lag =
       ageMin < 60 ? `~${ageMin} min lag` : `~${(ageMin / 60).toFixed(1)}h lag`;
     return `as of ${time} ${tz} (${lag})`;
-  }, [nat24h]);
-
-  // Chart subtitle
-  const chartSubtitle = is24h
-    ? "MW, hourly, SE1–SE4"
-    : `MW, ${rangeDays <= 30 ? "daily" : rangeDays <= 90 ? "weekly" : rangeDays <= 180 ? "bi-weekly" : "monthly"} avg, SE1–SE4`;
+  }, [nat24h, now]);
 
   // Latest-slot carbon intensity (gCO2/kWh) — approx coefficients:
   // fossil ≈ 400 gCO2/kWh, other ≈ 20 gCO2/kWh, renewable + nuclear ≈ 0
@@ -752,7 +199,7 @@ export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
 
   // Compose an env badges line: "Renewable X% · Carbon-free Y% · ZgCO₂/kWh"
   const envBadgeLine = useMemo<string | null>(() => {
-    if (!is24h || !nat24h) return null;
+    if (!nat24h) return null;
     const parts: string[] = [];
     if (nat24h.renewable_pct != null) {
       parts.push(`Renewable ${nat24h.renewable_pct}%`);
@@ -764,12 +211,12 @@ export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
       parts.push(`${latestCarbonIntensity}gCO₂/kWh`);
     }
     return parts.length > 0 ? parts.join(" · ") : null;
-  }, [is24h, nat24h, latestCarbonIntensity]);
+  }, [nat24h, latestCarbonIntensity]);
 
   // Surface zones whose latest generation slot lags more than 1 h behind the
   // freshest zone. Anything smaller is normal ENTSO-E publication jitter.
   const laggingZones = useMemo<{ zone: string; hoursBehind: number }[]>(() => {
-    if (!is24h || !nat24h?.zone_latest) return [];
+    if (!nat24h?.zone_latest) return [];
     const entries = Object.entries(nat24h.zone_latest).filter(
       ([, iso]) => typeof iso === "string" && iso.length > 0,
     ) as [string, string][];
@@ -786,7 +233,7 @@ export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
         hoursBehind: +((newest - t.ms) / (60 * 60 * 1000)).toFixed(1),
       }))
       .sort((a, b) => b.hoursBehind - a.hoursBehind);
-  }, [is24h, nat24h]);
+  }, [nat24h]);
 
   return (
     <div className="space-y-4">
@@ -800,132 +247,118 @@ export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
 
       <TodayStory />
 
-      {/* Time range selector */}
-      <div className="flex gap-1">
-        {RANGES.map(({ id, label }) => (
-          <button
-            key={id}
-            onClick={() => setRange(id)}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-              range === id
-                ? "bg-sky-600 text-white"
-                : "bg-surface-secondary text-content-secondary hover:bg-surface-tertiary"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
       {/* Zone prices lead the page: "what does it cost right now" is the most
           common question. Generation mix (the background/context) moves below
           the forecast so the actionable "what's coming" sits above the fold. */}
-      {is24h ? (
+      <div>
         <div className="bg-surface-primary rounded-2xl p-4">
-          <h2 className="text-base font-medium text-content-primary mb-1">
-            Spot price by zone
+          <h2 className="text-base font-medium text-content-primary mb-3">
+            Right now
           </h2>
-          <p className="text-xs text-content-muted mb-3">
-            Click a zone for hourly details
-            {zoneSpread != null && (
-              <span
-                className="text-content-faint"
-                title="North–south current price gap (SE4 − SE1) — wide spread = grid bottleneck"
-              >
-                {" · North–south spread "}
-                <span className="tabular-nums">
-                  {zoneSpread >= 0 ? "+" : ""}
-                  {zoneSpread}
-                </span>{" "}
-                öre (SE4−SE1)
-              </span>
-            )}
-          </p>
-          {priceLoading && !priceData ? (
-            <div className="space-y-2 animate-pulse">
-              {[0, 1, 2, 3].map((i) => (
-                <div key={i} className="h-12 bg-surface-secondary rounded" />
-              ))}
-            </div>
-          ) : priceData ? (
-            <div className="space-y-1">
-              {zones.map((zone) => {
-                const z = priceData[zone];
-                const color = zoneColors[zone];
-                return (
-                  <button
-                    key={zone}
-                    onClick={() => onZoneClick(zone)}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-surface-secondary hover:bg-surface-tertiary transition-colors text-left"
-                  >
-                    <span
-                      className="inline-block w-1 h-8 rounded-full shrink-0"
-                      style={{ backgroundColor: color }}
+          <SwedenMap
+            layout={isNarrow ? "compact" : "wide"}
+            prices={priceData}
+            outages={outages.data}
+            outagesError={!!outages.error}
+            onZoneClick={onZoneClick}
+            hoverZone={hoverZone}
+            onHoverZone={setHoverZone}
+            trends={
+              priceData
+                ? (Object.fromEntries(
+                    zones.map((zone) => [
+                      zone,
+                      priceTrend(
+                        priceData[zone].current_sek_kwh,
+                        priceData[zone].slots,
+                        nowHour,
+                      ),
+                    ]),
+                  ) as Record<Area, "up" | "down" | null>)
+                : null
+            }
+          />
+          {isNarrow && (
+            <div className="mt-4">
+              {priceLoading && !priceData ? (
+                <div className="space-y-2 animate-pulse">
+                  {[0, 1, 2, 3].map((i) => (
+                    <div
+                      key={i}
+                      className="h-12 bg-surface-secondary rounded"
                     />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm sm:text-base font-medium text-content-primary whitespace-nowrap overflow-hidden text-ellipsis">
-                        {ZONE_LABELS[zone]}
-                      </p>
-                      <p className="text-[10px] text-content-muted">
-                        Today avg{" "}
-                        {z.today_avg_sek_kwh != null
-                          ? formatPrice(z.today_avg_sek_kwh)
-                          : "—"}{" "}
-                        {PRICE_UNIT}
-                      </p>
-                    </div>
-                    <div className="hidden sm:block">
-                      <Sparkline
-                        slots={z.slots}
-                        color={color}
-                        width={100}
-                        height={26}
-                      />
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-[10px] text-content-muted uppercase tracking-wide">
-                        now
-                      </p>
-                      <p className="text-lg font-semibold text-content-primary tabular-nums leading-tight flex items-center justify-end gap-1">
-                        <TrendArrow
-                          trend={priceTrend(
-                            z.current_sek_kwh,
-                            z.slots,
-                            nowHour,
-                          )}
+                  ))}
+                </div>
+              ) : priceData ? (
+                <div className="space-y-1">
+                  {zones.map((zone) => {
+                    const z = priceData[zone];
+                    const color = zoneColors[zone];
+                    return (
+                      <button
+                        key={zone}
+                        onClick={() => onZoneClick(zone)}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-surface-secondary hover:bg-surface-tertiary transition-colors text-left"
+                      >
+                        <span
+                          className="inline-block w-1 h-8 rounded-full shrink-0"
+                          style={{ backgroundColor: color }}
                         />
-                        <span>
-                          {z.current_sek_kwh != null
-                            ? formatPrice(z.current_sek_kwh)
-                            : "—"}
-                        </span>
-                      </p>
-                      <p className="text-[10px] text-content-faint">
-                        {PRICE_UNIT}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm sm:text-base font-medium text-content-primary whitespace-nowrap overflow-hidden text-ellipsis">
+                            {ZONE_LABELS[zone]}
+                          </p>
+                          <p className="text-[10px] text-content-muted">
+                            Today avg{" "}
+                            {z.today_avg_sek_kwh != null
+                              ? formatPrice(z.today_avg_sek_kwh)
+                              : "—"}{" "}
+                            {PRICE_UNIT}
+                          </p>
+                        </div>
+                        <div className="hidden sm:block">
+                          <Sparkline
+                            slots={z.slots}
+                            color={color}
+                            width={100}
+                            height={26}
+                          />
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-[10px] text-content-muted uppercase tracking-wide">
+                            now
+                          </p>
+                          <p className="text-lg font-semibold text-content-primary tabular-nums leading-tight flex items-center justify-end gap-1">
+                            <TrendArrow
+                              trend={priceTrend(
+                                z.current_sek_kwh,
+                                z.slots,
+                                nowHour,
+                              )}
+                            />
+                            <span>
+                              {z.current_sek_kwh != null
+                                ? formatPrice(z.current_sek_kwh)
+                                : "—"}
+                            </span>
+                          </p>
+                          <p className="text-[10px] text-content-faint">
+                            {PRICE_UNIT}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
-          ) : null}
+          )}
         </div>
-      ) : multiZoneLoading ? (
-        <div className="bg-surface-primary rounded-2xl p-4 animate-pulse">
-          <div className="h-[260px] bg-surface-secondary rounded-xl" />
-        </div>
-      ) : multiZone ? (
-        <ZonePriceHistoryChart
-          zones={multiZone}
-          cc={cc}
-          isMobile={isMobile}
-          rangeDays={rangeDays}
-          onZoneClick={onZoneClick}
-        />
-      ) : null}
+        <MapAttribution layout={isNarrow ? "compact" : "wide"} />
+      </div>
 
       {/* Next 7 days — SE3 forecast + our own accuracy (transparency). This is
-          "what's coming", independent of the historical range selector above. */}
+          "what's coming". */}
       {(weeklyLoading || weekly?.days?.length || d1Mae != null) && (
         <div className="bg-surface-primary rounded-2xl p-4 space-y-3">
           <WeeklySummary
@@ -964,28 +397,35 @@ export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
         </div>
       )}
 
-      {/* Nuclear status sits right above the generation mix: both are supply-side
-          context, and a missing reactor is the most common reason prices move. */}
-      <OutageBoard />
-
       {/* Generation mix — the supply-side context behind the prices above.
           Sits last: it's the "why", read after the "what" and "what's next". */}
       <div className="bg-surface-primary rounded-2xl p-4">
         <div className="mb-1">
-          <h2 className="text-base font-medium text-content-primary">
-            Generation mix
-            <span className="text-content-muted ml-1.5 font-normal">
-              {chartSubtitle}
-            </span>
-          </h2>
-          {is24h && (envBadgeLine || lagText) && (
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 className="text-base font-medium text-content-primary">
+              Generation mix
+              <span className="text-content-muted ml-1.5 font-normal">
+                MW, hourly, SE1–SE4
+              </span>
+            </h2>
+            {onOpenTrends && (
+              <button
+                type="button"
+                onClick={onOpenTrends}
+                className="shrink-0 text-xs text-content-muted hover:text-content-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 rounded transition-colors"
+              >
+                Trends →
+              </button>
+            )}
+          </div>
+          {(envBadgeLine || lagText) && (
             <p className="text-xs text-content-muted mt-0.5">
               {envBadgeLine && <span>{envBadgeLine}</span>}
               {envBadgeLine && lagText && <span> · </span>}
               {lagText && <span>{lagText}</span>}
             </p>
           )}
-          {is24h && laggingZones.length > 0 && (
+          {laggingZones.length > 0 && (
             <p
               className="text-[11px] text-amber-600 dark:text-amber-400 mt-1"
               title="Some SE zones are lagging behind ENTSO-E publication. Totals include all zones that have reported; the shaded area may grow retroactively as missing slots arrive."
@@ -1007,7 +447,7 @@ export function Overview({ onZoneClick, onDateSelect }: OverviewProps) {
             data={genChartData}
             cc={cc}
             isMobile={isMobile}
-            shareByType={is24h ? shareByType : null}
+            shareByType={shareByType}
           />
         ) : (
           <p className="text-sm text-content-muted text-center py-16">

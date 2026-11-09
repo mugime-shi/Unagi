@@ -3,13 +3,13 @@ import { apiFetch } from "../utils/api";
 import { useRefresh } from "./useRefresh";
 import type { OutagesResponse } from "../types/index";
 
-interface UseOutagesReturn {
+export interface UseOutagesReturn {
   data: OutagesResponse | null;
   loading: boolean;
   error: Error | null;
 }
 
-/** Nuclear reactor status + large outages for a Stockholm date (default: today). */
+/** Nuclear reactor status + all non-nuclear plant outages for a Stockholm date (default: today). */
 export function useOutages(date?: string | null): UseOutagesReturn {
   const [data, setData] = useState<OutagesResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
@@ -20,7 +20,9 @@ export function useOutages(date?: string | null): UseOutagesReturn {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    const qs = date ? `?date=${date}` : "";
+    // min_mw=0: every plant with any reduction, so the map's plant layer can show small outages too.
+    // Consumers that only want big outages must filter on nominal - available themselves.
+    const qs = `?min_mw=0${date ? `&date=${date}` : ""}`;
     apiFetch(`/api/v1/generation/outages${qs}`)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);

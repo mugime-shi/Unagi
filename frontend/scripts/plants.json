@@ -1,0 +1,1073 @@
+{
+ "_note": "ENTSO-E A71 production units >=100 MW (2026) in SE1-SE4, excl. nuclear. Coordinates: Wikidata (CC0), OpenStreetMap (ODbL, (c) OpenStreetMap contributors), 'approx' = town-level placeholder.",
+ "plants": [
+  {
+   "eic": "46WPU0000000023X",
+   "name": "Värtaverket",
+   "psr": "B01",
+   "area": "SE3",
+   "mw": 384.0,
+   "ll": [
+    59.3529,
+    18.1019
+   ],
+   "src": "wikidata:Q13591559"
+  },
+  {
+   "eic": "46WPU0000000223P",
+   "name": "Husum Pulp AB",
+   "psr": "B01",
+   "area": "SE2",
+   "mw": 130.0,
+   "ll": [
+    63.335,
+    19.155
+   ],
+   "src": "approx"
+  },
+  {
+   "eic": "46WPU0000000063L",
+   "name": "Åbyverket G3",
+   "psr": "B01",
+   "area": "SE3",
+   "mw": 100.0,
+   "ll": [
+    59.2656,
+    15.1775
+   ],
+   "src": "wikidata:Q10726191"
+  },
+  {
+   "eic": "46WPU00000000040",
+   "name": "Öresundsverket CHP",
+   "psr": "B04",
+   "area": "SE4",
+   "mw": 450.0,
+   "ll": [
+    55.6261,
+    13.0404
+   ],
+   "src": "wikidata:Q10727554"
+  },
+  {
+   "eic": "46WPU0000000062N",
+   "name": "Rya KVV",
+   "psr": "B04",
+   "area": "SE3",
+   "mw": 260.0,
+   "ll": [
+    57.69,
+    11.9
+   ],
+   "src": "approx"
+  },
+  {
+   "eic": "46WPU0000000005Z",
+   "name": "Karlshamn",
+   "psr": "B06",
+   "area": "SE4",
+   "mw": 670.0,
+   "ll": [
+    56.1522,
+    14.8325
+   ],
+   "src": "wikidata:Q289958"
+  },
+  {
+   "eic": "46WPU00000000024",
+   "name": "Gasturbiner Halmstad",
+   "psr": "B06",
+   "area": "SE4",
+   "mw": 278.0,
+   "ll": [
+    56.66,
+    12.87
+   ],
+   "src": "approx"
+  },
+  {
+   "eic": "46WPU0000000056I",
+   "name": "Stenungsund B3",
+   "psr": "B06",
+   "area": "SE3",
+   "mw": 260.0,
+   "ll": [
+    58.06,
+    11.83
+   ],
+   "src": "approx"
+  },
+  {
+   "eic": "46WPU0000000057G",
+   "name": "Stenungsund B4",
+   "psr": "B06",
+   "area": "SE3",
+   "mw": 260.0,
+   "ll": [
+    58.06,
+    11.83
+   ],
+   "src": "approx"
+  },
+  {
+   "eic": "46WPU00000000032",
+   "name": "Gasturbiner Malmö",
+   "psr": "B06",
+   "area": "SE4",
+   "mw": 129.0,
+   "ll": [
+    55.61,
+    12.98
+   ],
+   "src": "approx"
+  },
+  {
+   "eic": "46WPU0000000091G",
+   "name": "Öresundsverket GT",
+   "psr": "B06",
+   "area": "SE4",
+   "mw": 129.0,
+   "ll": [
+    55.6261,
+    13.0404
+   ],
+   "src": "wikidata:Q10727554"
+  },
+  {
+   "eic": "46WPU0000000157C",
+   "name": "Slite gasturbin",
+   "psr": "B06",
+   "area": "SE3",
+   "mw": 120.0,
+   "ll": [
+    57.71,
+    18.8
+   ],
+   "src": "approx"
+  },
+  {
+   "eic": "46WPU0000000080L",
+   "name": "Harrsele",
+   "psr": "B11",
+   "area": "SE2",
+   "mw": 223.0,
+   "ll": [
+    64.0171,
+    19.5614
+   ],
+   "src": "wikidata:Q17519191"
+  },
+  {
+   "eic": "46WPU0000000104X",
+   "name": "Korsselbränna",
+   "psr": "B11",
+   "area": "SE2",
+   "mw": 130.0,
+   "ll": [
+    64.4579,
+    15.5383
+   ],
+   "src": "wikidata:Q56374437"
+  },
+  {
+   "eic": "46WPU00000000210",
+   "name": "Krokströmmen",
+   "psr": "B11",
+   "area": "SE2",
+   "mw": 102.0,
+   "ll": [
+    62.0422,
+    14.8989
+   ],
+   "src": "osm:way/992702383"
+  },
+  {
+   "eic": "46WPU0000000105V",
+   "name": "Järnvägsforsen",
+   "psr": "B11",
+   "area": "SE2",
+   "mw": 100.0,
+   "ll": [
+    62.4865,
+    15.5591
+   ],
+   "src": "osm:way/96859785"
+  },
+  {
+   "eic": "46WPU0000000029L",
+   "name": "Harsprånget",
+   "psr": "B12",
+   "area": "SE1",
+   "mw": 811.0,
+   "ll": [
+    66.8858,
+    19.8158
+   ],
+   "src": "wikidata:Q3127967"
+  },
+  {
+   "eic": "46WPU0000000042T",
+   "name": "Stornorrfors",
+   "psr": "B12",
+   "area": "SE2",
+   "mw": 602.0,
+   "ll": [
+    63.8525,
+    20.0517
+   ],
+   "src": "wikidata:Q3499873"
+  },
+  {
+   "eic": "46WPU0000000035Q",
+   "name": "Letsi",
+   "psr": "B12",
+   "area": "SE1",
+   "mw": 474.0,
+   "ll": [
+    66.5041,
+    20.3826
+   ],
+   "src": "wikidata:Q10559896"
+  },
+  {
+   "eic": "46WPU0000000032W",
+   "name": "Messaure",
+   "psr": "B12",
+   "area": "SE1",
+   "mw": 428.0,
+   "ll": [
+    66.6833,
+    20.3333
+   ],
+   "src": "wikidata:Q2638665"
+  },
+  {
+   "eic": "46WPU0000000028N",
+   "name": "Porjus",
+   "psr": "B12",
+   "area": "SE1",
+   "mw": 422.0,
+   "ll": [
+    66.9619,
+    19.8042
+   ],
+   "src": "wikidata:Q2944573"
+  },
+  {
+   "eic": "46WPU0000000026R",
+   "name": "Ritsem",
+   "psr": "B12",
+   "area": "SE1",
+   "mw": 334.0,
+   "ll": [
+    67.72,
+    17.4728
+   ],
+   "src": "wikidata:Q10655892"
+  },
+  {
+   "eic": "46WPU0000000018Q",
+   "name": "Trängslet",
+   "psr": "B12",
+   "area": "SE3",
+   "mw": 330.0,
+   "ll": [
+    61.38,
+    13.73
+   ],
+   "src": "wikidata:Q3375596"
+  },
+  {
+   "eic": "46WPU0000000031Y",
+   "name": "Ligga",
+   "psr": "B12",
+   "area": "SE1",
+   "mw": 320.0,
+   "ll": [
+    66.8092,
+    19.8967
+   ],
+   "src": "wikidata:Q10561514"
+  },
+  {
+   "eic": "46WPU0000000027P",
+   "name": "Vietas",
+   "psr": "B12",
+   "area": "SE1",
+   "mw": 307.0,
+   "ll": [
+    67.4931,
+    18.3546
+   ],
+   "src": "wikidata:Q19398054"
+  },
+  {
+   "eic": "46WPU0000000036O",
+   "name": "Porsi",
+   "psr": "B12",
+   "area": "SE1",
+   "mw": 273.0,
+   "ll": [
+    66.4281,
+    20.6525
+   ],
+   "src": "wikidata:Q2012979"
+  },
+  {
+   "eic": "46WPU0000000045N",
+   "name": "Kilforsen",
+   "psr": "B12",
+   "area": "SE2",
+   "mw": 272.0,
+   "ll": [
+    63.542,
+    16.7643
+   ],
+   "src": "osm:way/985141453"
+  },
+  {
+   "eic": "46WPU0000000085B",
+   "name": "Krångede",
+   "psr": "B12",
+   "area": "SE2",
+   "mw": 266.0,
+   "ll": [
+    63.1466,
+    16.0703
+   ],
+   "src": "wikidata:Q11982275"
+  },
+  {
+   "eic": "46WPU0000000039I",
+   "name": "Gallejaur",
+   "psr": "B12",
+   "area": "SE1",
+   "mw": 207.0,
+   "ll": [
+    65.1265,
+    19.4695
+   ],
+   "src": "wikidata:Q10502238"
+  },
+  {
+   "eic": "46WPU0000000033U",
+   "name": "Seitevare",
+   "psr": "B12",
+   "area": "SE1",
+   "mw": 201.0,
+   "ll": [
+    66.9761,
+    18.5781
+   ],
+   "src": "wikidata:Q2188732"
+  },
+  {
+   "eic": "46WPU0000000037M",
+   "name": "Laxede",
+   "psr": "B12",
+   "area": "SE1",
+   "mw": 200.0,
+   "ll": [
+    66.2208,
+    20.8608
+   ],
+   "src": "wikidata:Q1921812"
+  },
+  {
+   "eic": "46WPU0000000054M",
+   "name": "Hojum",
+   "psr": "B12",
+   "area": "SE3",
+   "mw": 168.0,
+   "ll": [
+    58.28,
+    12.2783
+   ],
+   "src": "wikidata:Q3565673"
+  },
+  {
+   "eic": "46WPU0000000066F",
+   "name": "Sällsjö",
+   "psr": "B12",
+   "area": "SE2",
+   "mw": 165.0,
+   "ll": [
+    63.2223,
+    13.6582
+   ],
+   "src": "osm:node/9662541844"
+  },
+  {
+   "eic": "46WPU0000000051S",
+   "name": "Bergeforsen",
+   "psr": "B12",
+   "area": "SE2",
+   "mw": 164.0,
+   "ll": [
+    62.5197,
+    17.3877
+   ],
+   "src": "osm:way/197025785"
+  },
+  {
+   "eic": "46WPU0000000107R",
+   "name": "Akkats",
+   "psr": "B12",
+   "area": "SE1",
+   "mw": 156.0,
+   "ll": [
+    66.6314,
+    19.8197
+   ],
+   "src": "wikidata:Q10404022"
+  },
+  {
+   "eic": "46WPU0000000044P",
+   "name": "Lasele",
+   "psr": "B12",
+   "area": "SE2",
+   "mw": 155.0,
+   "ll": [
+    63.5553,
+    16.8232
+   ],
+   "src": "osm:way/984881507"
+  },
+  {
+   "eic": "46WPU0000000047J",
+   "name": "Forsmo",
+   "psr": "B12",
+   "area": "SE2",
+   "mw": 152.0,
+   "ll": [
+    63.2711,
+    17.2002
+   ],
+   "src": "wikidata:Q112584863"
+  },
+  {
+   "eic": "46WPU0000000050U",
+   "name": "Hölleforsen",
+   "psr": "B12",
+   "area": "SE2",
+   "mw": 147.0,
+   "ll": [
+    62.9508,
+    16.6678
+   ],
+   "src": "wikidata:Q10532536"
+  },
+  {
+   "eic": "46WPU0000000048H",
+   "name": "Midskog",
+   "psr": "B12",
+   "area": "SE2",
+   "mw": 146.0,
+   "ll": [
+    63.2394,
+    15.2377
+   ],
+   "src": "osm:way/187832612"
+  },
+  {
+   "eic": "46WPU0000000049F",
+   "name": "Stadsforsen",
+   "psr": "B12",
+   "area": "SE2",
+   "mw": 141.0,
+   "ll": [
+    62.9781,
+    16.6575
+   ],
+   "src": "osm:way/469402324"
+  },
+  {
+   "eic": "46WPU0000000022Z",
+   "name": "Höljes",
+   "psr": "B12",
+   "area": "SE3",
+   "mw": 140.0,
+   "ll": [
+    60.9508,
+    12.5472
+   ],
+   "src": "wikidata:Q11976478"
+  },
+  {
+   "eic": "46WPU0000000040X",
+   "name": "Vargfors",
+   "psr": "B12",
+   "area": "SE1",
+   "mw": 132.0,
+   "ll": [
+    65.0233,
+    19.6888
+   ],
+   "src": "wikidata:Q10713022"
+  },
+  {
+   "eic": "46WPU0000000043R",
+   "name": "Stalon",
+   "psr": "B12",
+   "area": "SE2",
+   "mw": 132.0,
+   "ll": [
+    64.944,
+    15.8304
+   ],
+   "src": "osm:way/659297567"
+  },
+  {
+   "eic": "46WPU0000000053O",
+   "name": "Älvkarleby",
+   "psr": "B12",
+   "area": "SE3",
+   "mw": 120.0,
+   "ll": [
+    60.5637,
+    17.4421
+   ],
+   "src": "wikidata:Q8077057"
+  },
+  {
+   "eic": "46WPU0000000019O",
+   "name": "Järpströmmen",
+   "psr": "B12",
+   "area": "SE2",
+   "mw": 114.0,
+   "ll": [
+    63.3903,
+    13.3845
+   ],
+   "src": "osm:way/471732541"
+  },
+  {
+   "eic": "46WPU0000000046L",
+   "name": "Nämforsen",
+   "psr": "B12",
+   "area": "SE2",
+   "mw": 105.0,
+   "ll": [
+    63.4401,
+    16.8805
+   ],
+   "src": "osm:way/625105285"
+  },
+  {
+   "eic": "46WPU0000000041V",
+   "name": "Tuggen",
+   "psr": "B12",
+   "area": "SE2",
+   "mw": 104.0,
+   "ll": [
+    64.4728,
+    18.8783
+   ],
+   "src": "wikidata:Q10706011"
+  },
+  {
+   "eic": "46WPU0000000150Q",
+   "name": "Grundfors",
+   "psr": "B12",
+   "area": "SE2",
+   "mw": 102.0,
+   "ll": [
+    64.9621,
+    17.578
+   ],
+   "src": "wikidata:Q10509120"
+  },
+  {
+   "eic": "46WPU0000000038K",
+   "name": "Bastusel",
+   "psr": "B12",
+   "area": "SE1",
+   "mw": 100.0,
+   "ll": [
+    65.4032,
+    18.6741
+   ],
+   "src": "wikidata:Q10426899"
+  },
+  {
+   "eic": "46X000000000008Y",
+   "name": "Umluspen",
+   "psr": "B12",
+   "area": "SE2",
+   "mw": 85.0,
+   "ll": [
+    65.095,
+    17.1017
+   ],
+   "src": "wikidata:Q10709221"
+  },
+  {
+   "eic": "46WPU0000000235I",
+   "name": "Hultsfred",
+   "psr": "B16",
+   "area": "SE3",
+   "mw": 91.4,
+   "ll": [
+    57.5214,
+    15.8337
+   ],
+   "src": "wikidata:Q136351211"
+  },
+  {
+   "eic": "46WPU0000000130W",
+   "name": "Eken",
+   "psr": "B16",
+   "area": "SE3",
+   "mw": 11.8,
+   "ll": [
+    58.4376,
+    15.6296
+   ],
+   "src": "osm:way/1005680646"
+  },
+  {
+   "eic": "46WPU0000000058E",
+   "name": "Lillgrund",
+   "psr": "B18",
+   "area": "SE4",
+   "mw": 110.0,
+   "ll": [
+    55.5167,
+    12.7833
+   ],
+   "src": "wikidata:Q3012042"
+  },
+  {
+   "eic": "46WPU0000000113W",
+   "name": "MarkbygdenETT",
+   "psr": "B19",
+   "area": "SE1",
+   "mw": 645.0,
+   "ll": [
+    65.4059,
+    20.6828
+   ],
+   "src": "osm:relation/10550970"
+  },
+  {
+   "eic": "46WPU0000000203V",
+   "name": "Björnberget Vindkraft",
+   "psr": "B19",
+   "area": "SE2",
+   "mw": 372.0,
+   "ll": [
+    62.3747,
+    15.7779
+   ],
+   "src": "osm:relation/17325939"
+  },
+  {
+   "eic": "46WPU00000000016",
+   "name": "Vindpark Björkhöjden",
+   "psr": "B19",
+   "area": "SE2",
+   "mw": 288.0,
+   "ll": [
+    63.4196,
+    16.1681
+   ],
+   "src": "osm:relation/10326254"
+  },
+  {
+   "eic": "46WPU0000000128J",
+   "name": "Åskälen",
+   "psr": "B19",
+   "area": "SE2",
+   "mw": 288.0,
+   "ll": [
+    63.5396,
+    15.1366
+   ],
+   "src": "osm:relation/15019342"
+  },
+  {
+   "eic": "46WPU0000000137I",
+   "name": "Åndberg",
+   "psr": "B19",
+   "area": "SE2",
+   "mw": 286.0,
+   "ll": [
+    61.7445,
+    13.9676
+   ],
+   "src": "osm:relation/15460332"
+  },
+  {
+   "eic": "46WPU00000002000",
+   "name": "Stor-Skälsjön",
+   "psr": "B19",
+   "area": "SE2",
+   "mw": 260.0,
+   "ll": [
+    62.7786,
+    17.0349
+   ],
+   "src": "osm:relation/17138876"
+  },
+  {
+   "eic": "46WPU0000000147F",
+   "name": "Markbygden 2 North",
+   "psr": "B19",
+   "area": "SE1",
+   "mw": 253.0,
+   "ll": [
+    65.4167,
+    20.6667
+   ],
+   "src": "wikidata:Q12859023"
+  },
+  {
+   "eic": "46WPU0000000117O",
+   "name": "Åmot-Lingbo",
+   "psr": "B19",
+   "area": "SE2",
+   "mw": 249.0,
+   "ll": [
+    61.0459,
+    16.5133
+   ],
+   "src": "osm:relation/14026888"
+  },
+  {
+   "eic": "46WPU0000000154I",
+   "name": "Storflötten och Lästerhöjden",
+   "psr": "B19",
+   "area": "SE3",
+   "mw": 240.0,
+   "ll": [
+    62.4993,
+    15.062
+   ],
+   "src": "osm:relation/15460295"
+  },
+  {
+   "eic": "46WPU0000000068B",
+   "name": "Blaiken",
+   "psr": "B19",
+   "area": "SE2",
+   "mw": 237.0,
+   "ll": [
+    65.2846,
+    17.1716
+   ],
+   "src": "wikidata:Q4923904"
+  },
+  {
+   "eic": "46WPU0000000146H",
+   "name": "Skaftåsen",
+   "psr": "B19",
+   "area": "SE2",
+   "mw": 231.0,
+   "ll": [
+    61.75,
+    14.4558
+   ],
+   "src": "osm:relation/15504379"
+  },
+  {
+   "eic": "46WPU0000000065H",
+   "name": "Jädraås Vindkraftpark",
+   "psr": "B19",
+   "area": "SE3",
+   "mw": 213.0,
+   "ll": [
+    60.8047,
+    16.386
+   ],
+   "src": "osm:way/994949025"
+  },
+  {
+   "eic": "46WPU0000000140T",
+   "name": "Hästkullen Norra",
+   "psr": "B19",
+   "area": "SE2",
+   "mw": 200.0,
+   "ll": [
+    62.8286,
+    17.2669
+   ],
+   "src": "osm:relation/12304805"
+  },
+  {
+   "eic": "46WPU0000000129H",
+   "name": "Björkvattnet",
+   "psr": "B19",
+   "area": "SE2",
+   "mw": 175.0,
+   "ll": [
+    63.4182,
+    16.0107
+   ],
+   "src": "osm:relation/15019319"
+  },
+  {
+   "eic": "46WPU0000000138G",
+   "name": "Kråktorpet",
+   "psr": "B19",
+   "area": "SE2",
+   "mw": 163.0,
+   "ll": [
+    62.7602,
+    16.5127
+   ],
+   "src": "osm:relation/12326696"
+  },
+  {
+   "eic": "46WPU0000000148D",
+   "name": "Åby-alebo",
+   "psr": "B19",
+   "area": "SE4",
+   "mw": 155.0,
+   "ll": [
+    57.1084,
+    16.3602
+   ],
+   "src": "osm:relation/15510487"
+  },
+  {
+   "eic": "46WPU0000000208L",
+   "name": "Lehtirova Wind farm",
+   "psr": "B19",
+   "area": "SE1",
+   "mw": 148.0,
+   "ll": [
+    67.0615,
+    22.0778
+   ],
+   "src": "osm:relation/14477804"
+  },
+  {
+   "eic": "46WPU00000001962",
+   "name": "Klevberget",
+   "psr": "B19",
+   "area": "SE2",
+   "mw": 146.0,
+   "ll": [
+    62.4217,
+    16.1387
+   ],
+   "src": "osm:relation/17326619"
+  },
+  {
+   "eic": "46WPU0000000112Y",
+   "name": "Sidensjö",
+   "psr": "B19",
+   "area": "SE2",
+   "mw": 144.0,
+   "ll": [
+    63.3008,
+    18.1256
+   ],
+   "src": "osm:relation/15019569"
+  },
+  {
+   "eic": "46WPU0000000134O",
+   "name": "Fäbodberget",
+   "psr": "B19",
+   "area": "SE2",
+   "mw": 143.0,
+   "ll": [
+    64.2076,
+    18.4845
+   ],
+   "src": "osm:way/1152666530"
+  },
+  {
+   "eic": "46WPU0000000207N",
+   "name": "Ersträsk North (ERN)",
+   "psr": "B19",
+   "area": "SE1",
+   "mw": 134.0,
+   "ll": [
+    65.4272,
+    20.6483
+   ],
+   "src": "osm:relation/14474408"
+  },
+  {
+   "eic": "46WPU0000000139E",
+   "name": "Bäckhammar",
+   "psr": "B19",
+   "area": "SE3",
+   "mw": 130.0,
+   "ll": [
+    59.1424,
+    14.2434
+   ],
+   "src": "osm:relation/13595708"
+  },
+  {
+   "eic": "46WPU0000000132S",
+   "name": "Blakliden",
+   "psr": "B19",
+   "area": "SE2",
+   "mw": 118.0,
+   "ll": [
+    64.0907,
+    18.0703
+   ],
+   "src": "osm:relation/15018569"
+  },
+  {
+   "eic": "46WPU0000000116Q",
+   "name": "Tönsen",
+   "psr": "B19",
+   "area": "SE2",
+   "mw": 116.0,
+   "ll": [
+    61.1215,
+    16.5172
+   ],
+   "src": "osm:way/1050774074"
+  },
+  {
+   "eic": "46WPU0000000131U",
+   "name": "Målarberget",
+   "psr": "B19",
+   "area": "SE3",
+   "mw": 116.0,
+   "ll": [
+    60.0898,
+    16.1101
+   ],
+   "src": "osm:way/993419429"
+  },
+  {
+   "eic": "46WPU0000000115S",
+   "name": "Svartnäs",
+   "psr": "B19",
+   "area": "SE3",
+   "mw": 115.0,
+   "ll": [
+    60.7813,
+    16.235
+   ],
+   "src": "osm:relation/13366991"
+  },
+  {
+   "eic": "46WPU0000000209J",
+   "name": "Ånglarna",
+   "psr": "B19",
+   "area": "SE3",
+   "mw": 115.0,
+   "ll": [
+    60.8205,
+    16.1609
+   ],
+   "src": "osm:way/996217217"
+  },
+  {
+   "eic": "46WPU0000000153K",
+   "name": "Högaliden Vindpark",
+   "psr": "B19",
+   "area": "SE1",
+   "mw": 108.0,
+   "ll": [
+    64.2896,
+    20.2985
+   ],
+   "src": "osm:relation/15016694"
+  },
+  {
+   "eic": "46WPU0000000141R",
+   "name": "Hästkullen Södra",
+   "psr": "B19",
+   "area": "SE2",
+   "mw": 107.0,
+   "ll": [
+    62.8286,
+    17.2669
+   ],
+   "src": "osm:relation/12304805"
+  },
+  {
+   "eic": "46WPU00000001020",
+   "name": "Ögonfägnaden",
+   "psr": "B19",
+   "area": "SE2",
+   "mw": 106.0,
+   "ll": [
+    63.5074,
+    15.966
+   ],
+   "src": "osm:relation/10326253"
+  },
+  {
+   "eic": "46WPU0000000152M",
+   "name": "Ersträsk South (ERS)",
+   "psr": "B19",
+   "area": "SE1",
+   "mw": 101.0,
+   "ll": [
+    65.4272,
+    20.6483
+   ],
+   "src": "osm:relation/14474408"
+  },
+  {
+   "eic": "46WPU0000000151O",
+   "name": "Lemnhult",
+   "psr": "B19",
+   "area": "SE4",
+   "mw": 98.0,
+   "ll": [
+    57.2474,
+    15.2337
+   ],
+   "src": "osm:relation/14031042"
+  },
+  {
+   "eic": "46WPU0000000240P",
+   "name": "Älgkullen",
+   "psr": "B19",
+   "area": "SE3",
+   "mw": 93.0,
+   "ll": [
+    60.0168,
+    15.1722
+   ],
+   "src": "osm:way/1131039785"
+  },
+  {
+   "eic": "46WPU0000000198Z",
+   "name": "Karskruv",
+   "psr": "B19",
+   "area": "SE4",
+   "mw": 86.0,
+   "ll": [
+    57.0761,
+    15.2743
+   ],
+   "src": "osm:relation/17266071"
+  },
+  {
+   "eic": "46WPU0000000156E",
+   "name": "Kronoberget",
+   "psr": "B19",
+   "area": "SE3",
+   "mw": 61.0,
+   "ll": [
+    59.213,
+    14.6863
+   ],
+   "src": "osm:relation/14385466"
+  },
+  {
+   "eic": "46WPU00000001970",
+   "name": "Marhult",
+   "psr": "B19",
+   "area": "SE4",
+   "mw": 32.0,
+   "ll": [
+    57.0374,
+    15.2716
+   ],
+   "src": "osm:relation/17266070"
+  }
+ ]
+}

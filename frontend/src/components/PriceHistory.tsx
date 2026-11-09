@@ -14,6 +14,7 @@ import type {
   ValueType,
 } from "recharts/types/component/DefaultTooltipContent";
 import type { TooltipContentProps } from "recharts";
+import { GenerationHistory } from "./GenerationHistory";
 import { ZoneComparison } from "./ZoneComparison";
 import { dateWithWeekday, formatPrice, PRICE_UNIT } from "../utils/formatters";
 import { useChartColors, type ChartColors } from "../hooks/useChartColors";
@@ -21,8 +22,12 @@ import { useHistory } from "../hooks/useHistory";
 import { useIsMobile } from "../hooks/useIsMobile";
 import type { Area as AreaType, HistoryDay } from "../types/index";
 
+export type TrendsView = "history" | "zones" | "generation";
+
 interface PriceHistoryProps {
   area?: AreaType;
+  /** Sub-tab to show on mount (default: Daily). */
+  initialView?: TrendsView;
 }
 
 interface RangeDef {
@@ -109,15 +114,16 @@ function getAdaptiveTicks(points: HistoryDay[], days: number): string[] {
 
 export function PriceHistory({
   area = "SE3",
+  initialView = "history",
 }: PriceHistoryProps): ReactElement {
   const cc = useChartColors();
-  const [tab, setTab] = useState<"history" | "zones">("history");
+  const [tab, setTab] = useState<TrendsView>(initialView);
   const [days, setDays] = useState<number>(90);
   const isMobile = useIsMobile();
   const chartHeight = isMobile ? 300 : 350;
   const { data, loading, error } = useHistory(days, area);
 
-  const tabBtn = (id: "history" | "zones", label: string): ReactElement => (
+  const tabBtn = (id: TrendsView, label: string): ReactElement => (
     <button
       key={id}
       onClick={() => setTab(id)}
@@ -136,6 +142,7 @@ export function PriceHistory({
       <div className="flex gap-1">
         {tabBtn("history", "Daily")}
         {tabBtn("zones", "Zone Comparison")}
+        {tabBtn("generation", "Generation")}
       </div>
       <div className="flex gap-1">
         {RANGES.map(({ label, days: d }) => (
@@ -160,6 +167,15 @@ export function PriceHistory({
       <div className="space-y-3">
         {subNav}
         <ZoneComparison days={days} />
+      </div>
+    );
+  }
+
+  if (tab === "generation") {
+    return (
+      <div className="space-y-3">
+        {subNav}
+        <GenerationHistory days={days} />
       </div>
     );
   }
