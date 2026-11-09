@@ -6,17 +6,31 @@ Reads DATABASE_URL from config (env var or .env file).
   - Prod:   Supabase connection string (set via Lambda env var)
 """
 
+import os
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from app.config import settings
 
+# A frozen Lambda environment keeps any pooled connection open, so a burst of
+# cold starts used up Supabase's 15 session-mode clients (2026-11-09). On Lambda,
+# close the connection after each session; Supavisor does the pooling.
+def pool_options(on_lambda: bool) -> dict:
+    if on_lambda:
+        return {"poolclass": NullPool}
+    return {
+        "pool_pre_ping": True,  # detect stale connections
+        "pool_size": 5,
+        "max_overflow": 10,
+    }
+
+
 engine = create_engine(
     settings.database_url,
-    pool_pre_ping=True,  # detect stale connections
-    pool_size=5,
-    max_overflow=10,
     executemany_mode="values_plus_batch",  # batch UPSERTs via psycopg2 execute_values
+    **pool_options(bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))),
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
