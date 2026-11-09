@@ -184,8 +184,18 @@ def active_outage_rows(db: Session) -> list[GenerationOutage]:
     return list(db.execute(select(GenerationOutage).where(GenerationOutage.status == "active")).scalars())
 
 
-def outages_for_day(db: Session, day: date, rows: list[GenerationOutage] | None = None) -> dict:
-    """Nuclear status (6 reactors) and large non-nuclear outages for a Stockholm-local day."""
+def outages_for_day(
+    db: Session,
+    day: date,
+    rows: list[GenerationOutage] | None = None,
+    min_mw: float = OTHER_OUTAGE_MIN_MW,
+) -> dict:
+    """
+    Nuclear status (6 reactors) and non-nuclear outages for a Stockholm-local day.
+
+    Non-nuclear outages with unavailable MW >= min_mw are listed; with min_mw <= 0 every
+    real reduction (unavailable > 0) is listed, fully-available rows are not.
+    """
     day_start, day_end = stockholm_day_range_utc(day)
     if rows is None:
         rows = active_outage_rows(db)
@@ -227,10 +237,11 @@ def outages_for_day(db: Session, day: date, rows: list[GenerationOutage] | None 
         if nominal is None:
             continue
         unavailable = nominal - available
-        if unavailable >= OTHER_OUTAGE_MIN_MW:
+        if unavailable > 0 and unavailable >= min_mw:
             other.append(
                 {
                     "name": row.resource_name or row.resource_eic or "",
+                    "resource_eic": row.resource_eic,
                     "area": row.area,
                     "psr_type": row.psr_type,
                     "nominal_mw": nominal,

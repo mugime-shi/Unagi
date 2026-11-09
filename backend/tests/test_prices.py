@@ -22,6 +22,7 @@ from app.services.entsoe_client import EntsoEError, PricePoint
 from app.services.price_service import (
     _generate_fallback_prices,
     build_forecast,
+    day_ahead_may_be_published,
     find_cheapest_window,
     get_or_fetch_prices,
     get_prices_for_date,
@@ -136,6 +137,49 @@ def test_get_or_fetch_prices_falls_back_to_mock(db):
         prices, is_estimate = get_or_fetch_prices(db, date(2026, 3, 11))
     assert is_estimate is True
     assert len(prices) == 24
+
+
+def _sthlm(y, mo, d, h, mi):
+    """Stockholm wall-clock time as an aware datetime."""
+    from app.utils.timezone import STOCKHOLM
+
+    return datetime(y, mo, d, h, mi, tzinfo=STOCKHOLM)
+
+
+@pytest.mark.parametrize(
+    ("target", "now", "expected"),
+    [
+        (date(2026, 11, 10), _sthlm(2026, 11, 9, 5, 0), False),  # tomorrow, morning
+        (date(2026, 11, 10), _sthlm(2026, 11, 9, 12, 29), False),  # just before cutoff
+        (date(2026, 11, 10), _sthlm(2026, 11, 9, 12, 30), True),  # at cutoff
+        (date(2026, 11, 9), _sthlm(2026, 11, 9, 0, 5), True),  # today
+        (date(2026, 11, 1), _sthlm(2026, 11, 9, 0, 5), True),  # past
+        (date(2026, 11, 12), _sthlm(2026, 11, 9, 14, 0), False),  # D+3
+        (date(2026, 3, 30), _sthlm(2026, 3, 29, 12, 30), True),  # DST spring-forward day
+    ],
+)
+def test_day_ahead_may_be_published(target, now, expected):
+    assert day_ahead_may_be_published(target, now) is expected
+
+
+def test_day_ahead_cutoff_uses_stockholm_time():
+    # 11:45 UTC is 12:45 CET: past the cutoff even though UTC says before 12:30.
+    assert day_ahead_may_be_published(date(2026, 11, 10), datetime(2026, 11, 9, 11, 45, tzinfo=timezone.utc))
+
+
+def test_get_or_fetch_prices_skips_entsoe_before_publication(db):
+    with patch("app.services.price_service.fetch_day_ahead_prices") as fetch:
+        prices, is_estimate = get_or_fetch_prices(db, date(2026, 11, 10), now=_sthlm(2026, 11, 9, 5, 0))
+    fetch.assert_not_called()
+    assert is_estimate is True
+    assert len(prices) == 24
+
+
+def test_get_or_fetch_prices_tries_entsoe_after_cutoff(db):
+    with patch("app.services.price_service.fetch_day_ahead_prices", side_effect=EntsoEError("not yet")) as fetch:
+        prices, is_estimate = get_or_fetch_prices(db, date(2026, 11, 10), now=_sthlm(2026, 11, 9, 12, 40))
+    fetch.assert_called_once()
+    assert is_estimate is True
 
 
 def test_get_or_fetch_prices_returns_db_data(db):

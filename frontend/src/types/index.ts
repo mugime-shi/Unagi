@@ -236,6 +236,8 @@ export interface OtherOutage {
   name: string;
   area: string;
   psr_type: string | null;
+  /** ENTSO-E resource id; matches the plant layer on the map. Null for aggregated/unknown units. */
+  resource_eic?: string | null;
   nominal_mw: number;
   available_mw: number;
   outage: OutageInfo | null;

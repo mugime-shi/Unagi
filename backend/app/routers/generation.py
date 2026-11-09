@@ -4,7 +4,7 @@ Generation mix router — ENTSO-E A75 actual generation per production type.
 Endpoints:
   GET /api/v1/generation/today   — today's generation mix with renewable % badge
   GET /api/v1/generation/date    — generation mix for an arbitrary date (DB only)
-  GET /api/v1/generation/outages — nuclear reactor status + large outages for a day (ENTSO-E A77/A80)
+  GET /api/v1/generation/outages — nuclear reactor status + non-nuclear outages (min_mw, default 300) for a day (ENTSO-E A77/A80)
 """
 
 import time
@@ -448,6 +448,7 @@ class NuclearUnit(BaseModel):
 
 class OtherOutage(BaseModel):
     name: str
+    resource_eic: str | None = None
     area: str
     psr_type: str | None = None
     nominal_mw: float
@@ -468,7 +469,10 @@ def get_outages(
     day_param: Annotated[
         date | None, Query(alias="date", description="Stockholm-local day, YYYY-MM-DD (default: today)")
     ] = None,
+    min_mw: Annotated[
+        float, Query(ge=0, le=5000, description="Minimum unavailable MW for non-nuclear outages (default 300)")
+    ] = 300,
 ):
-    """Nuclear reactor availability and large non-nuclear outages for a day (DB only)."""
+    """Nuclear reactor availability and non-nuclear outages (>= min_mw unavailable) for a day (DB only)."""
     day = day_param or datetime.now(STOCKHOLM).date()
-    return outages_for_day(db, day)
+    return outages_for_day(db, day, min_mw=min_mw)

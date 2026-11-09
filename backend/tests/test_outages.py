@@ -504,6 +504,19 @@ def test_other_outages_threshold_and_sorting(db):
     assert other[1]["available_mw"] == 100 and other[1]["area"] == "SE2" and other[1]["outage"]["type"] == "planned"
 
 
+def _periods(mw):
+    return [{"start": utc(2026, 10, 10).isoformat(), "end": utc(2026, 10, 20).isoformat(), "mw": mw}]
+
+
+def test_other_outages_default_filters_small_and_min_mw_zero_includes(db):
+    add_row(db, name="Tiny", nominal_mw=100, resource_eic="EIC-TINY", periods=_periods(50.0))  # 50 down
+    add_row(db, name="Healthy", nominal_mw=100, resource_eic="EIC-OK", periods=_periods(100.0))  # 0 down
+    assert outages_for_day(db, DAY)["other"] == []
+    other = outages_for_day(db, DAY, min_mw=0)["other"]
+    assert [o["name"] for o in other] == ["Tiny"]
+    assert other[0]["resource_eic"] == "EIC-TINY"
+
+
 def test_normalize_unit_name():
     assert normalize_unit_name("Forsmark block 1") == normalize_unit_name("Forsmark 1") == "forsmark 1"
     assert normalize_unit_name(None) == ""
@@ -525,6 +538,16 @@ def test_endpoint_shape(client, db):
     assert r3["status"] == "offline" and r3["outage"]["type"] == "planned"
     assert set(r3) == {"name", "area", "nominal_mw", "status", "available_mw", "outage"}
     assert body["nuclear_offline_mw"] == 1063
+
+
+def test_endpoint_min_mw(client, db):
+    add_row(db, name="Tiny", nominal_mw=100, resource_eic="EIC-TINY", periods=_periods(50.0))
+    p = {"date": "2026-10-15"}
+    assert client.get("/api/v1/generation/outages", params=p).json()["other"] == []
+    res = client.get("/api/v1/generation/outages", params={**p, "min_mw": 0})
+    assert res.status_code == 200
+    assert res.json()["other"][0]["resource_eic"] == "EIC-TINY"
+    assert client.get("/api/v1/generation/outages", params={**p, "min_mw": -1}).status_code == 422
 
 
 def test_endpoint_default_today_and_bad_date(client):
