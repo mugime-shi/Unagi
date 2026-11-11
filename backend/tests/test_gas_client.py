@@ -328,7 +328,6 @@ class TestFetchGasPrices:
             with pytest.raises(GasPriceError, match="No THE gas price data"):
                 fetch_gas_prices(date(2025, 3, 19), date(2025, 3, 19))
 
-
     def test_falls_back_to_legacy_final_via_fetch_gas_prices(self):
         """End to end: new Final host empty → legacy Final host serves the range."""
         legacy = _ok([{"gastag": "2025-03-05T05:00:00", "preisAusgleichsenergieNegativ": 39.5}])
