@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useMounted } from "../hooks/useMounted";
 import { useRefresh } from "../hooks/useRefresh";
 
 function formatUpdated(d: Date): string {
@@ -20,8 +20,7 @@ export function UpdateBadge() {
   // `lastUpdatedAt` is a client-side "now" — its instant (and the runtime
   // timezone) differ between SSR and hydration, which would trip a hydration
   // mismatch. Render the timestamp only after mount so both passes agree.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useMounted();
 
   return (
     <div className="flex items-center gap-1.5 text-xs text-content-muted">

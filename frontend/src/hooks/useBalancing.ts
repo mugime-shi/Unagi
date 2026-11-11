@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { apiFetch } from "../utils/api";
+import { fetchJson, useAsyncResource } from "./useAsyncResource";
 import { useRefresh } from "./useRefresh";
 import type { Area, BalancingResponse } from "../types/index";
 
@@ -28,52 +27,36 @@ export function useBalancing(
   dateISO: string | null,
   area: Area = "SE3",
 ): UseBalancingReturn {
-  const [data, setData] = useState<BalancingResponse | null>(null);
-  const [dataDate, setDataDate] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<Error | null>(null);
   const { key: refreshKey } = useRefresh();
+  const { data, loading, error } = useAsyncResource<{
+    data: BalancingResponse;
+    dataDate: string;
+  }>(dateISO ? `${dateISO}|${area}|${refreshKey}` : null, async () => {
+    const tryFetch = (d: string) =>
+      fetchJson<BalancingResponse>(
+        `/api/v1/prices/balancing?date=${d}&area=${area}`,
+      );
+    const fallback = async () => {
+      const yd = prevDay(dateISO!);
+      return { data: await tryFetch(yd), dataDate: yd };
+    };
 
-  useEffect(() => {
-    if (!dateISO) {
-      setData(null);
-      setDataDate(null);
-      return;
+    let today: BalancingResponse;
+    try {
+      today = await tryFetch(dateISO!);
+    } catch {
+      // Network / server error -- try yesterday
+      return fallback();
     }
-    setLoading(true);
-    setError(null);
+    // eSett lags ~5-6 h -- if today's data is empty, fall back to yesterday
+    if (today.count === 0) return fallback();
+    return { data: today, dataDate: dateISO! };
+  });
 
-    const tryFetch = (d: string): Promise<BalancingResponse> =>
-      apiFetch(`/api/v1/prices/balancing?date=${d}&area=${area}`).then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      });
-
-    tryFetch(dateISO)
-      .then((d) => {
-        // eSett lags ~5-6 h -- if today's data is empty, fall back to yesterday
-        if (d.count === 0) {
-          const yd = prevDay(dateISO);
-          return tryFetch(yd).then((ydData) => {
-            setData(ydData);
-            setDataDate(yd);
-          });
-        }
-        setData(d);
-        setDataDate(dateISO);
-      })
-      .catch(() => {
-        // Network / server error -- try yesterday
-        const yd = prevDay(dateISO);
-        return tryFetch(yd)
-          .then((d) => {
-            setData(d);
-            setDataDate(yd);
-          })
-          .catch(setError);
-      })
-      .finally(() => setLoading(false));
-  }, [dateISO, area, refreshKey]);
-
-  return { data, dataDate, loading, error };
+  return {
+    data: data?.data ?? null,
+    dataDate: data?.dataDate ?? null,
+    loading,
+    error,
+  };
 }

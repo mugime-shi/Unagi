@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { apiFetch } from "../utils/api";
+import { fetchJson, useAsyncResource } from "./useAsyncResource";
 import { useRefresh } from "./useRefresh";
 import type { Area, ForecastBreakdownResponse } from "../types/index";
 
@@ -14,25 +13,12 @@ export function useForecastBreakdown(
   days: number = 30,
   by: string = "hour",
 ): UseForecastBreakdownReturn {
-  const [data, setData] = useState<ForecastBreakdownResponse | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<Error | null>(null);
   const { key: refreshKey } = useRefresh();
-
-  useEffect(() => {
-    setLoading(true);
-    setError(null);
-    apiFetch(
-      `/api/v1/prices/forecast/accuracy/breakdown?area=${area}&days=${days}&by=${by}`,
-    )
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then(setData)
-      .catch(setError)
-      .finally(() => setLoading(false));
-  }, [area, days, by, refreshKey]);
-
-  return { data, loading, error };
+  return useAsyncResource<ForecastBreakdownResponse>(
+    `${area}|${days}|${by}|${refreshKey}`,
+    () =>
+      fetchJson<ForecastBreakdownResponse>(
+        `/api/v1/prices/forecast/accuracy/breakdown?area=${area}&days=${days}&by=${by}`,
+      ),
+  );
 }

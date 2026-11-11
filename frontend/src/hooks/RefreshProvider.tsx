@@ -1,23 +1,5 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
-
-interface RefreshState {
-  key: number;
-  lastUpdatedAt: Date;
-  bump: () => void;
-}
-
-const RefreshContext = createContext<RefreshState>({
-  key: 0,
-  lastUpdatedAt: new Date(),
-  bump: () => {},
-});
+import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { RefreshContext, type RefreshState } from "./useRefresh";
 
 export function RefreshProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<{ key: number; lastUpdatedAt: Date }>(
@@ -36,8 +18,4 @@ export function RefreshProvider({ children }: { children: ReactNode }) {
   return (
     <RefreshContext.Provider value={value}>{children}</RefreshContext.Provider>
   );
-}
-
-export function useRefresh(): RefreshState {
-  return useContext(RefreshContext);
 }

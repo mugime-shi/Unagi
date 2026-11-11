@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { apiFetch } from "../utils/api";
+import { fetchJson, useAsyncResource } from "./useAsyncResource";
 import { useRefresh } from "./useRefresh";
 import type { Area, WeeklyClassifiedResponse } from "../types/index";
 
@@ -13,27 +12,12 @@ export function useWeeklyForecast(
   area: Area = "SE3",
   enabled: boolean = true,
 ): UseWeeklyForecastReturn {
-  const [data, setData] = useState<WeeklyClassifiedResponse | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<Error | null>(null);
   const { key: refreshKey } = useRefresh();
-
-  useEffect(() => {
-    if (!enabled) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    apiFetch(`/api/v1/prices/forecast/weekly?area=${area}`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then(setData)
-      .catch(setError)
-      .finally(() => setLoading(false));
-  }, [area, enabled, refreshKey]);
-
-  return { data, loading, error };
+  return useAsyncResource<WeeklyClassifiedResponse>(
+    enabled ? `${area}|${refreshKey}` : null,
+    () =>
+      fetchJson<WeeklyClassifiedResponse>(
+        `/api/v1/prices/forecast/weekly?area=${area}`,
+      ),
+  );
 }

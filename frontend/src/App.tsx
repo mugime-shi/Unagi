@@ -12,7 +12,7 @@ import { PriceIndicator } from "./components/PriceIndicator";
 import { ConsumptionSimulator } from "./components/ConsumptionSimulator";
 import { SolarSimulator } from "./components/SolarSimulator";
 import { UpdateBadge } from "./components/UpdateBadge";
-import { RefreshProvider } from "./hooks/useRefresh";
+import { RefreshProvider } from "./hooks/RefreshProvider";
 import { useBalancing } from "./hooks/useBalancing";
 import { useDatePrices } from "./hooks/useDatePrices";
 import { useForecast } from "./hooks/useForecast";
@@ -144,10 +144,7 @@ function AppInner() {
     data: tomorrowData,
     loading: tomorrowLoading,
     error: tomorrowError,
-  } = usePrices(
-    tab === "tomorrow" && isTomorrow ? "tomorrow" : null,
-    area,
-  );
+  } = usePrices(tab === "tomorrow" && isTomorrow ? "tomorrow" : null, area);
   const {
     data: pastData,
     loading: pastLoading,
