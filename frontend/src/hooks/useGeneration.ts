@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { apiFetch } from "../utils/api";
+import { fetchJson, useAsyncResource } from "./useAsyncResource";
 import { useRefresh } from "./useRefresh";
 import type { Area, GenerationResponse } from "../types/index";
 
@@ -12,38 +11,8 @@ interface UseGenerationReturn {
 }
 
 export function useGeneration(area: Area = "SE3"): UseGenerationReturn {
-  const [data, setData] = useState<GenerationResponse | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<Error | null>(null);
   const { key: refreshKey } = useRefresh();
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-
-    apiFetch(`${API_BASE}/generation/today?area=${area}`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((json: GenerationResponse) => {
-        if (!cancelled) {
-          setData(json);
-          setLoading(false);
-        }
-      })
-      .catch((err: Error) => {
-        if (!cancelled) {
-          setError(err);
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [area, refreshKey]);
-
-  return { data, loading, error };
+  return useAsyncResource<GenerationResponse>(`${area}|${refreshKey}`, () =>
+    fetchJson<GenerationResponse>(`${API_BASE}/generation/today?area=${area}`),
+  );
 }

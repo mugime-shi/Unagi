@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useAsyncResource } from "./useAsyncResource";
 import { apiFetch } from "../utils/api";
 import { findCurrentSlot, toLocalHour } from "../utils/formatters";
 import { useRefresh } from "./useRefresh";
@@ -73,45 +73,24 @@ function summarizeZone(
   };
 }
 
+function fetchAllZones(): Promise<Record<Area, ZonePriceSummary>> {
+  return Promise.all(
+    ZONES.map((zone) =>
+      apiFetch(`/api/v1/prices/today?area=${zone}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((json) => ({ zone, resp: json as PricesResponse | null }))
+        .catch(() => ({ zone, resp: null as PricesResponse | null })),
+    ),
+  ).then((results) => {
+    const record: Partial<Record<Area, ZonePriceSummary>> = {};
+    for (const { zone, resp } of results) {
+      record[zone] = summarizeZone(zone, resp);
+    }
+    return record as Record<Area, ZonePriceSummary>;
+  });
+}
+
 export function useAllZonePrices(): UseAllZonePricesReturn {
-  const [data, setData] = useState<Record<Area, ZonePriceSummary> | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<Error | null>(null);
   const { key: refreshKey } = useRefresh();
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-
-    Promise.all(
-      ZONES.map((zone) =>
-        apiFetch(`/api/v1/prices/today?area=${zone}`)
-          .then((r) => (r.ok ? r.json() : null))
-          .then((json) => ({ zone, resp: json as PricesResponse | null }))
-          .catch(() => ({ zone, resp: null as PricesResponse | null })),
-      ),
-    )
-      .then((results) => {
-        if (cancelled) return;
-        const record: Partial<Record<Area, ZonePriceSummary>> = {};
-        for (const { zone, resp } of results) {
-          record[zone] = summarizeZone(zone, resp);
-        }
-        setData(record as Record<Area, ZonePriceSummary>);
-        setLoading(false);
-      })
-      .catch((err: Error) => {
-        if (!cancelled) {
-          setError(err);
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshKey]);
-
-  return { data, loading, error };
+  return useAsyncResource(`${refreshKey}`, fetchAllZones);
 }

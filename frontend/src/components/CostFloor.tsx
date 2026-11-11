@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   BarChart,
   Bar,
@@ -210,14 +210,14 @@ export function CostFloor({ area }: CostFloorProps) {
   }, [gridData, gridType]);
 
   // Auto-select first operator if none selected or current not available
-  useEffect(() => {
-    if (operators.length > 0 && operatorSlug !== CUSTOM_SLUG) {
-      const found = operators.find((o) => o.slug === operatorSlug);
-      if (!found) {
-        setOperatorSlug(operators[0].slug);
-      }
-    }
-  }, [operators, operatorSlug]);
+  // (adjusted during render so the unavailable slug is never painted)
+  if (
+    operators.length > 0 &&
+    operatorSlug !== CUSTOM_SLUG &&
+    !operators.some((o) => o.slug === operatorSlug)
+  ) {
+    setOperatorSlug(operators[0].slug);
+  }
 
   // Persist selections
   const selectOperator = useCallback((slug: string) => {

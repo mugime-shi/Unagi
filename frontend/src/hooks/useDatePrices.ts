@@ -1,5 +1,8 @@
-import { useEffect, useState } from "react";
-import { apiFetch } from "../utils/api";
+import {
+  ClearDataError,
+  fetchJson,
+  useAsyncResource,
+} from "./useAsyncResource";
 import { useRefresh } from "./useRefresh";
 import type {
   Area,
@@ -36,48 +39,31 @@ export function useDatePrices(
   date: string | null,
   area: Area = "SE3",
 ): UseDatePricesReturn {
-  const [data, setData] = useState<PricesResponse | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<Error | null>(null);
   const { key: refreshKey } = useRefresh();
-
-  useEffect(() => {
-    if (!date) {
-      setData(null);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    apiFetch(`/api/v1/prices/range?start=${date}&end=${date}&area=${area}`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((res: RangeApiResponse) => {
-        // /range returns { dates: [{ date, count, summary, prices }] }
-        const dayData = res.dates?.[0];
-        if (!dayData || dayData.count === 0) {
-          setData(null);
-          setError(new Error("No price data for this date"));
-          return;
-        }
-        // Reshape to match the /today response format
-        setData({
-          area: res.area,
-          date: dayData.date,
-          currency: res.currency,
-          is_estimate: false,
-          count: dayData.count,
-          summary: {
-            ...dayData.summary,
-            month_avg_sek_kwh: null,
-          },
-          prices: dayData.prices,
-        });
-      })
-      .catch(setError)
-      .finally(() => setLoading(false));
-  }, [date, area, refreshKey]);
-
-  return { data, loading, error };
+  return useAsyncResource<PricesResponse>(
+    date ? `${date}|${area}|${refreshKey}` : null,
+    async () => {
+      const res = await fetchJson<RangeApiResponse>(
+        `/api/v1/prices/range?start=${date}&end=${date}&area=${area}`,
+      );
+      // /range returns { dates: [{ date, count, summary, prices }] }
+      const dayData = res.dates?.[0];
+      if (!dayData || dayData.count === 0) {
+        throw new ClearDataError("No price data for this date");
+      }
+      // Reshape to match the /today response format
+      return {
+        area: res.area,
+        date: dayData.date,
+        currency: res.currency,
+        is_estimate: false,
+        count: dayData.count,
+        summary: {
+          ...dayData.summary,
+          month_avg_sek_kwh: null,
+        },
+        prices: dayData.prices,
+      };
+    },
+  );
 }
