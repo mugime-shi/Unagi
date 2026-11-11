@@ -37,6 +37,9 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
     datefmt="%Y-%m-%dT%H:%M:%S",
 )
+# The Lambda runtime pre-installs a root handler, which makes basicConfig() above a no-op and leaves
+# the root level at WARNING. Raise only the app namespace so INFO shows up without httpx/boto chatter.
+logging.getLogger("app").setLevel(logging.INFO)
 log = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
@@ -635,8 +638,13 @@ def lambda_handler(event: dict, context) -> dict:
             "results": all_results,
         }
 
+    # Pure backfill events must not also run the daily steps: tomorrow's day-ahead prices and load
+    # forecast cannot exist at the weekly 04:00 UTC run, so they only produced FAIL lines and minutes of retries.
+    data_backfill = any(k in event for k in ("backfill_generation", "backfill_load_forecast", "backfill_hydro"))
+    price_areas = [] if data_backfill and "backfill_days" not in event and "date" not in event else areas
+
     all_results = []
-    for area in areas:
+    for area in price_areas:
         if "backfill_days" in event:
             results = backfill(int(event["backfill_days"]), area)
         elif "date" in event:
@@ -649,7 +657,7 @@ def lambda_handler(event: dict, context) -> dict:
 
     # Fetch balancing (imbalance) prices, generation mix, and weather for today/yesterday.
     # Skip during backfill runs (use --generation flag for generation backfill).
-    is_daily_run = "backfill_days" not in event and "date" not in event and "backfill_hydro" not in event
+    is_daily_run = "backfill_days" not in event and "date" not in event and not data_backfill
     if is_daily_run:
         today = date.today()
         yesterday = today - timedelta(days=1)
@@ -833,7 +841,7 @@ def _fetch_gas_prices() -> dict:
     """
     Fetch THE gas settlement prices and store to DB.
 
-    Uses the Preismonitor JSON API (returns current gas-day only).
+    Uses the THE Final API plus the preliminary API for today's gas-day.
     Accumulated daily to build up the gas price time series for ML features.
     Non-critical: pipeline continues even if this fails.
     """
@@ -1187,6 +1195,20 @@ def _parse_args() -> argparse.Namespace:
         help="Fetch prices for the past N days",
     )
     parser.add_argument(
+        "--from",
+        dest="from_date",
+        type=date.fromisoformat,
+        metavar="YYYY-MM-DD",
+        help="With --gas-price: fetch the range [FROM, --to] (--to defaults to today)",
+    )
+    parser.add_argument(
+        "--to",
+        dest="to_date",
+        type=date.fromisoformat,
+        metavar="YYYY-MM-DD",
+        help="End of the --from range (default: today)",
+    )
+    parser.add_argument(
         "--area",
         default=settings.default_area,
         help=f"Price area code (default: {settings.default_area})",
@@ -1274,7 +1296,9 @@ def main() -> int:
             results = [fetch_balancing_date(date.today(), args.area)]
     elif args.gas_price:
         # Gas price mode
-        if args.backfill:
+        if args.from_date:
+            results = [fetch_gas_prices_range(args.from_date, args.to_date or date.today())]
+        elif args.backfill:
             results = backfill_gas_prices(args.backfill)
         else:
             today = date.today()
