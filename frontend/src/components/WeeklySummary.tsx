@@ -1,4 +1,5 @@
 import { formatPrice } from "../utils/formatters";
+import { addDaysISO, stockholmDateISO } from "../utils/stockholmDate";
 import type {
   Area,
   WeeklyClassifiedResponse,
@@ -152,9 +153,7 @@ export function WeeklySummary({
         {data.days
           .filter((day) => {
             if (includeTomorrow) return true;
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            return day.date !== tomorrow.toISOString().split("T")[0];
+            return day.date !== addDaysISO(stockholmDateISO(), 1);
           })
           .map((day) => {
             const cfg = CLASS_CONFIG[day.classification] || CLASS_CONFIG.normal;

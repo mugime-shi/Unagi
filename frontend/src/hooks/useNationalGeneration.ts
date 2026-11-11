@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../utils/api";
+import { addDaysISO, stockholmDateISO } from "../utils/stockholmDate";
 import { useRefresh } from "./useRefresh";
 import type { GenerationPoint, GenerationResponse } from "../types/index";
 
@@ -84,9 +85,7 @@ export function useNationalGeneration(
     setError(null);
 
     // For 24h mode: fetch today + yesterday, then trim to 24h window
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split("T")[0];
+    const yesterdayStr = addDaysISO(stockholmDateISO(), -1);
 
     const fetches = ZONES.flatMap((zone) => {
       const todayFetch = apiFetch(`${API_BASE}/generation/today?area=${zone}`)

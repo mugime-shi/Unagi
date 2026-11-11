@@ -25,6 +25,7 @@ import { WeeklySummary } from "./components/WeeklySummary";
 import { TodaysDrivers } from "./components/TodaysDrivers";
 import { ShapNarrative } from "./components/ShapNarrative";
 import { dateWithWeekday, formatPrice, PRICE_UNIT } from "./utils/formatters";
+import { addDaysISO, stockholmDateISO } from "./utils/stockholmDate";
 import { trackEvent, trackVisit } from "./utils/track";
 import type {
   Area,
@@ -64,19 +65,15 @@ const AREAS: AreaInfo[] = [
 ];
 
 function todayISO(): string {
-  return new Date().toISOString().split("T")[0];
+  return stockholmDateISO();
 }
 
 function tomorrowISO(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().split("T")[0];
+  return addDaysISO(stockholmDateISO(), 1);
 }
 
 function weekAheadISO(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 7);
-  return d.toISOString().split("T")[0];
+  return addDaysISO(stockholmDateISO(), 7);
 }
 
 interface LgbmSummary {
@@ -144,10 +141,7 @@ function AppInner() {
     data: tomorrowData,
     loading: tomorrowLoading,
     error: tomorrowError,
-  } = usePrices(
-    tab === "tomorrow" && isTomorrow ? "tomorrow" : null,
-    area,
-  );
+  } = usePrices(tab === "tomorrow" && isTomorrow ? "tomorrow" : null, area);
   const {
     data: pastData,
     loading: pastLoading,
@@ -468,9 +462,7 @@ function AppInner() {
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => {
-                      const d = new Date(forecastDate);
-                      d.setDate(d.getDate() - 1);
-                      setForecastDate(d.toISOString().split("T")[0]);
+                      setForecastDate(addDaysISO(forecastDate, -1));
                     }}
                     className="px-2 py-1 rounded-lg bg-surface-secondary text-content-secondary hover:text-content-primary hover:bg-surface-tertiary transition-colors text-sm"
                   >
@@ -515,9 +507,7 @@ function AppInner() {
                   </div>
                   <button
                     onClick={() => {
-                      const d = new Date(forecastDate);
-                      d.setDate(d.getDate() + 1);
-                      const next = d.toISOString().split("T")[0];
+                      const next = addDaysISO(forecastDate, 1);
                       if (next <= weekAheadISO()) setForecastDate(next);
                     }}
                     disabled={forecastDate >= weekAheadISO()}

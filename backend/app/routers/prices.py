@@ -31,7 +31,7 @@ from app.services.price_service import (
     get_prices_for_date,
     get_prices_for_date_range,
 )
-from app.utils.timezone import stockholm_day_range_utc
+from app.utils.timezone import stockholm_day_range_utc, stockholm_today
 
 router = APIRouter(prefix="/prices", tags=["prices"])
 
@@ -99,7 +99,7 @@ def get_today_prices(db: DbDep, area: AreaDep = "SE3"):
     """
     if area not in VALID_AREAS:
         raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
-    today = datetime.now(tz=timezone.utc).date()
+    today = stockholm_today()
     prices, is_estimate = get_or_fetch_prices(db, today, area=area)
     month_avg = _get_month_avg(db, today, area=area)
     return _build_response(today, prices, is_estimate, area=area, month_avg_sek_kwh=month_avg)
@@ -114,9 +114,9 @@ def get_tomorrow_prices(db: DbDep, area: AreaDep = "SE3"):
     """
     if area not in VALID_AREAS:
         raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
-    tomorrow = datetime.now(tz=timezone.utc).date() + timedelta(days=1)
+    tomorrow = stockholm_today() + timedelta(days=1)
     prices, is_estimate = get_or_fetch_prices(db, tomorrow, area=area)
-    today = datetime.now(tz=timezone.utc).date()
+    today = stockholm_today()
     month_avg = _get_month_avg(db, today, area=area)
 
     # If we got mock data and it's before 13:00 CET, prices aren't published yet
@@ -210,7 +210,7 @@ def get_price_history(
 
     if area not in VALID_AREAS:
         raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
-    today = datetime.now(tz=timezone.utc).date()
+    today = stockholm_today()
     start = today - timedelta(days=days - 1)
 
     range_start_utc = (
@@ -279,7 +279,7 @@ def get_monthly_averages(
 
     from collections import defaultdict
 
-    today = datetime.now(tz=timezone.utc).date()
+    today = stockholm_today()
     # Go back N+1 months to ensure we capture the full earliest month
     y, m = today.year, today.month - months
     while m <= 0:
@@ -323,7 +323,7 @@ def get_multi_zone_history(
     """
     from collections import defaultdict
 
-    today = datetime.now(tz=timezone.utc).date()
+    today = stockholm_today()
     start = today - timedelta(days=days - 1)
 
     range_start_utc = (
@@ -460,7 +460,7 @@ def get_price_forecast(
         result = build_lgbm_forecast(db, date, area=area)
         extra = {}
     else:
-        today = datetime.now(tz=timezone.utc).date()
+        today = stockholm_today()
         hist_start = date - timedelta(weeks=weeks)
         hist_end = min(date - timedelta(days=1), today)
 
@@ -838,9 +838,9 @@ def get_balancing_prices(
     # Re-fetch if no data, or if querying today and data is stale (>30 min).
     # eSett continuously publishes new 15-min slots with ~5-6h lag, so
     # cached DB rows for today will be missing the most recent hours.
-    today_utc = datetime.now(tz=timezone.utc).date()
+    today = stockholm_today()
     needs_fetch = not rows
-    if rows and date == today_utc:
+    if rows and date == today:
         latest_ts = max(r.timestamp_utc for r in rows)
         stale_seconds = (datetime.now(timezone.utc) - latest_ts).total_seconds()
         needs_fetch = stale_seconds > 30 * 60

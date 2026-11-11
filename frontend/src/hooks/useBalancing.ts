@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../utils/api";
+import { addDaysISO } from "../utils/stockholmDate";
 import { useRefresh } from "./useRefresh";
 import type { Area, BalancingResponse } from "../types/index";
 
 function prevDay(iso: string): string {
-  const d = new Date(iso);
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().split("T")[0];
+  return addDaysISO(iso, -1);
 }
 
 interface UseBalancingReturn {

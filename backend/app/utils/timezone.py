@@ -32,3 +32,14 @@ def stockholm_day_range_utc(d: date) -> tuple[datetime, datetime]:
     start = stockholm_midnight_utc(d)
     end = stockholm_midnight_utc(d + timedelta(days=1))
     return start, end
+
+
+def stockholm_today(now: datetime | None = None) -> date:
+    """
+    Current calendar date in Stockholm.
+
+    `datetime.now(utc).date()` is a day behind between 00:00 and 01:00 (CET) /
+    02:00 (CEST) Stockholm time, while every DB lookup treats dates as Stockholm days.
+    `now` exists so tests can inject the time.
+    """
+    return (now or datetime.now(timezone.utc)).astimezone(STOCKHOLM).date()
