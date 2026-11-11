@@ -1,4 +1,3 @@
-from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -6,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.models.elhandlare import Elhandlare
+from app.utils.timezone import stockholm_today
 
 router = APIRouter(prefix="/elhandlare", tags=["elhandlare"])
 
@@ -28,7 +28,7 @@ def list_elhandlare(
     really covers. is_estimate=true marks values inferred from industry reports rather than
     official disclosure.
     """
-    today = date.today()
+    today = stockholm_today()
     rows = (
         db.query(Elhandlare)
         .filter(
