@@ -13,10 +13,19 @@
  * Neighbouring land (Norway, Finland, Denmark, Baltics, ...) comes from Natural Earth admin-0 1:50m (public domain),
  * projected to SWEREF 99 TM and clipped to the map frame; Sweden's own Natural Earth outline is included as a base
  * layer under the zones so no sea-coloured slivers show through.
+ * Lakes and major rivers come from Natural Earth 1:10m physical (lakes + lakes_europe, rivers_lake_centerlines +
+ * rivers_europe): lakes >= 80 km2 clipped to Sweden plus lakes >= 1000 km2 anywhere in the frame, and the named hydro
+ * rivers clipped to Sweden. Output as `lakes` (closed polygons) and `rivers` (open polylines) path strings.
  * Boundaries: SCB (CC0) + Natural Earth (public domain). Do not commit the raw zips.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,6 +37,9 @@ const NE_ZIP =
   "https://naciscdn.org/naturalearth/50m/cultural/ne_50m_admin_0_countries.zip";
 const SCB_ZIP =
   "https://www.scb.se/contentassets/3443fea3fa6640f7a57ea15d9a372d33/shape_svenska_260225.zip";
+const NE10 = "https://naciscdn.org/naturalearth/10m/physical";
+const LAKE_ZIPS = ["ne_10m_lakes", "ne_10m_lakes_europe"];
+const RIVER_ZIPS = ["ne_10m_rivers_lake_centerlines", "ne_10m_rivers_europe"];
 const MAPSHAPER = "mapshaper@0.7.101";
 
 // Map frame in SWEREF 99 TM metres (roughly lon 1-37E, lat 54-70N), aspect 1.17. Sweden sits in the middle third.
@@ -59,6 +71,44 @@ const COUNTRY_LABELS = {
   POLAND: [53.9, 19],
   GERMANY: [54.0, 10.5],
 };
+// Lakes: >= 80 km2 kept inside Sweden (clipped to the zone polygon), >= 1000 km2 kept anywhere in the frame.
+const LAKE_SE_MIN_KM2 = 80;
+const LAKE_FAR_MIN_KM2 = 1000;
+const LAKE_SIMPLIFY_M = Number(process.env.LAKE_SIMPLIFY_M ?? 500); // lakes inside Sweden
+const LAKE_FAR_SIMPLIFY_M = Number(process.env.LAKE_FAR_SIMPLIFY_M ?? 4000); // big lakes abroad (Saimaa, Paijanne are very ragged)
+const LAKE_MIN_RING_KM2 = Number(process.env.LAKE_MIN_RING_KM2 ?? 20); // drops tiny islands/holes after simplifying
+const RIVER_SIMPLIFY_M = Number(process.env.RIVER_SIMPLIFY_M ?? 1000);
+// Rivers kept (Natural Earth name / name_en, matched exactly): the hydro rivers plus their main tributaries
+const RIVER_NAMES = [
+  "Torne",
+  "Tornelven",
+  "Muonio",
+  "Könkämäeno",
+  "Kalix",
+  "Lule",
+  "Lule lv",
+  "Stora Lule",
+  "Stora Lule lv",
+  "Lilla Lule",
+  "Pite",
+  "Skelleftelven",
+  "Skellefte",
+  "Ume älv",
+  "Umea",
+  "Vindel",
+  "Vojmån",
+  "Ångermanälven",
+  "Ångerman",
+  "Faxälven",
+  "Indalsälven",
+  "Ljungan",
+  "Ljusnan",
+  "Dalälven",
+  "Västerdal",
+  "Klarälven",
+  "Göta älv",
+  "Göta",
+];
 const SIMPLIFY_INTERVAL_M = Number(process.env.SIMPLIFY_INTERVAL_M ?? 100); // visvalingam effective-area interval, metres
 const MIN_ISLAND_KM2 = 150; // drops archipelago specks, keeps Gotland, Oland, Orust
 const ZONES = ["SE1", "SE2", "SE3", "SE4"];
@@ -269,6 +319,26 @@ function pathD(polys) {
   return parts.join("");
 }
 
+/** Open polylines (no closing z), same 0.1-unit quantisation as pathD. */
+function lineD(lines) {
+  const parts = [];
+  for (const line of lines) {
+    const q = line
+      .map(px)
+      .map(([x, y]) => [Math.round(x * 10), Math.round(y * 10)]);
+    let d = `M${tenth(q[0][0])} ${tenth(q[0][1])}l`;
+    const deltas = [];
+    for (let i = 1; i < q.length; i++) {
+      const dx = q[i][0] - q[i - 1][0];
+      const dy = q[i][1] - q[i - 1][1];
+      if (dx || dy) deltas.push(`${tenth(dx)} ${tenth(dy)}`);
+    }
+    if (!deltas.length) continue;
+    parts.push(d + deltas.join(" ").replace(/ -/g, "-"));
+  }
+  return parts.join("");
+}
+
 // ── neighbouring land (Natural Earth) ──
 const neZip = join(work, "ne_admin0.zip");
 download(NE_ZIP, neZip);
@@ -308,6 +378,137 @@ const landPolys = JSON.parse(readFileSync(landGeo, "utf8")).features.flatMap(
       : f.geometry.coordinates,
 );
 const land = pathD(landPolys);
+
+// ── lakes + rivers (Natural Earth 1:10m physical) ──
+function ne10(name) {
+  const zip = join(work, `${name}.zip`);
+  download(`${NE10}/${name}.zip`, zip);
+  const dir = join(work, name);
+  mkdirSync(dir, { recursive: true });
+  run("unzip", ["-oq", zip, "-d", dir]);
+  return join(dir, `${name}.shp`);
+}
+const frameClip = `bbox=${FRAME.e0},${FRAME.n0},${FRAME.e1},${FRAME.n1}`;
+// an empty layer comes out without `features`
+const readGeo = (f) =>
+  existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")).features ?? []) : [];
+const lakePolys = [];
+let lakeCount = 0;
+const lakeNames = new Set();
+const riverLines = [];
+let riverCount = 0;
+const riverNames = new Set();
+for (const name of LAKE_ZIPS) {
+  const shp = ne10(name);
+  // area is taken after projecting, before any clipping, so Sweden-straddling lakes keep their full size
+  const pre = [
+    shp,
+    "-clip",
+    "bbox=-5,50,45,72",
+    "-proj",
+    "+init=epsg:3006",
+    "-each",
+    "A=this.area/1e6",
+  ];
+  const post = (m) => [
+    "-simplify",
+    "visvalingam",
+    `interval=${m}`,
+    "keep-shapes",
+  ];
+  const far = join(work, `${name}.far.json`);
+  const se = join(work, `${name}.se.json`);
+  rmSync(far, { force: true });
+  rmSync(se, { force: true });
+  run("npx", [
+    "--yes",
+    MAPSHAPER,
+    ...pre,
+    "-filter",
+    `A>=${LAKE_FAR_MIN_KM2}`,
+    "-clip",
+    frameClip,
+    ...post(LAKE_FAR_SIMPLIFY_M),
+    "-o",
+    far,
+    "format=geojson",
+    "force",
+  ]);
+  run("npx", [
+    "--yes",
+    MAPSHAPER,
+    ...pre,
+    "-filter",
+    `A>=${LAKE_SE_MIN_KM2} && A<${LAKE_FAR_MIN_KM2}`,
+    "-clip",
+    zonesGeo,
+    ...post(LAKE_SIMPLIFY_M),
+    "-o",
+    se,
+    "format=geojson",
+    "force",
+  ]);
+  for (const f of [...readGeo(far), ...readGeo(se)]) {
+    lakeCount++;
+    lakeNames.add(f.properties.name_en || f.properties.name || "?");
+    const parts =
+      f.geometry.type === "Polygon"
+        ? [f.geometry.coordinates]
+        : f.geometry.coordinates;
+    // drop small islands (holes) and detached fragments, but never a lake's biggest piece
+    const big = parts.reduce((m, p) =>
+      ringArea(p[0]) > ringArea(m[0]) ? p : m,
+    );
+    for (const part of parts) {
+      if (part !== big && Math.abs(ringArea(part[0])) < LAKE_MIN_RING_KM2 * 1e6)
+        continue;
+      lakePolys.push(
+        part.filter(
+          (r, i) => i === 0 || Math.abs(ringArea(r)) >= LAKE_MIN_RING_KM2 * 1e6,
+        ),
+      );
+    }
+  }
+}
+const riverFilter = `[${RIVER_NAMES.map((n) => JSON.stringify(n)).join(",")}].includes(name) || [${RIVER_NAMES.map((n) => JSON.stringify(n)).join(",")}].includes(name_en)`;
+for (const name of RIVER_ZIPS) {
+  const out = join(work, `${name}.json`);
+  rmSync(out, { force: true });
+  run("npx", [
+    "--yes",
+    MAPSHAPER,
+    ne10(name),
+    "-filter",
+    riverFilter,
+    "-clip",
+    "bbox=-5,50,45,72",
+    "-proj",
+    "+init=epsg:3006",
+    "-clip",
+    zonesGeo,
+    "-simplify",
+    "visvalingam",
+    `interval=${RIVER_SIMPLIFY_M}`,
+    "keep-shapes",
+    "-o",
+    out,
+    "format=geojson",
+    "force",
+  ]);
+  for (const f of readGeo(out)) {
+    if (!f.geometry) continue;
+    riverCount++;
+    riverNames.add(f.properties.name_en || f.properties.name);
+    riverLines.push(
+      ...(f.geometry.type === "LineString"
+        ? [f.geometry.coordinates]
+        : f.geometry.coordinates),
+    );
+  }
+}
+const lakes = pathD(lakePolys);
+const rivers = lineD(riverLines);
+
 const countryLabels = Object.fromEntries(
   Object.entries(COUNTRY_LABELS).map(([k, ll]) => [
     k,
@@ -354,6 +555,8 @@ const out = {
   height: VIEW_H,
   mobileViewBox, // [x, y, w, h] portrait crop around Sweden
   land,
+  lakes,
+  rivers,
   countryLabels,
   zones,
   labelPoints,
@@ -365,5 +568,5 @@ mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, JSON.stringify(out) + "\n");
 const bytes = Object.values(zones).reduce((s, d) => s + d.length, 0);
 console.log(
-  `wrote ${OUT}: zone path ${bytes} B, land path ${land.length} B, viewBox ${out.viewBox}, mobile ${mobileViewBox}`,
+  `wrote ${OUT}: zone path ${bytes} B, land path ${land.length} B, lakes ${lakes.length} B (${lakeCount} features), rivers ${rivers.length} B (${riverCount} features), viewBox ${out.viewBox}, mobile ${mobileViewBox}`,
 );

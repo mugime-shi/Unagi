@@ -133,6 +133,12 @@ export function useMapZoom({ boxRef, base }: Options) {
       ),
     );
 
+  /** Animate to a view of width w centred on a map point (clamped like every other view). */
+  const zoomTo = (cx: number, cy: number, w: number) => {
+    const h = (w * baseRef.current[3]) / baseRef.current[2];
+    animateTo({ x: cx - w / 2, y: cy - h / 2, w, h });
+  };
+
   useEffect(() => {
     const el = boxRef.current;
     if (!el) return;
@@ -280,7 +286,9 @@ export function useMapZoom({ boxRef, base }: Options) {
         e.pointerType !== "mouse" &&
         wasDrag &&
         !wasDrag.moved &&
-        !suppressClick
+        !suppressClick &&
+        // a marker tap is not a zoom gesture (the mouse onDbl skips triggers too)
+        !(e.target as Element | null)?.closest?.("[data-popover-trigger]")
       ) {
         const now = Date.now();
         if (
@@ -409,6 +417,7 @@ export function useMapZoom({ boxRef, base }: Options) {
     zoomIn: () => zoomBy(2),
     zoomOut: () => zoomBy(0.5),
     reset: () => animateTo(initial(baseRef.current)),
+    zoomTo,
     // pan-y: one finger scrolls the page at 1x; none: we own every gesture once zoomed
     touchAction: (zoom > 1.01 ? "none" : "pan-y") as "none" | "pan-y",
   };
