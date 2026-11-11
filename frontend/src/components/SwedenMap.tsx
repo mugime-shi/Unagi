@@ -2,7 +2,6 @@
 
 import { useTheme } from "next-themes";
 import {
-  Fragment,
   useEffect,
   useMemo,
   useRef,
@@ -28,7 +27,8 @@ import {
   type PlantStatus,
   type PlantUnit,
 } from "../utils/plants";
-import { useMapZoom } from "../hooks/useMapZoom";
+import { MAX_ZOOM, useMapZoom } from "../hooks/useMapZoom";
+import { clusterMarkers, type Cluster } from "../utils/mapCluster";
 import zoneMap from "../data/swedenZones.json";
 import type { ZonePriceSummary } from "../hooks/useAllZonePrices";
 import type {
@@ -64,6 +64,7 @@ const STAGE: Record<
     land: string;
     landStroke: string;
     countryLabel: string;
+    river: string;
   }
 > = {
   dark: {
@@ -71,12 +72,14 @@ const STAGE: Record<
     land: "#0e1a2c",
     landStroke: "#22395c",
     countryLabel: "#35507a",
+    river: "#3b6ea8",
   },
   light: {
     sea: "#d6e4f1",
     land: "#e7ecf1",
     landStroke: "#c3cfdb",
     countryLabel: "#a3b1c1",
+    river: "#7fa8d4",
   },
 };
 
@@ -166,6 +169,18 @@ const ZONE_CITY: Record<Area, string> = {
 const LARGE_MW = 300;
 /** From this zoom plants switch from status dots to fuel glyphs. */
 const ICON_ZOOM = 2;
+/** Marker size by capacity: sqrt scale between these MW values (below/above clamps). */
+const SIZE_MW_MIN = 100;
+const SIZE_MW_MAX = 3500;
+const sizeFactor = (mw: number) => {
+  const lo = Math.sqrt(SIZE_MW_MIN);
+  const t = (Math.sqrt(mw) - lo) / (Math.sqrt(SIZE_MW_MAX) - lo);
+  return 0.9 + 0.6 * Math.max(0, Math.min(1, t));
+};
+/** Cluster on a quantised log-zoom so the grouping does not recompute (or flicker) on every animation frame. */
+const ZOOM_STEPS_PER_E = 24;
+/** Smallest height a popover is squeezed to when neither side of its marker has room. */
+const MIN_POP_H = 120;
 interface SwedenMapProps {
   prices: Record<Area, ZonePriceSummary> | null;
   outages: OutagesResponse | null;
@@ -220,7 +235,7 @@ function useElementWidth(ref: RefObject<HTMLElement | null>): number {
   return width;
 }
 
-// ── Outage detail (popover on wide screens, inline panel on compact) ──
+// ── Outage detail (popover anchored inside the map) ──
 interface Detail {
   id: string;
   title: string;
@@ -624,10 +639,22 @@ interface MapPlant {
   states: PlantState[];
   status: PlantStatus;
   cat: FuelCat;
+  /** Total nominal capacity (MW): drives marker size and cluster priority. */
+  mw: number;
   /** Unit names, for the accessible label. */
   names: string;
   details: Detail[];
 }
+
+const worstStatus = (list: PlantStatus[]): PlantStatus =>
+  list.includes("offline")
+    ? "offline"
+    : list.includes("reduced")
+      ? "reduced"
+      : "running";
+/** A cluster of one is the marker itself and keeps its plain key. */
+const clusterId = (c: Cluster<MapPlant>) =>
+  c.members.length > 1 ? `cluster:${c.seed.key}` : c.seed.key;
 
 function mapPlant(key: string, xy: Pt, states: PlantState[]): MapPlant {
   const top = states.reduce((a, b) =>
@@ -641,6 +668,7 @@ function mapPlant(key: string, xy: Pt, states: PlantState[]): MapPlant {
     states,
     status: groupStatus(states.map((s) => s.status)),
     cat: fuelCat(top.unit.psr),
+    mw: states.reduce((t, s) => t + s.nominalMw, 0),
     names: states.map((s) => s.unit.name).join(", "),
     details: states.map(plantDetail),
   };
@@ -709,6 +737,8 @@ export function SwedenMap({
   const measured = useElementWidth(boxRef);
   const boxWidth = measured || (wide ? 832 : 340);
   const boxHeight = (boxWidth * bh) / bw;
+  // Marker hit areas (and the cluster radius) in CSS px; hit = radius - 2 so neighbours never touch
+  const radiusPx = wide ? 30 : 32;
 
   const {
     view,
@@ -721,6 +751,7 @@ export function SwedenMap({
     zoomIn,
     zoomOut,
     reset,
+    zoomTo,
     touchAction,
   } = useMapZoom({ boxRef, base });
   // Everything below is positioned from the *current* view, never the static frame
@@ -804,16 +835,51 @@ export function SwedenMap({
         states: [],
         status: groupStatus(units.map((u) => u.status)),
         cat: "nuclear",
+        mw: units.reduce((t, u) => t + u.nominal_mw, 0),
         names: site,
         details: [siteDetail(site, units)],
       });
     }
-    return list;
+    // Cluster priority: biggest first, key as tie-break (independent of outage status, so nothing jumps on refresh)
+    return list.sort(
+      (a, b) => b.mw - a.mw || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
+    );
   }, [outages, bySite]);
-  const plantByKey = useMemo(
-    () => new Map(plants.map((p) => [p.key, p])),
-    [plants],
+
+  // Clustering depends on zoom only (not pan), evaluated at the quantised zoom
+  const zoomStep = Math.round(Math.log(zoom) * ZOOM_STEPS_PER_E);
+  const clusters = useMemo(() => {
+    const z = Math.min(MAX_ZOOM, Math.exp(zoomStep / ZOOM_STEPS_PER_E));
+    return clusterMarkers(plants, bw / z / boxWidth, radiusPx);
+  }, [plants, zoomStep, bw, boxWidth, radiusPx]);
+  const markerDetails = useMemo(
+    () =>
+      new Map(
+        clusters.map((c) => [
+          clusterId(c),
+          c.members.flatMap((m) => m.details),
+        ]),
+      ),
+    [clusters],
   );
+  /** A cluster is worth zooming into only while the members would actually separate at max zoom. */
+  const canSplit = (c: Cluster<MapPlant>) =>
+    c.members.length > 1 &&
+    zoom < MAX_ZOOM - 0.01 &&
+    clusterMarkers(c.members, bw / MAX_ZOOM / boxWidth, radiusPx).length > 1;
+  const zoomToCluster = (c: Cluster<MapPlant>) => {
+    const xs = c.members.map((m) => m.xy[0]);
+    const ys = c.members.map((m) => m.xy[1]);
+    const [x0, x1] = [Math.min(...xs), Math.max(...xs)];
+    const [y0, y1] = [Math.min(...ys), Math.max(...ys)];
+    // fit both extents in the view's aspect ratio, padded; always a real step in, never past max zoom
+    const fit = 1.8 * Math.max(x1 - x0, ((y1 - y0) * bw) / bh);
+    zoomTo(
+      (x0 + x1) / 2,
+      (y0 + y1) / 2,
+      Math.max(bw / MAX_ZOOM, Math.min(fit, vw / 1.6)),
+    );
+  };
 
   // Outages the map cannot place (no plant match, no known position): still reachable from a list
   const unmappedOther = (outages?.other ?? []).filter(
@@ -823,15 +889,12 @@ export function SwedenMap({
       !UNITS[o.name],
   );
 
-  // ── Outage details: popover (wide) / inline panel (compact) ──
+  // ── Outage details: one popover, anchored inside the map on both layouts ──
   const details: Record<string, Detail> = {};
   for (const o of unmappedOther) details[otherId(o)] = otherDetail(o);
+  // A cluster id that vanished after a zoom change resolves to nothing: the popover just renders empty
   const itemsOf = (id: string | null): Detail[] =>
-    !id
-      ? []
-      : details[id]
-        ? [details[id]]
-        : (plantByKey.get(id)?.details ?? []);
+    !id ? [] : details[id] ? [details[id]] : (markerDetails.get(id) ?? []);
 
   interface PopState {
     id: string;
@@ -845,7 +908,6 @@ export function SwedenMap({
     pinned: boolean;
   }
   const [pop, setPop] = useState<PopState | null>(null);
-  const [sel, setSel] = useState<string | null>(null); // compact: other id | plant key
   const closeTimer = useRef<number | undefined>(undefined);
 
   const anchorOf = (el: HTMLElement) => {
@@ -890,20 +952,16 @@ export function SwedenMap({
     },
   };
 
-  const anyOpen = pop != null || sel != null;
+  const anyOpen = pop != null;
   useEffect(() => {
     if (!anyOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setPop(null);
-        setSel(null);
-      }
+      if (e.key === "Escape") setPop(null);
     };
     const onDown = (e: PointerEvent) => {
       const t = e.target as Element | null;
       if (t?.closest("[data-map-popover],[data-popover-trigger]")) return;
       setPop(null);
-      setSel(null);
     };
     document.addEventListener("keydown", onKey);
     document.addEventListener("pointerdown", onDown);
@@ -913,23 +971,18 @@ export function SwedenMap({
     };
   }, [anyOpen]);
 
-  const toggleSel = (id: string) => setSel((c) => (c === id ? null : id));
-  const selDetails: Detail[] = itemsOf(sel);
-
-  // Wide: hover opens the popover, click pins it. Compact: tap opens the panel under the map.
+  // Hover/focus opens the popover (inert on touch), click pins it
   const popTrigger = (id: string) => ({
-    "aria-expanded": wide ? pop?.id === id : sel === id,
-    "aria-controls": wide ? "map-popover" : undefined,
-    onMouseEnter: wide
-      ? (e: { currentTarget: HTMLElement }) => ctl.enter(id, e.currentTarget)
-      : undefined,
-    onMouseLeave: wide ? () => ctl.leave() : undefined,
-    onFocus: wide
-      ? (e: { currentTarget: HTMLElement }) => ctl.enter(id, e.currentTarget)
-      : undefined,
-    onBlur: wide ? () => ctl.leave() : undefined,
+    "aria-expanded": pop?.id === id,
+    "aria-controls": "map-popover",
+    onMouseEnter: (e: { currentTarget: HTMLElement }) =>
+      ctl.enter(id, e.currentTarget),
+    onMouseLeave: () => ctl.leave(),
+    onFocus: (e: { currentTarget: HTMLElement }) =>
+      ctl.enter(id, e.currentTarget),
+    onBlur: () => ctl.leave(),
     onClick: (e: { currentTarget: HTMLElement }) =>
-      wide ? ctl.toggle(id, e.currentTarget) : toggleSel(id),
+      ctl.toggle(id, e.currentTarget),
   });
 
   // Popover placement inside the map box (follows its marker), flipped near the edges
@@ -952,10 +1005,24 @@ export function SwedenMap({
       Math.min(r.x + r.w / 2 - popW / 2, boxWidth - popW - 8),
     );
     const estH = 70 + 105 * n;
-    const below = boxHeight - (r.y + r.h) >= estH + 10 || r.y < estH + 10;
-    return below
-      ? { left, top: r.y + r.h + 6 }
-      : { left, bottom: boxHeight - r.y + 6 };
+    const spaceBelow = boxHeight - (r.y + r.h) - 14;
+    const spaceAbove = r.y - 14;
+    // Below if it fits, else above if it fits, else the roomier side (the list then scrolls). A trigger outside the
+    // box (the compact "Other outages" list sits under it) has no room below, so the popover hugs the bottom edge.
+    const below =
+      spaceBelow >= estH || (spaceAbove < estH && spaceBelow >= spaceAbove);
+    const room = below ? spaceBelow : spaceAbove;
+    const edge = (v: number) =>
+      Math.max(8, Math.min(v, boxHeight - 8 - MIN_POP_H));
+    return {
+      left,
+      ...(below
+        ? { top: edge(r.y + r.h + 6) }
+        : { bottom: edge(boxHeight - r.y + 6) }),
+      maxHeight: Math.min(boxHeight - 16, Math.max(MIN_POP_H, room)),
+      overflowY: "auto",
+      overscrollBehavior: "contain",
+    };
   };
   const popItems = itemsOf(pop?.id ?? null);
   const popAt = pop ? popRect(pop) : null;
@@ -1007,8 +1074,10 @@ export function SwedenMap({
   const iconZoom = zoom >= ICON_ZOOM - 0.01;
   const line = { vectorEffect: "non-scaling-stroke" as const };
 
+  // Cards sit above the plant layer: a marker panned under a card must not poke through it
   const glassPos = (style: CSSProperties): CSSProperties => ({
     position: "absolute",
+    zIndex: 10,
     ...style,
   });
 
@@ -1118,6 +1187,20 @@ export function SwedenMap({
                   </path>
                 );
               })}
+            </g>
+            {/* Water above the zone fills: lakes cut back to the sea colour, the hydro rivers as hairlines */}
+            <g style={{ pointerEvents: "none" }}>
+              <path d={zoneMap.lakes} fill={stage.sea} fillRule="evenodd" />
+              <path
+                d={zoneMap.rivers}
+                fill="none"
+                stroke={stage.river}
+                strokeWidth={1}
+                strokeOpacity={0.75}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                {...line}
+              />
             </g>
             <g
               fill="none"
@@ -1234,67 +1317,107 @@ export function SwedenMap({
             </div>
           )}
           {/* ── Plant layer: fuel glyph + status dot at every zoom (`?plants=dots`: dots until ICON_ZOOM) ── */}
-          {plants.map((m) => {
+          {clusters.map((c) => {
+            const m = c.seed;
             if (!inBox(m.xy)) return null;
+            const count = c.members.length;
+            const id = clusterId(c);
+            const split = canSplit(c);
+            const status = worstStatus(c.members.map((x) => x.status));
             const glyph = !dotsMode || iconZoom;
             const showStatus = !dotsMode || iconZoom;
             const dotPx = wide ? 6 : 5;
-            // Glyph px (identical for every plant): readable but not a blob at 1x, growing modestly with zoom
+            // Glyph px: base x gentle zoom growth x capacity of the seed (a cluster is drawn as its seed)
             const glyphPx = dotsMode
               ? 18
               : Math.round(
-                  (wide ? 16 : 15) * Math.min(1.5, 1 + (zoom - 1) * 0.1),
+                  (wide ? 16 : 15) *
+                    Math.min(1.25, 1 + (zoom - 1) * 0.05) *
+                    sizeFactor(m.mw),
                 );
             const statusPx = Math.max(5, Math.round(glyphPx * 0.38));
-            const hit = dotsMode ? (glyph ? 24 : wide ? 16 : 20) : glyphPx + 6;
+            const hit = radiusPx - 2;
+            const off = c.members.filter((x) => x.status === "offline").length;
+            const red = c.members.filter((x) => x.status === "reduced").length;
+            const label =
+              count > 1
+                ? `${count} plants near ${m.names.split(", ")[0]}: ${
+                    [off && `${off} offline`, red && `${red} reduced`]
+                      .filter(Boolean)
+                      .join(", ") || "all available"
+                  }, ${split ? "zoom in" : "details"}`
+                : `${m.names}: ${status === "running" ? "available" : status}, details`;
+            // Splittable clusters zoom in on click (no popover); everything else is an ordinary popover trigger
+            const trigger = split
+              ? {
+                  onClick: () => {
+                    cancelClose();
+                    setPop(null);
+                    zoomToCluster(c);
+                  },
+                }
+              : popTrigger(id);
             return (
-              <Fragment key={m.key}>
-                <button
-                  type="button"
-                  data-popover-trigger
-                  data-map-marker
-                  {...popTrigger(m.key)}
-                  aria-label={`${m.names}: ${
-                    m.status === "running" ? "available" : m.status
-                  }, details`}
-                  className="absolute flex items-center justify-center outline-none rounded-full focus-visible:ring-2 focus-visible:ring-sky-500"
-                  style={{
-                    ...markerPos(m.xy),
-                    width: hit,
-                    height: hit,
-                    transform: "translate(-50%, -50%)",
-                  }}
-                >
-                  {glyph ? (
-                    <span className="relative block">
-                      <FuelBadgeIcon cat={m.cat} r={badgeR} size={glyphPx} />
-                      {showStatus && (
-                        <span
-                          className="absolute block rounded-full"
-                          style={{
-                            width: dotsMode ? 6 : statusPx,
-                            height: dotsMode ? 6 : statusPx,
-                            right: dotsMode ? 0 : 1,
-                            bottom: dotsMode ? 0 : 1,
-                            backgroundColor: STATUS_COLOR[m.status],
-                            boxShadow: "0 0 0 1px var(--surface-primary)",
-                          }}
-                        />
-                      )}
-                    </span>
-                  ) : (
-                    <span
-                      className="block rounded-full"
-                      style={{
-                        width: dotPx,
-                        height: dotPx,
-                        backgroundColor: STATUS_COLOR[m.status],
-                        boxShadow: "0 0 0 1px var(--surface-primary)",
-                      }}
-                    />
-                  )}
-                </button>
-              </Fragment>
+              <button
+                key={id}
+                type="button"
+                data-popover-trigger
+                data-map-marker
+                {...trigger}
+                aria-label={label}
+                className="absolute flex items-center justify-center outline-none rounded-full focus-visible:ring-2 focus-visible:ring-sky-500"
+                style={{
+                  ...markerPos(m.xy),
+                  width: hit,
+                  height: hit,
+                  transform: "translate(-50%, -50%)",
+                }}
+              >
+                {glyph ? (
+                  <span className="relative block">
+                    <FuelBadgeIcon cat={m.cat} r={badgeR} size={glyphPx} />
+                    {showStatus && (
+                      <span
+                        className="absolute block rounded-full"
+                        style={{
+                          width: dotsMode ? 6 : statusPx,
+                          height: dotsMode ? 6 : statusPx,
+                          right: dotsMode ? 0 : 1,
+                          bottom: dotsMode ? 0 : 1,
+                          backgroundColor: STATUS_COLOR[status],
+                          boxShadow: "0 0 0 1px var(--surface-primary)",
+                        }}
+                      />
+                    )}
+                    {count > 1 && (
+                      <span
+                        className="absolute flex items-center justify-center rounded-full px-[3px] text-[9px] font-semibold leading-none tabular-nums text-content-primary"
+                        style={{
+                          top: -7,
+                          right: -10,
+                          minWidth: 13,
+                          height: 13,
+                          background: "var(--surface-primary)",
+                          border:
+                            "1px solid color-mix(in srgb, var(--text-primary) 25%, transparent)",
+                        }}
+                      >
+                        {count}
+                      </span>
+                    )}
+                  </span>
+                ) : (
+                  <span
+                    className="block rounded-full"
+                    style={{
+                      width: dotPx,
+                      height: dotPx,
+                      backgroundColor: STATUS_COLOR[status],
+                      boxShadow: "0 0 0 1px var(--surface-primary)",
+                    }}
+                  />
+                )}
+              </button>
             );
           })}
 
@@ -1331,8 +1454,8 @@ export function SwedenMap({
             </g>
           </svg>
 
-          {/* ── Wide: detail popover (one at a time, flips near edges) ── */}
-          {wide && pop && popAt && popVisible && popItems.length > 0 && (
+          {/* ── Detail popover (one at a time, flips near edges, always inside the box) ── */}
+          {pop && popAt && popVisible && popItems.length > 0 && (
             <div
               id="map-popover"
               data-map-popover
@@ -1387,39 +1510,13 @@ export function SwedenMap({
           />
         </div>
 
-        {/* ── Compact: inline detail panel under the map ── */}
-        {!wide && selDetails.length > 0 && (
-          <div
-            data-map-popover
-            role="region"
-            aria-label="Outage details"
-            className="mt-2 rounded-xl p-2 space-y-1.5 bg-surface-secondary"
-          >
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setSel(null)}
-                className="text-[10px] text-content-muted px-1.5 py-0.5 rounded hover:text-content-primary"
-                aria-label="Close details"
-              >
-                Close ✕
-              </button>
-            </div>
-            {selDetails.map((d) => (
-              <div key={d.id} className="rounded-lg bg-surface-primary p-2.5">
-                <DetailBody d={d} />
-              </div>
-            ))}
-          </div>
-        )}
-
         {!wide && (
           <div className="mt-2 space-y-1">
             <Legend gradient={gradient} cats={legendCats} />
             <UnmappedOutages
               items={unmappedOther}
               error={outagesError}
-              onPick={(o) => toggleSel(otherId(o))}
+              onPick={(o, el) => ctl.toggle(otherId(o), el)}
             />
           </div>
         )}
@@ -1499,6 +1596,13 @@ function Legend({
       {FUEL_CAT_LABEL[c]}
     </span>
   ));
+  const markerNote = (
+    <p
+      className={`text-[10px] leading-snug text-content-muted ${stacked ? "" : "text-center"}`}
+    >
+      icon size = capacity · number = plants grouped
+    </p>
+  );
   if (stacked)
     return (
       <div className="space-y-1.5">
@@ -1507,6 +1611,7 @@ function Legend({
           <div className="flex flex-col gap-1.5">{statusItems}</div>
           <div className="flex flex-col gap-1.5">{fuelItems}</div>
         </div>
+        {markerNote}
       </div>
     );
   return (
@@ -1518,6 +1623,7 @@ function Legend({
       <div className="flex flex-wrap justify-center gap-x-2.5 gap-y-0.5 text-[10px] text-content-muted">
         {fuelItems}
       </div>
+      {markerNote}
     </div>
   );
 }
