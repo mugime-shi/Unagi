@@ -29,6 +29,7 @@ from datetime import date, timedelta
 from sqlalchemy.orm import Session
 
 from app.models.forecast_accuracy import ForecastAccuracy
+from app.utils.timezone import stockholm_today
 
 DEFAULT_VOLATILE_THRESHOLD = 0.35  # baseline daily MAE (SEK/kWh) at which the baseline "breaks"
 DEFAULT_MIN_HOURS = 20  # min scored hours for a day to count (DST days have 23/25)
@@ -43,7 +44,7 @@ def _rows_by_model_day(
     models: list[str],
 ) -> dict[str, dict[date, list[ForecastAccuracy]]]:
     """Fetch scored rows for the given models, grouped by model then target_date."""
-    cutoff = date.today() - timedelta(days=days)
+    cutoff = stockholm_today() - timedelta(days=days)
     rows = (
         db.query(ForecastAccuracy)
         .filter(
@@ -228,7 +229,7 @@ def get_coverage_by_regime(
         db, area=area, days=days, model=model, baseline=baseline, threshold=threshold
     )["regime_by_date"]
 
-    cutoff = date.today() - timedelta(days=days)
+    cutoff = stockholm_today() - timedelta(days=days)
     rows = (
         db.query(ForecastAccuracy)
         .filter(
