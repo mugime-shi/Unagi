@@ -13,6 +13,7 @@ from app.config import settings
 from app.db.database import get_db
 from app.services.consumption_optimizer import PriceComponents, simulate
 from app.services.price_service import get_prices_for_date_range
+from app.utils.timezone import stockholm_today
 
 router = APIRouter(prefix="/simulate", tags=["simulate"])
 
@@ -50,7 +51,7 @@ def simulate_consumption(body: ConsumptionRequest, db: DbDep):
     Uses the last 30 days of real SE3 spot prices from DB.
     Also computes current-month average for Göteborg Energi monthly-avg contracts.
     """
-    end_date = date.today()
+    end_date = stockholm_today()
     start_date = end_date - timedelta(days=LOOKBACK_DAYS - 1)
 
     rows = get_prices_for_date_range(db, start_date, end_date, area=settings.default_area)

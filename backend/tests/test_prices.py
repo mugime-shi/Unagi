@@ -29,6 +29,7 @@ from app.services.price_service import (
     get_prices_for_date_range,
     upsert_prices,
 )
+from app.utils.timezone import stockholm_today
 
 # ---------------------------------------------------------------------------
 # In-memory SQLite with StaticPool (single shared connection)
@@ -217,9 +218,20 @@ def test_get_today_prices_mock_when_no_db_data(client):
 
 
 def test_get_today_prices_real_data_when_db_populated(client, db):
-    today = date.today()
+    today = stockholm_today()
     upsert_prices(db, [_make_point(h, target_date=today) for h in range(24)])
     data = client.get("/api/v1/prices/today").json()
+    assert data["is_estimate"] is False
+
+
+def test_get_today_prices_uses_stockholm_date_after_utc_evening(client, db):
+    # 23:30 UTC on Jul 15 is 01:30 CEST on Jul 16: "today" must already be the 16th.
+    upsert_prices(db, [_make_point(h, target_date=date(2026, 7, 16)) for h in range(24)])
+    frozen_now = datetime(2026, 7, 15, 23, 30, tzinfo=timezone.utc)
+    with patch("app.utils.timezone.datetime", wraps=datetime) as mock_dt:
+        mock_dt.now.side_effect = lambda tz=None: frozen_now.astimezone(tz)
+        data = client.get("/api/v1/prices/today").json()
+    assert data["date"] == "2026-07-16"
     assert data["is_estimate"] is False
 
 
@@ -541,12 +553,8 @@ def test_dst_fall_back_day_has_25_hourly_slots(client, db):
     ]
     upsert_prices(db, points)
 
-    # Freeze "now" shortly after the fixture so the 365-day window always covers it.
-    # wraps= (not a datetime subclass): combine() must keep returning plain
-    # datetimes, since sqlite3 refuses to bind subclasses.
-    frozen_now = datetime(2025, 11, 1, 12, 0, tzinfo=timezone.utc)
-    with patch("app.routers.prices.datetime", wraps=datetime) as mock_dt:
-        mock_dt.now.side_effect = lambda tz=None: frozen_now.astimezone(tz)
+    # Freeze "today" shortly after the fixture so the 365-day window always covers it.
+    with patch("app.routers.prices.stockholm_today", return_value=date(2025, 11, 1)):
         response = client.get("/api/v1/prices/history?days=365")
     assert response.status_code == 200
     by_date = {d["date"]: d for d in response.json()["daily"] if d.get("avg_sek_kwh") is not None}

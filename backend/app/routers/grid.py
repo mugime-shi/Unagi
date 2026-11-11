@@ -1,4 +1,3 @@
-from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -6,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.models.grid_operator import GridOperator
+from app.utils.timezone import stockholm_today
 
 router = APIRouter(prefix="/grid-operators", tags=["grid-operators"])
 
@@ -23,7 +23,7 @@ def list_grid_operators(
     List grid operators with currently valid tariffs for the given area.
     Returns both apartment and house tariffs per operator.
     """
-    today = date.today()
+    today = stockholm_today()
     rows = (
         db.query(GridOperator)
         .filter(

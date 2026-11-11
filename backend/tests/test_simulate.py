@@ -2,7 +2,7 @@
 Tests for /api/v1/simulate/consumption and consumption_optimizer helpers.
 """
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
@@ -21,6 +21,7 @@ from app.services.consumption_optimizer import (
 )
 from app.services.entsoe_client import PricePoint
 from app.services.price_service import upsert_prices
+from app.utils.timezone import stockholm_today
 
 # ---------------------------------------------------------------------------
 # Shared SQLite test DB
@@ -75,7 +76,7 @@ def _make_price_point(ts: datetime, sek: float) -> PricePoint:
 
 def _insert_30_days_prices(db, sek: float = 0.50):
     """Insert uniform prices for the last 30 days."""
-    today = date.today()
+    today = stockholm_today()
     for offset in range(30):
         day = today - timedelta(days=offset)
         # CET window: day-1 23:00 UTC → day 22:00 UTC

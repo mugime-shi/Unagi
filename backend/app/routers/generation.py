@@ -25,7 +25,7 @@ from app.services.generation_service import (
     get_generation_for_date,
 )
 from app.services.outage_service import outages_for_day
-from app.utils.timezone import STOCKHOLM
+from app.utils.timezone import STOCKHOLM, stockholm_today
 
 # Shared SQL fragment: ENTSO-E psr_type -> Unagi semantic group.
 # Kept as raw SQL so /national-24h and /history can do the national aggregation
@@ -88,7 +88,7 @@ def get_today_generation(db: DbDep, area: AreaDep = "SE3"):
     if area not in VALID_AREAS:
         raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
 
-    today = datetime.now(tz=timezone.utc).date()
+    today = stockholm_today()
     today_str = today.isoformat()
 
     # Fast path: return cached response if still fresh
@@ -282,7 +282,7 @@ def get_generation_history(
 
     from app.utils.timezone import stockholm_midnight_utc
 
-    today = datetime.now(tz=timezone.utc).date()
+    today = stockholm_today()
     start = today - timedelta(days=days - 1)
     range_start = stockholm_midnight_utc(start)
     range_end = stockholm_midnight_utc(today + timedelta(days=1))

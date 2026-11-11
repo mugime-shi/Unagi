@@ -1,11 +1,10 @@
 import { fetchJson, useAsyncResource } from "./useAsyncResource";
 import { useRefresh } from "./useRefresh";
+import { addDaysISO } from "../utils/stockholmDate";
 import type { Area, BalancingResponse } from "../types/index";
 
 function prevDay(iso: string): string {
-  const d = new Date(iso);
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().split("T")[0];
+  return addDaysISO(iso, -1);
 }
 
 interface UseBalancingReturn {
