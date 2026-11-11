@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useAsyncResource } from "./useAsyncResource";
 import { apiFetch } from "../utils/api";
 import { addDaysISO, stockholmDateISO } from "../utils/stockholmDate";
 import { useRefresh } from "./useRefresh";
@@ -71,128 +71,104 @@ function aggregateTimeSeries(
   return points;
 }
 
+async function fetchNationalGeneration(
+  mode: "today" | "24h",
+): Promise<NationalGenerationData> {
+  // For 24h mode: fetch today + yesterday, then trim to 24h window
+  const yesterdayStr = addDaysISO(stockholmDateISO(), -1);
+
+  const fetches = ZONES.flatMap((zone) => {
+    const todayFetch = apiFetch(`${API_BASE}/generation/today?area=${zone}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => ({ zone, resp: json as GenerationResponse | null }))
+      .catch(() => ({ zone, resp: null as GenerationResponse | null }));
+
+    if (mode !== "24h") return [todayFetch];
+
+    const yesterdayFetch = apiFetch(
+      `${API_BASE}/generation/date?date=${yesterdayStr}&area=${zone}`,
+    )
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => ({ zone, resp: json as GenerationResponse | null }))
+      .catch(() => ({ zone, resp: null as GenerationResponse | null }));
+
+    return [todayFetch, yesterdayFetch];
+  });
+
+  const raw = await Promise.all(fetches);
+
+  // Merge same-zone results
+  const merged = new Map<string, GenerationResponse>();
+  for (const { zone, resp } of raw) {
+    if (!resp?.time_series?.length) continue;
+    const existing = merged.get(zone);
+    if (!existing) {
+      merged.set(zone, resp);
+    } else {
+      // Append, dedup by timestamp
+      const seen = new Set(existing.time_series.map((p) => p.timestamp_utc));
+      for (const pt of resp.time_series) {
+        if (!seen.has(pt.timestamp_utc)) {
+          existing.time_series.push(pt);
+        }
+      }
+    }
+  }
+
+  // 24h mode: don't filter here — let the chart take the last 24 hours
+
+  const results = Array.from(merged.entries()).map(([zone, resp]) => ({
+    zone,
+    resp,
+  }));
+  const zonesIncluded = results
+    .filter((r) => r.resp?.time_series?.length)
+    .map((r) => r.zone);
+  const zonesMissing = ZONES.filter((z) => !zonesIncluded.includes(z));
+
+  if (zonesIncluded.length === 0) {
+    throw new Error("No generation data available");
+  }
+
+  const time_series = aggregateTimeSeries(results);
+
+  // Compute national totals from the latest point
+  const latest = time_series[time_series.length - 1];
+  let renewable_pct: number | null = null;
+  let carbon_free_pct: number | null = null;
+  let carbon_intensity: number | null = null;
+  let latest_slot: string | null = null;
+
+  if (latest) {
+    const total = latest.total_mw ?? 0;
+    const renewable =
+      (latest.hydro ?? 0) + (latest.wind ?? 0) + (latest.solar ?? 0);
+    const carbonFree = renewable + (latest.nuclear ?? 0);
+    if (total > 0) {
+      renewable_pct = Math.round((renewable / total) * 100);
+      carbon_free_pct = Math.round((carbonFree / total) * 100);
+      const co2 = (latest.fossil ?? 0) * 400 + (latest.other ?? 0) * 20;
+      carbon_intensity = Math.round(co2 / total);
+    }
+    latest_slot = latest.timestamp_utc;
+  }
+
+  return {
+    time_series,
+    renewable_pct,
+    carbon_free_pct,
+    carbon_intensity,
+    latest_slot,
+    zones_included: zonesIncluded,
+    zones_missing: zonesMissing,
+  };
+}
+
 export function useNationalGeneration(
   mode: "today" | "24h" = "24h",
 ): UseNationalGenerationReturn {
-  const [data, setData] = useState<NationalGenerationData | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<Error | null>(null);
   const { key: refreshKey } = useRefresh();
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-
-    // For 24h mode: fetch today + yesterday, then trim to 24h window
-    const yesterdayStr = addDaysISO(stockholmDateISO(), -1);
-
-    const fetches = ZONES.flatMap((zone) => {
-      const todayFetch = apiFetch(`${API_BASE}/generation/today?area=${zone}`)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((json) => ({ zone, resp: json as GenerationResponse | null }))
-        .catch(() => ({ zone, resp: null as GenerationResponse | null }));
-
-      if (mode !== "24h") return [todayFetch];
-
-      const yesterdayFetch = apiFetch(
-        `${API_BASE}/generation/date?date=${yesterdayStr}&area=${zone}`,
-      )
-        .then((r) => (r.ok ? r.json() : null))
-        .then((json) => ({ zone, resp: json as GenerationResponse | null }))
-        .catch(() => ({ zone, resp: null as GenerationResponse | null }));
-
-      return [todayFetch, yesterdayFetch];
-    });
-
-    Promise.all(fetches)
-      .then((raw) => {
-        // Merge same-zone results
-        const merged = new Map<string, GenerationResponse>();
-        for (const { zone, resp } of raw) {
-          if (!resp?.time_series?.length) continue;
-          const existing = merged.get(zone);
-          if (!existing) {
-            merged.set(zone, resp);
-          } else {
-            // Append, dedup by timestamp
-            const seen = new Set(
-              existing.time_series.map((p) => p.timestamp_utc),
-            );
-            for (const pt of resp.time_series) {
-              if (!seen.has(pt.timestamp_utc)) {
-                existing.time_series.push(pt);
-              }
-            }
-          }
-        }
-
-        // 24h mode: don't filter here — let the chart take the last 24 hours
-
-        const results = Array.from(merged.entries()).map(([zone, resp]) => ({
-          zone,
-          resp,
-        }));
-        return results;
-      })
-      .then((results) => {
-        if (cancelled) return;
-        const zonesIncluded = results
-          .filter((r) => r.resp?.time_series?.length)
-          .map((r) => r.zone);
-        const zonesMissing = ZONES.filter((z) => !zonesIncluded.includes(z));
-
-        if (zonesIncluded.length === 0) {
-          setError(new Error("No generation data available"));
-          setLoading(false);
-          return;
-        }
-
-        const time_series = aggregateTimeSeries(results);
-
-        // Compute national totals from the latest point
-        const latest = time_series[time_series.length - 1];
-        let renewable_pct: number | null = null;
-        let carbon_free_pct: number | null = null;
-        let carbon_intensity: number | null = null;
-        let latest_slot: string | null = null;
-
-        if (latest) {
-          const total = latest.total_mw ?? 0;
-          const renewable =
-            (latest.hydro ?? 0) + (latest.wind ?? 0) + (latest.solar ?? 0);
-          const carbonFree = renewable + (latest.nuclear ?? 0);
-          if (total > 0) {
-            renewable_pct = Math.round((renewable / total) * 100);
-            carbon_free_pct = Math.round((carbonFree / total) * 100);
-            const co2 = (latest.fossil ?? 0) * 400 + (latest.other ?? 0) * 20;
-            carbon_intensity = Math.round(co2 / total);
-          }
-          latest_slot = latest.timestamp_utc;
-        }
-
-        setData({
-          time_series,
-          renewable_pct,
-          carbon_free_pct,
-          carbon_intensity,
-          latest_slot,
-          zones_included: zonesIncluded,
-          zones_missing: zonesMissing,
-        });
-        setLoading(false);
-      })
-      .catch((err: Error) => {
-        if (!cancelled) {
-          setError(err);
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [mode, refreshKey]);
-
-  return { data, loading, error };
+  return useAsyncResource(`${mode}|${refreshKey}`, () =>
+    fetchNationalGeneration(mode),
+  );
 }

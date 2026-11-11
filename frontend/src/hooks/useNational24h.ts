@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { apiFetch } from "../utils/api";
+import { fetchJson, useAsyncResource } from "./useAsyncResource";
 import { useRefresh } from "./useRefresh";
 
 export interface National24hEntry {
@@ -31,23 +30,8 @@ interface UseNational24hReturn {
 }
 
 export function useNational24h(): UseNational24hReturn {
-  const [data, setData] = useState<National24hResponse | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<Error | null>(null);
   const { key: refreshKey } = useRefresh();
-
-  useEffect(() => {
-    setLoading(true);
-    setError(null);
-    apiFetch("/api/v1/generation/national-24h")
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then(setData)
-      .catch(setError)
-      .finally(() => setLoading(false));
-  }, [refreshKey]);
-
-  return { data, loading, error };
+  return useAsyncResource<National24hResponse>(`${refreshKey}`, () =>
+    fetchJson<National24hResponse>("/api/v1/generation/national-24h"),
+  );
 }

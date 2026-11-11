@@ -809,7 +809,6 @@ export function PriceChart({
               fill={cc.daLine}
               stroke={cc.nowDotRing}
               strokeWidth={2}
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               {...({ isFront: true } as Record<string, unknown>)}
               label={
                 <NowPriceLabel

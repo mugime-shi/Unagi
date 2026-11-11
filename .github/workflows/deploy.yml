@@ -12,13 +12,41 @@ name: Deploy
 on:
   push:
     branches: [main]
+  # PRs only run frontend-lint; the deploy job below is push-only.
+  pull_request:
 
 env:
   AWS_REGION: eu-north-1
   ECR_REGISTRY: 681110867765.dkr.ecr.eu-north-1.amazonaws.com
 
 jobs:
+  frontend-lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      # `npm run lint` (eslint .) also scans app/ and .next, so lint src only
+      - name: ESLint
+        run: npx eslint src
+
+      - name: Type check
+        run: npx tsc --noEmit
+
   deploy:
+    # Never deploy from a PR; lint failures block the deploy like test failures do.
+    if: github.event_name == 'push'
+    needs: frontend-lint
     runs-on: ubuntu-latest
 
     steps:
