@@ -21,6 +21,7 @@ import argparse
 import logging
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 
 from app.config import settings
@@ -462,6 +463,9 @@ def backfill_gas_prices(days: int) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 ALL_AREAS = ["SE1", "SE2", "SE3", "SE4"]
+# hourly_generation runs 4 areas x 2 dates = 8 independent ENTSO-E calls; run them all at once.
+# Well under ENTSO-E's 400 req/min limit; each thread holds one Supabase connection (NullPool).
+HOURLY_GENERATION_WORKERS = 8
 
 
 OUTAGE_PAST_DAYS = 7
@@ -599,11 +603,21 @@ def lambda_handler(event: dict, context) -> dict:
         today_date = date.today()
         yesterday_date = today_date - timedelta(days=1)
         log.info("hourly_generation — fetching today+yesterday for areas=%s", areas)
-        results = []
-        for area in areas:
-            # Force re-fetch (don't skip even if some data exists)
-            for gen_date in [yesterday_date, today_date]:
-                results.append(fetch_generation_date(gen_date, area))
+        started = time.monotonic()
+        # Force re-fetch (don't skip even if some data exists). Order: area-major, yesterday then today.
+        tasks = [(gen_date, area) for area in areas for gen_date in [yesterday_date, today_date]]
+
+        def _run(task: tuple[date, str]) -> dict:
+            gen_date, area = task
+            try:
+                return fetch_generation_date(gen_date, area)
+            except Exception as e:  # keep the other slots' results
+                log.exception("hourly_generation %s %s — unexpected error", gen_date, area)
+                return {"date": gen_date.isoformat(), "market": "generation", "status": "error", "error": str(e)}
+
+        with ThreadPoolExecutor(max_workers=HOURLY_GENERATION_WORKERS) as executor:
+            results = list(executor.map(_run, tasks))
+        log.info("hourly_generation — %d fetches done in %.1fs", len(results), time.monotonic() - started)
         failed = [r for r in results if r["status"] == "error"]
         # No Telegram alert here on purpose: a transient ENTSO-E publishing gap
         # makes this hourly job fail every hour across all 4 zones, which spammed
