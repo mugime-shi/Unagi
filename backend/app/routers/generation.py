@@ -59,7 +59,7 @@ AreaDep = Annotated[
 # ---------------------------------------------------------------------------
 # In-memory cache (survives between Lambda warm invocations)
 # ---------------------------------------------------------------------------
-_CACHE_TTL = 45 * 60  # seconds — matches the staleness threshold
+_CACHE_TTL = 5 * 60  # seconds — the DB is refreshed every 15 min by the warmer, so a DB read is cheap
 _generation_cache: dict[tuple[str, str], tuple[dict, float]] = {}
 
 
@@ -83,7 +83,8 @@ def get_today_generation(db: DbDep, area: AreaDep = "SE3"):
     and an hourly time series.
 
     Source: ENTSO-E A75 processType=A16 (Realised). Data lags ~15-30 min.
-    If today's data is not yet in DB, attempts a live fetch.
+    The EventBridge warmer refreshes today's data every 15 min, so this endpoint only reads the DB.
+    A live ENTSO-E fetch happens only as a last resort when neither today nor yesterday is in the DB.
     """
     if area not in VALID_AREAS:
         raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
@@ -98,37 +99,27 @@ def get_today_generation(db: DbDep, area: AreaDep = "SE3"):
 
     rows = get_generation_for_date(db, today, area)
 
-    # Re-fetch if no data or the latest slot is older than 45 min.
-    # A75 data updates every 15 min with ~15-30 min ENTSO-E lag.
-    # The scheduler Lambda pre-populates data at 12:30 UTC, so most
-    # requests hit the DB cache.  45 min balances freshness vs latency.
-    needs_fetch = not rows
-    if rows:
-        latest_ts = max(r.timestamp_utc for r in rows)
-        if latest_ts.tzinfo is None:
-            latest_ts = latest_ts.replace(tzinfo=timezone.utc)
-        stale_seconds = (datetime.now(timezone.utc) - latest_ts).total_seconds()
-        needs_fetch = stale_seconds > 45 * 60
+    if not rows:
+        # Before the first A75 slot of the day is published, report the date we actually have data for.
+        yesterday = today - timedelta(days=1)
+        rows = get_generation_for_date(db, yesterday, area)
+        if rows:
+            today = yesterday
 
-    if needs_fetch:
+    if not rows:
+        # Fresh DB / local dev: nothing for the warmer to have stored yet.
         try:
             rows = fetch_and_store_generation(db, today, area)
         except EntsoEError as exc:
-            if rows:
-                pass  # stale data is better than nothing
-            else:
-                # Fallback: try yesterday (data may not be available yet for today)
-                yesterday = today - timedelta(days=1)
-                try:
-                    rows = get_generation_for_date(db, yesterday, area)
-                    if not rows:
-                        rows = fetch_and_store_generation(db, yesterday, area)
-                    today = yesterday  # report the date we actually got data for
-                except EntsoEError:
-                    raise HTTPException(
-                        status_code=404,
-                        detail=f"No generation data available: {exc}",
-                    )
+            yesterday = today - timedelta(days=1)
+            try:
+                rows = fetch_and_store_generation(db, yesterday, area)
+                today = yesterday  # report the date we actually got data for
+            except EntsoEError:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No generation data available: {exc}",
+                )
 
     summary = build_generation_summary(rows)
     if not summary:
@@ -143,7 +134,8 @@ def get_today_generation(db: DbDep, area: AreaDep = "SE3"):
     }
 
     # Cache the computed response for subsequent requests
-    _generation_cache[(area, today.isoformat())] = (response, time.time())
+    # Keyed by the requested day, not the served one, so a yesterday fallback is cached too.
+    _generation_cache[(area, today_str)] = (response, time.time())
 
     return response
 

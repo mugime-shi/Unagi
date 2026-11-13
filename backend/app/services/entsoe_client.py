@@ -471,6 +471,7 @@ def fetch_generation_mix(
     target_date: date,
     area: str = SE3_AREA,
     api_key: Optional[str] = None,
+    timeout: float = 30.0,
 ) -> list[GenerationPoint]:
     """
     Fetch actual generation per production type (A75/A16) for target_date.
@@ -496,7 +497,7 @@ def fetch_generation_mix(
     }
 
     try:
-        with httpx.Client(timeout=30.0) as client:
+        with httpx.Client(timeout=timeout) as client:
             response = client.get(ENTSOE_BASE, params=params)
     except httpx.RequestError as exc:
         raise EntsoEError(f"Network error contacting ENTSO-E: {exc}") from exc
