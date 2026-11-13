@@ -1,5 +1,5 @@
 """
-GET /api/v1/generation/today reads the DB only; the warmer keeps it fresh (see test_warmer.py).
+GET /api/v1/generation/today reads the DB only; the hourly_generation scheduler task keeps it fresh.
 """
 
 from datetime import timedelta
