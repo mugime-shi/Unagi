@@ -7,12 +7,15 @@ Design mirrors balancing_service.py:
 - Caller decides whether to fall back to a live fetch
 """
 
+import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.db.database import SessionLocal
 from app.models.generation_mix import GenerationMix
 from app.services.entsoe_client import (
     _AREA_TO_EIC,
@@ -21,7 +24,9 @@ from app.services.entsoe_client import (
     GenerationPoint,
     fetch_generation_mix,
 )
-from app.utils.timezone import stockholm_midnight_utc
+from app.utils.timezone import stockholm_midnight_utc, stockholm_today
+
+log = logging.getLogger(__name__)
 
 # Direct combustion emission factors (gCO₂/kWh).
 # Source: IPCC AR5 WG3 Annex III (direct emissions only).
@@ -205,6 +210,7 @@ def fetch_and_store_generation(
     db: Session,
     target_date: date,
     area: str = "SE3",
+    timeout: float = 30.0,
 ) -> list[GenerationMix]:
     """
     Pull A75 generation mix from ENTSO-E and persist. Returns stored rows.
@@ -215,6 +221,42 @@ def fetch_and_store_generation(
         target_date=target_date,
         area=eic_code,
         api_key=settings.entsoe_api_key,
+        timeout=timeout,
     )
     upsert_generation(db, points, area=area)
     return get_generation_for_date(db, target_date, area=area)
+
+
+_REFRESH_AREAS = ("SE1", "SE2", "SE3", "SE4")
+_REFRESH_TIMEOUT = 12.0  # warmer Lambda has 30 s total, shared with the story refresh
+
+
+def _refresh_area(area: str, target_date: date) -> str:
+    db = SessionLocal()
+    try:
+        fetch_and_store_generation(db, target_date, area, timeout=_REFRESH_TIMEOUT)
+        return "ok"
+    except Exception:
+        # Includes EntsoEError (e.g. no data yet): the next window retries, the warmer must not raise.
+        log.warning("warmer: generation refresh failed for %s", area, exc_info=True)
+        return "error"
+    finally:
+        db.close()
+
+
+def refresh_today_generation(now: datetime | None = None) -> dict | None:
+    """Warmer entry point: fetch today's A75 for SE1-SE4 once per 15 min, keeping it out of the request path.
+
+    Stateless: the warmer ticks every 5 min, so exactly one tick per 15-min window has minute % 15 < 5.
+    Returns {area: "ok"|"error"}, or None when this tick is not due. Never raises.
+    """
+    now = now or datetime.now(timezone.utc)
+    if now.minute % 15 >= 5:
+        return None
+    target_date = stockholm_today(now)
+    try:
+        with ThreadPoolExecutor(max_workers=len(_REFRESH_AREAS)) as pool:
+            return dict(zip(_REFRESH_AREAS, pool.map(lambda a: _refresh_area(a, target_date), _REFRESH_AREAS)))
+    except Exception:
+        log.exception("warmer: generation refresh failed")
+        return {a: "error" for a in _REFRESH_AREAS}

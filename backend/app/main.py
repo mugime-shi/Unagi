@@ -18,6 +18,7 @@ from app.routers import (
     weather,
 )
 from app.routers.story import refresh_today_story
+from app.services.generation_service import refresh_today_generation
 
 log = logging.getLogger(__name__)
 
@@ -76,10 +77,16 @@ def handler(event, context):
     # EventBridge warmer (direct invoke, not an HTTP event): Mangum would raise on it and
     # feed the api-errors alarm, so it must never get here. Failures are swallowed for the same reason.
     if event.get("warmer"):
+        # Generation first: it is bounded (~12 s) and its failure is swallowed, so the story still runs after it.
+        generation = None
+        try:
+            generation = refresh_today_generation()
+        except Exception:
+            log.exception("warmer: generation refresh failed")
         refreshed = False
         try:
             refreshed = refresh_today_story()
         except Exception:
             log.exception("warmer: story refresh failed")
-        return {"warmed": True, "story_refreshed": refreshed}
+        return {"warmed": True, "story_refreshed": refreshed, "generation": generation}
     return _mangum(event, context)
