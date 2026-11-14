@@ -43,10 +43,39 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit
 
+  # Vercel deploys the frontend on its own, so a push that only touches frontend/ or docs has nothing to ship to
+  # Lambda. Anything else (including this workflow and unknown history) falls through to a full deploy.
+  changes:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.diff.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: diff
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            echo "before=$BEFORE not available; deploying"
+            echo "backend=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --name-only "$BEFORE" "$GITHUB_SHA" | tee changed.txt
+          if grep -qvE '^frontend/|\.md$' changed.txt; then
+            echo "backend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "frontend/docs only; skipping Lambda deploy"
+            echo "backend=false" >> "$GITHUB_OUTPUT"
+          fi
+
   deploy:
     # Never deploy from a PR; lint failures block the deploy like test failures do.
-    if: github.event_name == 'push'
-    needs: frontend-lint
+    if: github.event_name == 'push' && needs.changes.outputs.backend == 'true'
+    needs: [frontend-lint, changes]
     runs-on: ubuntu-latest
 
     steps:
