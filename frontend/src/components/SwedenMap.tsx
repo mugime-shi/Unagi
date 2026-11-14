@@ -846,8 +846,9 @@ export function SwedenMap({
     );
   }, [outages, bySite]);
 
-  // Clustering depends on zoom only (not pan), evaluated at the quantised zoom
-  const zoomStep = Math.round(Math.log(zoom) * ZOOM_STEPS_PER_E);
+  // Clustering depends on zoom only (not pan), evaluated at the quantised zoom. floor, not round: the quantised
+  // zoom must never exceed the real one, or on-screen spacing shrinks below radiusPx and hit areas overlap.
+  const zoomStep = Math.floor(Math.log(zoom) * ZOOM_STEPS_PER_E);
   const clusters = useMemo(() => {
     const z = Math.min(MAX_ZOOM, Math.exp(zoomStep / ZOOM_STEPS_PER_E));
     return clusterMarkers(plants, bw / z / boxWidth, radiusPx);
