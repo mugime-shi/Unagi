@@ -1,21 +1,28 @@
 import { useMounted } from "../hooks/useMounted";
 import { useRefresh } from "../hooks/useRefresh";
 
-function formatUpdated(d: Date): string {
-  // Fixed zone (Swedish market time) so the label is stable regardless of the
-  // viewer's locale — and identical between renders.
+// Fixed zone (Swedish market time) so the label is stable regardless of the
+// viewer's locale — and identical between renders.
+const STOCKHOLM = { timeZone: "Europe/Stockholm" } as const;
+const dayKey = (d: Date) =>
+  new Intl.DateTimeFormat("sv-SE", { ...STOCKHOLM, dateStyle: "short" }).format(
+    d,
+  );
+
+function formatUpdated(d: Date, timeOnly: boolean): string {
+  // Time alone only while it is still that day — a tab left open overnight must not show a bare, stale time.
+  const showDate = !timeOnly || dayKey(d) !== dayKey(new Date());
   return new Intl.DateTimeFormat("sv-SE", {
-    timeZone: "Europe/Stockholm",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
+    ...STOCKHOLM,
+    ...(showDate && { year: "numeric", month: "2-digit", day: "2-digit" }),
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
   }).format(d);
 }
 
-export function UpdateBadge() {
+/** `timeOnly`: the page already shows today's date nearby, so repeat only the time. */
+export function UpdateBadge({ timeOnly = false }: { timeOnly?: boolean }) {
   const { lastUpdatedAt, bump } = useRefresh();
   // `lastUpdatedAt` is a client-side "now" — its instant (and the runtime
   // timezone) differ between SSR and hydration, which would trip a hydration
@@ -25,7 +32,7 @@ export function UpdateBadge() {
   return (
     <div className="flex items-center gap-1.5 text-xs text-content-muted">
       <span className="tabular-nums">
-        Updated {mounted ? formatUpdated(lastUpdatedAt) : "—"}
+        Updated {mounted ? formatUpdated(lastUpdatedAt, timeOnly) : "—"}
       </span>
       <button
         onClick={bump}
