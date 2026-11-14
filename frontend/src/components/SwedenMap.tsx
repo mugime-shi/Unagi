@@ -210,6 +210,11 @@ interface SwedenMapProps {
   onHoverZone?: (zone: Area | null) => void;
   /** True when the outages request failed (shown as a small note instead of nuclear info). */
   outagesError?: boolean;
+  /**
+   * Nuclear sites the page's lede is pointing at (hovering a nuclear headline): their markers get a ring and the
+   * summary card's nuclear block lights up. `[]` lights the block alone; null/undefined lights nothing.
+   */
+  highlightSites?: readonly string[] | null;
 }
 
 function siteOf(unit: { name: string }): string {
@@ -502,6 +507,7 @@ function SummaryCard({
   spread,
   outages,
   outagesError,
+  highlightNuclear,
 }: {
   prices: Record<Area, ZonePriceSummary> | null;
   trends?: Record<Area, "up" | "down" | null> | null;
@@ -512,6 +518,7 @@ function SummaryCard({
   spread: number | null;
   outages: OutagesResponse | null;
   outagesError?: boolean;
+  highlightNuclear?: boolean;
 }) {
   const total = outages?.nuclear.reduce((sum, u) => sum + u.nominal_mw, 0) ?? 0;
   const offline = outages?.nuclear_offline_mw ?? 0;
@@ -637,30 +644,39 @@ function SummaryCard({
       )}
       {outages && (
         <div className={divider}>
-          <p className="text-[10px] uppercase tracking-wide text-content-muted">
-            Nuclear
-          </p>
-          <p className="text-sm font-semibold text-content-primary tabular-nums leading-tight">
-            {offline > 0
-              ? `${gw(offline)} GW of ${gw(total)} GW offline`
-              : `All ${outages.nuclear.length} reactors running`}
-          </p>
-          {offline > 0 && (
-            <div className="h-1 rounded-full bg-surface-tertiary mt-1.5 overflow-hidden">
-              <div
-                className="h-full rounded-full"
-                style={{
-                  width: `${Math.min(100, (offline / (total || 1)) * 100)}%`,
-                  backgroundColor: STATUS_COLOR.offline,
-                }}
-              />
-            </div>
-          )}
-          {siteLine && (
-            <p className="text-[10px] text-content-muted mt-1.5 leading-snug">
-              {siteLine}
+          {/* Same tint as a hovered zone row, so "this is what the lede means" reads like the price rows' hover */}
+          <div
+            className={`-mx-1.5 px-1.5 py-0.5 rounded-md transition-colors ${
+              highlightNuclear
+                ? "bg-[color-mix(in_srgb,var(--text-primary)_8%,transparent)]"
+                : ""
+            }`}
+          >
+            <p className="text-[10px] uppercase tracking-wide text-content-muted">
+              Nuclear
             </p>
-          )}
+            <p className="text-sm font-semibold text-content-primary tabular-nums leading-tight">
+              {offline > 0
+                ? `${gw(offline)} GW of ${gw(total)} GW offline`
+                : `All ${outages.nuclear.length} reactors running`}
+            </p>
+            {offline > 0 && (
+              <div className="h-1 rounded-full bg-surface-tertiary mt-1.5 overflow-hidden">
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${Math.min(100, (offline / (total || 1)) * 100)}%`,
+                    backgroundColor: STATUS_COLOR.offline,
+                  }}
+                />
+              </div>
+            )}
+            {siteLine && (
+              <p className="text-[10px] text-content-muted mt-1.5 leading-snug">
+                {siteLine}
+              </p>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -720,6 +736,7 @@ export function SwedenMap({
   hoverZone,
   onHoverZone,
   outagesError,
+  highlightSites,
 }: SwedenMapProps) {
   const { resolvedTheme } = useTheme();
   // The server renders before the theme is known: stay on the dark palette until mounted
@@ -1295,6 +1312,7 @@ export function SwedenMap({
                   spread={showSpread ? spread : null}
                   outages={outages}
                   outagesError={outagesError}
+                  highlightNuclear={highlightSites != null}
                 />
               </div>
 
@@ -1392,6 +1410,11 @@ export function SwedenMap({
                 );
             const statusPx = Math.max(5, Math.round(glyphPx * 0.38));
             const hit = radiusPx - 2;
+            const lit =
+              !!highlightSites?.length &&
+              c.members.some((x) =>
+                highlightSites.some((site) => x.key === `nuclear:${site}`),
+              );
             const off = c.members.filter((x) => x.status === "offline").length;
             const red = c.members.filter((x) => x.status === "reduced").length;
             const label =
@@ -1429,6 +1452,19 @@ export function SwedenMap({
                   transform: "translate(-50%, -50%)",
                 }}
               >
+                {lit && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute rounded-full ring-2 ring-sky-500 animate-pulse pointer-events-none"
+                    style={{
+                      width: (glyph ? glyphPx : dotPx) + 10,
+                      height: (glyph ? glyphPx : dotPx) + 10,
+                      left: "50%",
+                      top: "50%",
+                      transform: "translate(-50%, -50%)",
+                    }}
+                  />
+                )}
                 {glyph ? (
                   <span className="relative block">
                     <FuelBadgeIcon cat={m.cat} r={badgeR} size={glyphPx} />

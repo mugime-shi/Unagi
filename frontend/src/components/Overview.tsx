@@ -124,6 +124,8 @@ export function Overview({
   // Map layout switches at 900 px: below that the overlay cards would not fit
   const isNarrow = useIsMobile(900);
   const [hoverZone, setHoverZone] = useState<Area | null>(null);
+  // Nuclear sites the lede is pointing at while hovered (see SwedenMap `highlightSites`)
+  const [storySites, setStorySites] = useState<string[] | null>(null);
   const nowHour = currentCETHour(); // for zone-tile price trend arrows
   const zones: Area[] = ["SE1", "SE2", "SE3", "SE4"];
   const zoneColors: Record<Area, string> = {
@@ -237,7 +239,11 @@ export function Overview({
 
   return (
     <div className="space-y-4">
-      <TodayStory onZoneClick={onZoneClick} />
+      <TodayStory
+        onZoneClick={onZoneClick}
+        onHoverZone={setHoverZone}
+        onHoverSites={setStorySites}
+      />
 
       {/* Zone prices lead the page: "what does it cost right now" is the most
           common question. Generation mix (the background/context) moves below
@@ -261,6 +267,7 @@ export function Overview({
             onZoneClick={onZoneClick}
             hoverZone={hoverZone}
             onHoverZone={setHoverZone}
+            highlightSites={storySites}
             trends={
               priceData
                 ? (Object.fromEntries(
