@@ -185,7 +185,7 @@ def fetch_gas_prices_from_api() -> list[GasPricePoint]:
     publishes for the next gas-day) and future dates are dropped. The legacy
     Preismonitor field names are still accepted for the fallback host.
     """
-    today = date.today()
+    today = stockholm_today()
 
     def fetch_one(url: str, label: str) -> list[GasPricePoint]:
         points: list[GasPricePoint] = []

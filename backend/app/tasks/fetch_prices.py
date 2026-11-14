@@ -1298,7 +1298,7 @@ def main() -> int:
     elif args.gas_price:
         # Gas price mode
         if args.from_date:
-            results = [fetch_gas_prices_range(args.from_date, args.to_date or date.today())]
+            results = [fetch_gas_prices_range(args.from_date, args.to_date or stockholm_today())]
         elif args.backfill:
             results = backfill_gas_prices(args.backfill)
         else:
