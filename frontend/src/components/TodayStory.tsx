@@ -17,6 +17,16 @@ const KIND_ICON: Partial<Record<string, FuelCat>> = {
   wind: "wind",
 };
 
+/** Site names as the story text writes them ("Forsmark 3 goes offline"); mirrors the map's nuclear sites. */
+const NUCLEAR_SITES = ["Forsmark", "Ringhals", "Oskarshamn"];
+
+/**
+ * Sites a nuclear story line names. The story service carries no plant id, but it builds this text from the same
+ * fixed reactor names, so a name match is reliable. [] = about nuclear without naming a site.
+ */
+const sitesIn = (text: string): string[] =>
+  NUCLEAR_SITES.filter((site) => text.includes(site));
+
 /** A story item links to its zone's hourly prices when it is about one zone's price. */
 const zoneOf = (item: StoryItem): Area | null =>
   ZONES.includes(item.area) && !NON_PRICE_KINDS.has(item.kind)
@@ -38,19 +48,27 @@ function dateline(date: string): string {
 function ZoneLink({
   zone,
   onZoneClick,
+  onHoverZone,
   children,
   label,
 }: {
   zone: Area | null;
   onZoneClick?: (zone: Area) => void;
+  onHoverZone?: (zone: Area | null) => void;
   children: ReactNode;
   label: string;
 }) {
   if (!zone || !onZoneClick) return <>{children}</>;
+  // Hover/focus lights the zone on the map, like hovering its row in the summary card
+  const point = (z: Area | null) => () => onHoverZone?.(z);
   return (
     <button
       type="button"
       onClick={() => onZoneClick(zone)}
+      onMouseEnter={point(zone)}
+      onMouseLeave={point(null)}
+      onFocus={point(zone)}
+      onBlur={point(null)}
       aria-label={label}
       className="group inline text-left rounded outline-none hover:text-content-primary focus-visible:ring-2 focus-visible:ring-sky-500"
     >
@@ -71,8 +89,13 @@ function ZoneLink({
  */
 export function TodayStory({
   onZoneClick,
+  onHoverZone,
+  onHoverSites,
 }: {
   onZoneClick?: (zone: Area) => void;
+  onHoverZone?: (zone: Area | null) => void;
+  /** Nuclear lines point at their sites on the map while hovered (null when the pointer leaves). */
+  onHoverSites?: (sites: string[] | null) => void;
 }) {
   const { data, loading, error } = useStory();
 
@@ -92,12 +115,26 @@ export function TodayStory({
   const { headline, facts, context } = data;
   const icon = KIND_ICON[headline.kind];
   const headZone = zoneOf(headline);
+  // Hover-only: a pointer at the line, not an action, so no focus stop or button look
+  const pointAtSites = (sites: string[]) => ({
+    onMouseEnter: () => onHoverSites?.(sites),
+    onMouseLeave: () => onHoverSites?.(null),
+  });
+  const headSites =
+    headline.kind === "nuclear" ? pointAtSites(sitesIn(headline.text)) : {};
+  const contextSites =
+    context && sitesIn(context).length > 0
+      ? pointAtSites(sitesIn(context))
+      : {};
   return (
     <section className="px-1 space-y-1.5" aria-label="Today">
       <p className="text-[11px] uppercase tracking-wide text-content-muted">
         Today · {dateline(data.date)}
       </p>
-      <h2 className="flex items-center gap-2 text-lg sm:text-xl text-content-primary leading-snug">
+      <h2
+        className="flex items-center gap-2 text-lg sm:text-xl text-content-primary leading-snug"
+        {...headSites}
+      >
         {icon && (
           <span className="shrink-0 text-content-secondary" aria-hidden="true">
             <FuelBadgeIcon cat={icon} r={9} />
@@ -106,6 +143,7 @@ export function TodayStory({
         <ZoneLink
           zone={headZone}
           onZoneClick={onZoneClick}
+          onHoverZone={onHoverZone}
           label={`${headline.text} — ${headZone} hourly prices`}
         >
           {headline.text}
@@ -114,7 +152,11 @@ export function TodayStory({
       {headline.sub && (
         <p className="text-sm text-content-secondary">{headline.sub}</p>
       )}
-      {context && <p className="text-xs text-content-muted">{context}</p>}
+      {context && (
+        <p className="text-xs text-content-muted" {...contextSites}>
+          {context}
+        </p>
+      )}
       {facts.length > 0 && (
         <p className="text-xs sm:text-sm text-content-secondary leading-relaxed">
           {facts.map((f, i) => {
@@ -136,6 +178,7 @@ export function TodayStory({
                 <ZoneLink
                   zone={zone}
                   onZoneClick={onZoneClick}
+                  onHoverZone={onHoverZone}
                   label={`${f.text} — ${zone} hourly prices`}
                 >
                   {f.text}
