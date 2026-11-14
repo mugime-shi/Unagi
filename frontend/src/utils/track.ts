@@ -15,7 +15,13 @@ const VISIT_KEY = "unagi.visit";
 // real site (and localhost, which talks to the local API).
 const TRACKED_HOSTS = new Set(["unagieel.net", "localhost", "127.0.0.1"]);
 
-type UsageEvent = "visit" | "layer_view" | "tab_view" | "area_select";
+type UsageEvent =
+  | "visit"
+  | "layer_view"
+  | "tab_view"
+  | "area_select"
+  | "engagement"
+  | "action";
 
 interface VisitState {
   first: string; // YYYY-MM-DD, Europe/Stockholm
@@ -103,4 +109,79 @@ export function trackVisit(): void {
     days_since_first: sinceFirst,
     days_since_last: sinceLast,
   });
+}
+
+// Visible-time milestones. Sent while the page is still open because leave
+// events are not delivered reliably on mobile.
+const MILESTONES: { label: string; at: number }[] = [
+  { label: "10s", at: 10_000 },
+  { label: "1m", at: 60_000 },
+  { label: "5m", at: 300_000 },
+];
+
+// Module-level so React StrictMode's mount/unmount/mount cannot send `start`
+// twice or reset the clock; each page load counts each label at most once.
+let engagementStarted = false;
+let visibleElapsed = 0;
+const milestonesSent = new Set<string>();
+
+/**
+ * Sends `start`, then `10s` / `1m` / `5m` once the page has been visible for
+ * that long in total. The clock pauses while the tab is hidden.
+ */
+export function trackEngagement(): () => void {
+  if (!trackingAllowed()) return () => {};
+  if (!engagementStarted) {
+    engagementStarted = true;
+    trackEvent("engagement", "start");
+  }
+
+  let visibleSince: number | null = null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const bank = (): void => {
+    if (visibleSince === null) return;
+    const now = performance.now();
+    visibleElapsed += now - visibleSince;
+    visibleSince = now;
+  };
+
+  const schedule = (): void => {
+    clearTimeout(timer);
+    if (visibleSince === null) return;
+    const next = MILESTONES.find((m) => !milestonesSent.has(m.label));
+    if (!next) return;
+    const waited = performance.now() - visibleSince;
+    timer = setTimeout(
+      () => {
+        bank();
+        for (const m of MILESTONES) {
+          if (visibleElapsed >= m.at && !milestonesSent.has(m.label)) {
+            milestonesSent.add(m.label);
+            trackEvent("engagement", m.label);
+          }
+        }
+        schedule();
+      },
+      Math.max(0, next.at - visibleElapsed - waited),
+    );
+  };
+
+  const onVisibility = (): void => {
+    if (document.visibilityState === "visible") {
+      visibleSince = performance.now();
+    } else {
+      bank();
+      visibleSince = null;
+    }
+    schedule();
+  };
+
+  onVisibility();
+  document.addEventListener("visibilitychange", onVisibility);
+  return () => {
+    bank();
+    clearTimeout(timer);
+    document.removeEventListener("visibilitychange", onVisibility);
+  };
 }

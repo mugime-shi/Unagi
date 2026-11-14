@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useSimulate } from "../hooks/useSimulate";
 import { formatPrice, PRICE_UNIT } from "../utils/formatters";
+import { trackEvent } from "../utils/track";
 
 interface ResultCardProps {
   label: string;
@@ -42,6 +43,7 @@ export function ConsumptionSimulator() {
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    trackEvent("action", "consumption_simulate");
     run({
       monthly_kwh: parseFloat(kwh),
       fixed_price_sek_kwh: parseFloat(fixedPrice),

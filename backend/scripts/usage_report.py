@@ -7,7 +7,7 @@ Usage report from first-party usage_events.
 import argparse
 
 from app.db.database import SessionLocal
-from app.services.usage_service import RETURN_WINDOW_DAYS, summarize_usage
+from app.services.usage_service import ENGAGEMENT_ORDER, RETURN_WINDOW_DAYS, summarize_usage
 
 
 def main() -> None:
@@ -45,6 +45,14 @@ def main() -> None:
 
     for event, counts in sorted(s.views.items()):
         print(f"\n{event}")
+        if event == "engagement":
+            # Funnel order, relative to page loads (`start`), not by count.
+            starts = counts.get("start", 0)
+            for label in ENGAGEMENT_ORDER:
+                n = counts.get(label, 0)
+                pct = f"  {n / starts:.1%}" if starts else ""
+                print(f"  {n:5d}  {label}{pct}")
+            continue
         for label, n in counts.most_common():
             print(f"  {n:5d}  {label}")
 

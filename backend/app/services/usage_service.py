@@ -20,6 +20,7 @@ from app.models.usage_event import UsageEvent
 
 STOCKHOLM = ZoneInfo("Europe/Stockholm")
 RETURN_WINDOW_DAYS = 7
+ENGAGEMENT_ORDER = ("start", "10s", "1m", "5m")
 
 
 @dataclass

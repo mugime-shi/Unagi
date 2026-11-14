@@ -2,6 +2,9 @@
 /api/v1/events — first-party usage events (see app/models/usage_event.py).
 
 POST /events → record one event; 204 No Content
+
+Events: visit | layer_view | tab_view | area_select | engagement (visible-time
+milestone: start/10s/1m/5m) | action (funnel step, e.g. solar_simulate)
 """
 
 from typing import Annotated, Literal
@@ -22,7 +25,7 @@ _MAX_DAYS = 3650
 
 
 class EventRequest(BaseModel):
-    event: Literal["visit", "layer_view", "tab_view", "area_select"]
+    event: Literal["visit", "layer_view", "tab_view", "area_select", "engagement", "action"]
     # Hostnames and short identifiers only — rejects free text so the table
     # cannot be used to store arbitrary (or personal) data.
     label: str | None = Field(default=None, max_length=64, pattern=r"^[A-Za-z0-9._-]+$")

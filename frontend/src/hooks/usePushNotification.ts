@@ -24,6 +24,7 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "../utils/api";
+import { trackEvent } from "../utils/track";
 import type { Area, NotificationStatus } from "../types/index";
 
 /** Convert base64url string (no padding) to Uint8Array for applicationServerKey */
@@ -99,6 +100,7 @@ export function usePushNotification(area: Area): UsePushNotificationReturn {
       if (!saveRes.ok) throw new Error("Failed to save subscription");
 
       setStatus("subscribed");
+      trackEvent("action", "notify_subscribed");
     } catch (err) {
       console.error("[Unagi] Push subscribe error:", err);
       setStatus("error");
