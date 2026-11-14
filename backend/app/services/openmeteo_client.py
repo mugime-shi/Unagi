@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.models.weather_data import WeatherData
 from app.models.weather_forecast import WeatherForecast
+from app.utils.timezone import stockholm_today
 
 log = logging.getLogger(__name__)
 
@@ -224,7 +225,7 @@ def store_forecast(
         return 0
 
     if issued_date is None:
-        issued_date = date.today()
+        issued_date = stockholm_today()
 
     rows = [
         {

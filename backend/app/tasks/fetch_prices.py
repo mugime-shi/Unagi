@@ -32,6 +32,7 @@ from app.services.esett_client import BalancingError
 from app.services.generation_service import fetch_and_store_generation, get_generation_for_date
 from app.services.outage_service import fetch_and_store_outages
 from app.services.price_service import fetch_and_store, get_prices_for_date
+from app.utils.timezone import stockholm_today
 
 logging.basicConfig(
     level=logging.INFO,
@@ -106,7 +107,7 @@ def fetch_dates(dates: list[date], area: str = "SE3") -> list[dict]:
 
 
 def backfill(days: int, area: str = "SE3") -> list[dict]:
-    today = date.today()
+    today = stockholm_today()
     dates = [today - timedelta(days=i) for i in range(days - 1, -1, -1)]
     log.info("Backfill: fetching %d days (%s → %s)", days, dates[0], dates[-1])
     return fetch_dates(dates, area)
@@ -159,7 +160,7 @@ def fetch_balancing_date(target_date: date, area: str = "SE3") -> dict:
 
 def backfill_balancing(days: int, area: str = "SE3") -> list[dict]:
     """Backfill balancing (imbalance) prices for the past N days."""
-    today = date.today()
+    today = stockholm_today()
     dates = [today - timedelta(days=i) for i in range(days - 1, -1, -1)]
     log.info("Backfill balancing: fetching %d days (%s → %s) for %s", days, dates[0], dates[-1], area)
     return [fetch_balancing_date(d, area) for d in dates]
@@ -179,7 +180,7 @@ def fetch_generation_date(target_date: date, area: str = "SE3") -> dict:
     db = SessionLocal()
     try:
         existing = get_generation_for_date(db, target_date, area)
-        today = date.today()
+        today = stockholm_today()
         is_recent = target_date >= today - timedelta(days=1)  # today or yesterday
         if existing and not is_recent:
             # Completeness depends on the ENTSO-E resolution for that day:
@@ -249,7 +250,7 @@ def fetch_generation_date(target_date: date, area: str = "SE3") -> dict:
 
 def backfill_generation(days: int, area: str = "SE3") -> list[dict]:
     """Backfill generation mix data for the past N days."""
-    today = date.today()
+    today = stockholm_today()
     dates = [today - timedelta(days=i) for i in range(days - 1, -1, -1)]
     log.info("Backfill generation: fetching %d days (%s → %s) for %s", days, dates[0], dates[-1], area)
     return [fetch_generation_date(d, area) for d in dates]
@@ -310,7 +311,7 @@ def fetch_load_forecast_date(target_date: date, area: str = "SE3") -> dict:
 
 def backfill_load_forecast(days: int, area: str = "SE3") -> list[dict]:
     """Backfill load forecast data for the past N days."""
-    today = date.today()
+    today = stockholm_today()
     dates = [today - timedelta(days=i) for i in range(days - 1, -1, -1)]
     log.info("Backfill load_forecast: fetching %d days (%s → %s) for %s", days, dates[0], dates[-1], area)
     return [fetch_load_forecast_date(d, area) for d in dates]
@@ -353,7 +354,7 @@ def backfill_hydro(days: int, area: str = "SE3") -> list[dict]:
 
     db = SessionLocal()
     try:
-        today = date.today()
+        today = stockholm_today()
         target = today - timedelta(days=days)
         log.info("Backfill hydro: fetching %d days (%s → %s) for %s", days, target, today, area)
         try:
@@ -412,7 +413,7 @@ def fetch_de_price_date(target_date: date) -> dict:
 
 def backfill_de_prices(days: int) -> list[dict]:
     """Backfill DE-LU spot prices for the past N days."""
-    today = date.today()
+    today = stockholm_today()
     dates = [today - timedelta(days=i) for i in range(days - 1, -1, -1)]
     log.info("Backfill de_price: fetching %d days (%s → %s)", days, dates[0], dates[-1])
     return [fetch_de_price_date(d) for d in dates]
@@ -452,7 +453,7 @@ def fetch_gas_prices_range(start_date: date, end_date: date) -> dict:
 
 def backfill_gas_prices(days: int) -> list[dict]:
     """Backfill gas prices for the past N days."""
-    today = date.today()
+    today = stockholm_today()
     start = today - timedelta(days=days - 1)
     log.info("Backfill gas_price: fetching %d days (%s → %s)", days, start, today)
     return [fetch_gas_prices_range(start, today)]
@@ -518,8 +519,8 @@ def lambda_handler(event: dict, context) -> dict:
     # By this time, yesterday's generation + balancing data is fully settled.
     # Predictions run separately at 00:20 UTC via predict_only.
     if event.get("midnight_collect"):
-        yesterday = date.today() - timedelta(days=1)
-        today = date.today()
+        yesterday = stockholm_today() - timedelta(days=1)
+        today = stockholm_today()
         log.info("midnight_collect — fetching %s data for areas=%s", yesterday, areas)
 
         results = []
@@ -600,7 +601,7 @@ def lambda_handler(event: dict, context) -> dict:
     # Per EU Regulation 543/2013 Art. 16(2)(b), ENTSO-E publishes
     # actual generation per production type within H+1.
     if event.get("hourly_generation"):
-        today_date = date.today()
+        today_date = stockholm_today()
         yesterday_date = today_date - timedelta(days=1)
         log.info("hourly_generation — fetching today+yesterday for areas=%s", areas)
         started = time.monotonic()
@@ -633,7 +634,7 @@ def lambda_handler(event: dict, context) -> dict:
     # Price-only retry (13:30, 14:30, 15:30 UTC).
     # Idempotent — skips if prices already fetched at 12:30.
     if event.get("price_retry"):
-        today = date.today()
+        today = stockholm_today()
         tomorrow = today + timedelta(days=1)
         log.info("price_retry — fetching today+tomorrow prices for %s", areas)
         all_results = []
@@ -664,7 +665,7 @@ def lambda_handler(event: dict, context) -> dict:
         elif "date" in event:
             results = [fetch_date(date.fromisoformat(event["date"]), area)]
         else:
-            today = date.today()
+            today = stockholm_today()
             tomorrow = today + timedelta(days=1)
             results = fetch_dates([today, tomorrow], area)
         all_results.extend(results)
@@ -673,7 +674,7 @@ def lambda_handler(event: dict, context) -> dict:
     # Skip during backfill runs (use --generation flag for generation backfill).
     is_daily_run = "backfill_days" not in event and "date" not in event and not data_backfill
     if is_daily_run:
-        today = date.today()
+        today = stockholm_today()
         yesterday = today - timedelta(days=1)
         for area in areas:
             for bal_date in [yesterday, today]:
@@ -864,7 +865,7 @@ def _fetch_gas_prices() -> dict:
         from app.services.bundesnetzagentur_client import GasPriceError
         from app.services.gas_price_service import fetch_and_store_gas_prices
 
-        today = date.today()
+        today = stockholm_today()
         start = today - timedelta(days=7)
         last_error = None
 
@@ -1002,7 +1003,7 @@ def _areas_missing_predictions(areas: list[str], target_date: date | None = None
     """
     from app.models.forecast_accuracy import ForecastAccuracy
 
-    target = target_date or (date.today() + timedelta(days=1))
+    target = target_date or (stockholm_today() + timedelta(days=1))
     db = SessionLocal()
     try:
         rows = (
@@ -1036,7 +1037,7 @@ def _record_predictions(areas: list[str], target_date: date | None = None) -> li
         from app.services.backtest_service import record_predictions
         from app.services.price_service import build_forecast, get_prices_for_date_range
 
-        target = target_date or (date.today() + timedelta(days=1))
+        target = target_date or (stockholm_today() + timedelta(days=1))
 
         for area in areas:
             # same_weekday_avg
@@ -1100,7 +1101,7 @@ def _fill_actuals(areas: list[str]) -> None:
     try:
         from app.services.backtest_service import fill_actuals
 
-        yesterday = date.today() - timedelta(days=1)
+        yesterday = stockholm_today() - timedelta(days=1)
         for area in areas:
             try:
                 n = fill_actuals(db, yesterday, area)
@@ -1283,7 +1284,7 @@ def main() -> int:
         elif args.date:
             results = [fetch_generation_date(args.date, args.area)]
         else:
-            results = [fetch_generation_date(date.today(), args.area)]
+            results = [fetch_generation_date(stockholm_today(), args.area)]
     elif args.load_forecast:
         # Load forecast mode
         if args.backfill:
@@ -1291,7 +1292,7 @@ def main() -> int:
         elif args.date:
             results = [fetch_load_forecast_date(args.date, args.area)]
         else:
-            results = [fetch_load_forecast_date(date.today(), args.area)]
+            results = [fetch_load_forecast_date(stockholm_today(), args.area)]
     elif args.de_price:
         # DE-LU spot price mode
         if args.backfill:
@@ -1299,7 +1300,7 @@ def main() -> int:
         elif args.date:
             results = [fetch_de_price_date(args.date)]
         else:
-            results = [fetch_de_price_date(date.today())]
+            results = [fetch_de_price_date(stockholm_today())]
     elif args.balancing:
         # Balancing/imbalance price mode
         if args.backfill:
@@ -1307,15 +1308,15 @@ def main() -> int:
         elif args.date:
             results = [fetch_balancing_date(args.date, args.area)]
         else:
-            results = [fetch_balancing_date(date.today(), args.area)]
+            results = [fetch_balancing_date(stockholm_today(), args.area)]
     elif args.gas_price:
         # Gas price mode
         if args.from_date:
-            results = [fetch_gas_prices_range(args.from_date, args.to_date or date.today())]
+            results = [fetch_gas_prices_range(args.from_date, args.to_date or stockholm_today())]
         elif args.backfill:
             results = backfill_gas_prices(args.backfill)
         else:
-            today = date.today()
+            today = stockholm_today()
             start = today - timedelta(days=7)
             results = [fetch_gas_prices_range(start, today)]
     elif args.hydro:
@@ -1323,7 +1324,7 @@ def main() -> int:
         if args.backfill:
             results = backfill_hydro(args.backfill, args.area)
         else:
-            results = [fetch_hydro_date(date.today(), args.area)]
+            results = [fetch_hydro_date(stockholm_today(), args.area)]
     else:
         # Spot prices mode (default)
         if args.backfill:
@@ -1331,7 +1332,7 @@ def main() -> int:
         elif args.date:
             results = [fetch_date(args.date, args.area)]
         else:
-            today = date.today()
+            today = stockholm_today()
             tomorrow = today + timedelta(days=1)
             results = fetch_dates([today, tomorrow], args.area)
 

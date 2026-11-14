@@ -17,6 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models.forecast_accuracy import ForecastAccuracy
+from app.utils.timezone import stockholm_today
 
 _STOCKHOLM = ZoneInfo("Europe/Stockholm")
 
@@ -193,7 +194,7 @@ def get_accuracy(
     Returns: {model_name: {mae_sek_kwh, rmse_sek_kwh, n_samples, n_days}}
     Only includes rows where actual_sek_kwh is not null.
     """
-    cutoff = date.today() - timedelta(days=days)
+    cutoff = stockholm_today() - timedelta(days=days)
 
     # Production model names: lgbm (d+1), lgbm_d2..d7, same_weekday_avg
     # Exclude backtest-only models (lgbm_h1..h7) from user-facing accuracy
@@ -249,7 +250,7 @@ def get_accuracy_breakdown(
 
     Returns: {model_name: [{"key": int, "mae_sek_kwh": float, "rmse_sek_kwh": float, "n": int}, ...]}
     """
-    cutoff = date.today() - timedelta(days=days)
+    cutoff = stockholm_today() - timedelta(days=days)
 
     _PROD_MODELS = {"lgbm", "same_weekday_avg"} | {f"lgbm_d{h}" for h in range(2, 8)}
 
@@ -372,7 +373,7 @@ def get_coverage_rate(
 
     Returns: {coverage_pct, n_samples, expected_pct, calibration_error}
     """
-    cutoff = date.today() - timedelta(days=days)
+    cutoff = stockholm_today() - timedelta(days=days)
 
     rows = (
         db.query(ForecastAccuracy)

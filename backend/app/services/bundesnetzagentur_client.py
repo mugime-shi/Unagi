@@ -24,6 +24,8 @@ from datetime import date, datetime
 
 import httpx
 
+from app.utils.timezone import stockholm_today
+
 log = logging.getLogger(__name__)
 
 # Final API — historical settlement prices with date range.
@@ -183,7 +185,7 @@ def fetch_gas_prices_from_api() -> list[GasPricePoint]:
     publishes for the next gas-day) and future dates are dropped. The legacy
     Preismonitor field names are still accepted for the fallback host.
     """
-    today = date.today()
+    today = stockholm_today()
 
     def fetch_one(url: str, label: str) -> list[GasPricePoint]:
         points: list[GasPricePoint] = []
@@ -230,7 +232,7 @@ def fetch_gas_prices(
         log.warning("THE Final API failed: %s", exc)
 
     # Supplement: preliminary price for today (Final API lags ~1 day)
-    today = date.today()
+    today = stockholm_today()
     if start_date <= today <= end_date:
         try:
             today_points = fetch_gas_prices_from_api()
