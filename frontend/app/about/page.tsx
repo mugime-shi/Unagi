@@ -166,7 +166,11 @@ export default function AboutPage() {
             the dates of your first and latest visit in local storage, and we
             receive only the number of days since then — no identifier, IP
             address or browser details are stored. Browsers that send Do Not
-            Track or Global Privacy Control are not counted.
+            Track or Global Privacy Control are not counted. We also record
+            coarse time-on-page milestones (for example, the page stayed open
+            for ten seconds, one minute or five minutes) and which features were
+            used, such as the simulators or price alerts, again without any
+            identifier.
           </p>
         </Section>
 

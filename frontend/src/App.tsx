@@ -26,7 +26,7 @@ import { TodaysDrivers } from "./components/TodaysDrivers";
 import { ShapNarrative } from "./components/ShapNarrative";
 import { dateWithWeekday, formatPrice, PRICE_UNIT } from "./utils/formatters";
 import { addDaysISO, stockholmDateISO } from "./utils/stockholmDate";
-import { trackEvent, trackVisit } from "./utils/track";
+import { trackEngagement, trackEvent, trackVisit } from "./utils/track";
 import type {
   Area,
   Tab,
@@ -106,6 +106,7 @@ function AppInner() {
   useEffect(() => {
     trackVisit();
   }, []);
+  useEffect(() => trackEngagement(), []);
   useEffect(() => {
     trackEvent("layer_view", layer);
   }, [layer]);
@@ -846,6 +847,7 @@ function AppInner() {
                       data={weeklyData}
                       loading={weeklyLoading}
                       onDateSelect={(d: string) => {
+                        trackEvent("action", "weekly_day_select");
                         setTab("tomorrow");
                         setForecastDate(d);
                       }}

@@ -29,9 +29,9 @@ class UsageEvent(Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
-    # visit | layer_view | tab_view | area_select (validated in the router)
+    # visit | layer_view | tab_view | area_select | engagement | action (validated in the router)
     event: Mapped[str] = mapped_column(String(32), nullable=False)
-    # layer / tab / area name, or referrer hostname for `visit`
+    # layer / tab / area name, referrer hostname for `visit`, milestone for `engagement`, step name for `action`
     label: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # `visit` only: 0 for a first-ever visit
     days_since_first: Mapped[int | None] = mapped_column(Integer, nullable=True)

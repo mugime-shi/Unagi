@@ -75,7 +75,23 @@ def test_view_event_drops_day_offsets(client, db):
 @pytest.mark.parametrize(
     "body",
     [
+        {"event": "engagement", "label": "10s"},
+        {"event": "action", "label": "solar_simulate"},
+    ],
+)
+def test_engagement_and_action_recorded(client, db, body):
+    assert client.post("/api/v1/events", json=body).status_code == 204
+    row = db.query(UsageEvent).one()
+    assert (row.event, row.label) == (body["event"], body["label"])
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
         {"event": "purchase"},  # unknown event
+        {"event": "action", "label": "click here"},  # space not allowed
+        {"event": "engagement", "label": "5 m"},
+        {"event": "action", "label": "a@b"},
         {"event": "visit"},  # visit without offsets
         {"event": "visit", "days_since_first": 2, "days_since_last": 5},  # last > first
         {"event": "visit", "days_since_first": -1},

@@ -1,4 +1,5 @@
 import { usePushNotification } from "../hooks/usePushNotification";
+import { trackEvent } from "../utils/track";
 import type { Area } from "../types/index";
 
 interface NotificationBellProps {
@@ -22,7 +23,14 @@ export function NotificationBell({ area }: NotificationBellProps) {
 
   return (
     <button
-      onClick={isSubscribed ? unsubscribe : subscribe}
+      onClick={() => {
+        if (isSubscribed) {
+          unsubscribe();
+        } else {
+          trackEvent("action", "notify_prompt");
+          subscribe();
+        }
+      }}
       title={label}
       aria-label={label}
       className={`p-1.5 rounded-lg transition-colors ${

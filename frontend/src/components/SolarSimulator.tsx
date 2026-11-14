@@ -1,6 +1,7 @@
 import { FormEvent, ReactElement, useState } from "react";
 import { formatPrice, PRICE_UNIT } from "../utils/formatters";
 import { useSolar } from "../hooks/useSolar";
+import { trackEvent } from "../utils/track";
 
 // Extended solar result from the API (richer than SolarResult in types/index.ts)
 interface SolarApiResult {
@@ -111,6 +112,7 @@ export function SolarSimulator(): ReactElement {
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>): void => {
     e.preventDefault();
+    trackEvent("action", "solar_simulate");
     run({
       panel_kwp: parseFloat(panelKwp),
       battery_kwh: parseFloat(batteryKwh),
