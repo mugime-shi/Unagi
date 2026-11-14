@@ -42,11 +42,28 @@ import type {
 const ZONES: Area[] = ["SE1", "SE2", "SE3", "SE4"];
 
 // Status colors: emerald / amber / rose (500 shade)
-const STATUS_COLOR: Record<NuclearUnit["status"], string> = {
+const STATUS_COLOR: Record<PlantStatus, string> = {
   running: "#10b981",
   reduced: "#f59e0b",
   offline: "#f43f5e",
+  unknown: "#94a3b8",
 };
+
+/**
+ * The reactors are fixed, so their sites are drawn even without the outage feed (status "unknown").
+ * Mirrors NUCLEAR_UNITS in backend/app/services/outage_service.py.
+ */
+const NUCLEAR_UNITS: { name: string; area: string; mw: number }[] = [
+  { name: "Forsmark 1", area: "SE3", mw: 1100 },
+  { name: "Forsmark 2", area: "SE3", mw: 1121 },
+  { name: "Forsmark 3", area: "SE3", mw: 1172 },
+  { name: "Ringhals 3", area: "SE3", mw: 1063 },
+  { name: "Ringhals 4", area: "SE3", mw: 1134 },
+  { name: "Oskarshamn 3", area: "SE3", mw: 1400 },
+];
+
+/** A reactor as drawn: the feed's record, or a placeholder with status "unknown". */
+type SiteUnit = Omit<NuclearUnit, "status"> & { status: PlantStatus };
 
 // Luminous price scale, öre/kWh → cyan glow (cheap) · mint · amber · coral · magenta (expensive).
 // The mint and coral stops keep the RGB interpolation vivid (cyan→amber direct would pass through a pale grey-green).
@@ -195,12 +212,12 @@ interface SwedenMapProps {
   outagesError?: boolean;
 }
 
-function siteOf(unit: NuclearUnit): string {
+function siteOf(unit: { name: string }): string {
   return unit.name.replace(/\s+\d+$/, "");
 }
 
 /** "Forsmark 1" -> "F1" */
-function shortName(unit: NuclearUnit): string {
+function shortName(unit: { name: string }): string {
   return unit.name.replace(/^(\S)\S*\s+(\d+)$/, "$1$2");
 }
 
@@ -213,7 +230,7 @@ function backDate(iso: string): string {
   });
 }
 
-function earliestReturn(units: NuclearUnit[]): string | null {
+function earliestReturn(units: SiteUnit[]): string | null {
   const ends = units
     .filter((u) => u.status === "offline" && u.outage)
     .map((u) => u.outage!.end)
@@ -240,7 +257,7 @@ interface Detail {
   id: string;
   title: string;
   sub?: string;
-  status: NuclearUnit["status"];
+  status: PlantStatus;
   availableMw: number;
   nominalMw: number;
   outage: OutageInfo | null;
@@ -250,16 +267,17 @@ interface Detail {
   plant?: boolean;
   wind?: boolean;
   /** Nuclear site: its reactors (rendered as chips + summary). */
-  units?: NuclearUnit[];
+  units?: SiteUnit[];
 }
 
-const STATUS_LABEL: Record<NuclearUnit["status"], string> = {
+const STATUS_LABEL: Record<PlantStatus, string> = {
   running: "Running",
   reduced: "Reduced",
   offline: "Offline",
+  unknown: "Unknown",
 };
 
-const siteDetail = (site: string, units: NuclearUnit[]): Detail => ({
+const siteDetail = (site: string, units: SiteUnit[]): Detail => ({
   id: `nuclear:${site}`,
   title: site,
   sub: units[0]?.area,
@@ -325,18 +343,21 @@ const PLANT_STATUS_LABEL: Record<PlantStatus, string> = {
   running: "Available",
   reduced: "Reduced",
   offline: "Offline",
+  unknown: "Unknown",
 };
 
 function PlantBody({ d }: { d: Detail }) {
   const c = STATUS_COLOR[d.status];
   const line =
-    d.status === "offline"
-      ? "Offline"
-      : d.status === "reduced"
-        ? `Reduced: ${Math.round(d.availableMw)} of ${Math.round(d.nominalMw)} MW available`
-        : d.outage
-          ? "Available"
-          : "Available — no outage reported";
+    d.status === "unknown"
+      ? "Status unavailable right now"
+      : d.status === "offline"
+        ? "Offline"
+        : d.status === "reduced"
+          ? `Reduced: ${Math.round(d.availableMw)} of ${Math.round(d.nominalMw)} MW available`
+          : d.outage
+            ? "Available"
+            : "Available — no outage reported";
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2">
@@ -357,7 +378,7 @@ function PlantBody({ d }: { d: Detail }) {
       </p>
       <p className="text-[11px] text-content-secondary tabular-nums">{line}</p>
       <OutageLines d={d} />
-      {d.wind && !d.outage && (
+      {d.wind && !d.outage && d.status !== "unknown" && (
         <p className="text-[10px] text-content-muted">
           Output depends on wind; ENTSO-E publishes no per-plant output for
           Sweden.
@@ -412,7 +433,7 @@ interface PopCtl {
 }
 
 /** Reactor chip: unit name tinted by its status. */
-function ReactorChip({ unit }: { unit: NuclearUnit }) {
+function ReactorChip({ unit }: { unit: SiteUnit }) {
   const c = STATUS_COLOR[unit.status];
   return (
     <span
@@ -430,7 +451,7 @@ function ReactorChip({ unit }: { unit: NuclearUnit }) {
 }
 
 /** Nuclear site popover body: per-reactor chips, offline summary and expected return. */
-function SiteBody({ d, units }: { d: Detail; units: NuclearUnit[] }) {
+function SiteBody({ d, units }: { d: Detail; units: SiteUnit[] }) {
   const back = earliestReturn(units);
   const off = units.filter((u) => u.status === "offline").length;
   const lost = units.reduce(
@@ -450,7 +471,9 @@ function SiteBody({ d, units }: { d: Detail; units: NuclearUnit[] }) {
           className="text-[10px] tabular-nums"
           style={{ color: lost > 0 ? STATUS_COLOR.offline : undefined }}
         >
-          {lost > 0 ? (
+          {d.status === "unknown" ? (
+            <span className="text-content-muted">status unavailable</span>
+          ) : lost > 0 ? (
             `${off}/${units.length} offline · ${gw(lost)} GW`
           ) : (
             <span className="text-content-muted">all running</span>
@@ -478,6 +501,7 @@ function SummaryCard({
   onHoverZone,
   spread,
   outages,
+  outagesError,
 }: {
   prices: Record<Area, ZonePriceSummary> | null;
   trends?: Record<Area, "up" | "down" | null> | null;
@@ -487,6 +511,7 @@ function SummaryCard({
   onHoverZone?: (zone: Area | null) => void;
   spread: number | null;
   outages: OutagesResponse | null;
+  outagesError?: boolean;
 }) {
   const total = outages?.nuclear.reduce((sum, u) => sum + u.nominal_mw, 0) ?? 0;
   const offline = outages?.nuclear_offline_mw ?? 0;
@@ -600,6 +625,16 @@ function SummaryCard({
           </p>
         </div>
       )}
+      {!outages && outagesError && (
+        <div className={divider}>
+          <p className="text-[10px] uppercase tracking-wide text-content-muted">
+            Nuclear
+          </p>
+          <p className="text-[11px] text-content-muted">
+            Reactor status unavailable right now
+          </p>
+        </div>
+      )}
       {outages && (
         <div className={divider}>
           <p className="text-[10px] uppercase tracking-wide text-content-muted">
@@ -647,11 +682,13 @@ interface MapPlant {
 }
 
 const worstStatus = (list: PlantStatus[]): PlantStatus =>
-  list.includes("offline")
-    ? "offline"
-    : list.includes("reduced")
-      ? "reduced"
-      : "running";
+  list.length > 0 && list.every((s) => s === "unknown")
+    ? "unknown"
+    : list.includes("offline")
+      ? "offline"
+      : list.includes("reduced")
+        ? "reduced"
+        : "running";
 /** A cluster of one is the marker itself and keeps its plain key. */
 const clusterId = (c: Cluster<MapPlant>) =>
   c.members.length > 1 ? `cluster:${c.seed.key}` : c.seed.key;
@@ -777,9 +814,19 @@ export function SwedenMap({
   };
 
   // Group reactors by site, keeping API order
+  // Every reactor is always drawn; the feed only supplies status (placeholder "unknown" until it loads)
   const bySite = useMemo(() => {
-    const m = new Map<string, NuclearUnit[]>();
-    for (const u of outages?.nuclear ?? []) {
+    const feed = new Map((outages?.nuclear ?? []).map((u) => [u.name, u]));
+    const m = new Map<string, SiteUnit[]>();
+    for (const r of NUCLEAR_UNITS) {
+      const u: SiteUnit = feed.get(r.name) ?? {
+        name: r.name,
+        area: r.area,
+        nominal_mw: r.mw,
+        available_mw: r.mw,
+        status: "unknown",
+        outage: null,
+      };
       const s = siteOf(u);
       m.set(s, [...(m.get(s) ?? []), u]);
     }
@@ -801,11 +848,12 @@ export function SwedenMap({
   const plants = useMemo(() => {
     const other = outages?.other ?? [];
     const byEic = outagesByEic(other);
+    const known = outages != null;
     const list = PLANT_GROUPS.map((g) =>
       mapPlant(
         `plant:${g.key}`,
         g.xy,
-        g.units.map((u) => plantState(u, byEic.get(u.eic))),
+        g.units.map((u) => plantState(u, byEic.get(u.eic), known)),
       ),
     );
     // Big outages the plant list does not know (feed names units differently): fall back to the name table
@@ -1062,7 +1110,7 @@ export function SwedenMap({
     Object.keys(FUEL_CAT_LABEL) as FuelCat[]
   ).filter(
     (c) =>
-      (c === "nuclear" && outages != null) ||
+      c === "nuclear" ||
       PLANT_CATS.includes(c) ||
       plants.some((p) => p.cat === c),
   );
@@ -1246,6 +1294,7 @@ export function SwedenMap({
                   onHoverZone={onHoverZone}
                   spread={showSpread ? spread : null}
                   outages={outages}
+                  outagesError={outagesError}
                 />
               </div>
 
@@ -1261,7 +1310,12 @@ export function SwedenMap({
                   bottom: "2%",
                 })}
               >
-                <Legend gradient={gradient} cats={legendCats} stacked />
+                <Legend
+                  gradient={gradient}
+                  cats={legendCats}
+                  stacked
+                  unknown={!outages}
+                />
                 <UnmappedOutages
                   items={unmappedOther}
                   error={outagesError}
@@ -1345,9 +1399,10 @@ export function SwedenMap({
                 ? `${count} plants near ${m.names.split(", ")[0]}: ${
                     [off && `${off} offline`, red && `${red} reduced`]
                       .filter(Boolean)
-                      .join(", ") || "all available"
+                      .join(", ") ||
+                    (status === "unknown" ? "status unknown" : "all available")
                   }, ${split ? "zoom in" : "details"}`
-                : `${m.names}: ${status === "running" ? "available" : status}, details`;
+                : `${m.names}: ${status === "running" ? "available" : status === "unknown" ? "status unknown" : status}, details`;
             // Splittable clusters zoom in on click (no popover); everything else is an ordinary popover trigger
             const trigger = split
               ? {
@@ -1513,7 +1568,7 @@ export function SwedenMap({
 
         {!wide && (
           <div className="mt-2 space-y-1">
-            <Legend gradient={gradient} cats={legendCats} />
+            <Legend gradient={gradient} cats={legendCats} unknown={!outages} />
             <UnmappedOutages
               items={unmappedOther}
               error={outagesError}
@@ -1552,19 +1607,22 @@ function ZoomButton({
   );
 }
 
-const LEGEND_STATUS = [
+const LEGEND_STATUS: [PlantStatus, string][] = [
   ["running", "available"],
   ["reduced", "reduced"],
   ["offline", "offline"],
-] as const;
+];
 
 function Legend({
   gradient,
   cats,
   stacked,
+  unknown,
 }: {
   gradient: string;
   cats: FuelCat[];
+  /** Status feed missing: the dots are grey, so the legend explains grey instead of the three states. */
+  unknown?: boolean;
   /** Wide layout: gradient on top, then status and fuel lists side by side, one item per row. */
   stacked?: boolean;
 }) {
@@ -1582,7 +1640,9 @@ function Legend({
       </div>
     </>
   );
-  const statusItems = LEGEND_STATUS.map(([s, label]) => (
+  const statusItems = (
+    unknown ? ([["unknown", "status unknown"]] as const) : LEGEND_STATUS
+  ).map(([s, label]) => (
     <span key={s} className="inline-flex items-center gap-1">
       <span
         className="inline-block w-2 h-2 rounded-full"
@@ -1660,7 +1720,7 @@ function UnmappedOutages({
   if (error)
     return (
       <p className="text-[10px] text-content-muted">
-        Outage data is unavailable right now.
+        Plant status unavailable right now.
       </p>
     );
   if (items.length === 0) return null;

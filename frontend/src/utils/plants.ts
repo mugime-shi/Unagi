@@ -2,7 +2,8 @@ import zoneMap from "../data/swedenZones.json";
 import { fuelCat, type FuelCat } from "./fuel";
 import type { OtherOutage } from "../types/index";
 
-export type PlantStatus = "running" | "reduced" | "offline";
+/** "unknown": the outage feed has not loaded (or failed), so no status is claimed — never default to "running". */
+export type PlantStatus = "running" | "reduced" | "offline" | "unknown";
 export type Pt = [number, number];
 
 export interface PlantUnit {
@@ -64,14 +65,16 @@ export const PLANT_CATS: FuelCat[] = Array.from(
 
 /**
  * Status of a co-located group / nuclear site: offline only when EVERY unit is offline; any other partial
- * outage (some offline or reduced) is "reduced"; all available is "running".
+ * outage (some offline or reduced) is "reduced"; all available is "running". Any unknown unit makes the group unknown.
  */
 export const groupStatus = (list: PlantStatus[]): PlantStatus =>
-  list.length > 0 && list.every((s) => s === "offline")
-    ? "offline"
-    : list.some((s) => s !== "running")
-      ? "reduced"
-      : "running";
+  list.includes("unknown")
+    ? "unknown"
+    : list.length > 0 && list.every((s) => s === "offline")
+      ? "offline"
+      : list.some((s) => s !== "running")
+        ? "reduced"
+        : "running";
 
 /** Per-plant outage lookup by resource_eic; several outages on one unit keep the deepest. */
 export function outagesByEic(other: OtherOutage[]): Map<string, OtherOutage> {
@@ -87,16 +90,20 @@ export function outagesByEic(other: OtherOutage[]): Map<string, OtherOutage> {
 export function plantState(
   unit: PlantUnit,
   outage: OtherOutage | undefined,
+  /** False while the outage feed is missing: "no outage found" would otherwise read as "running". */
+  known = true,
 ): PlantState {
   const nominalMw = outage?.nominal_mw ?? unit.mw;
   const availableMw = outage?.available_mw ?? unit.mw;
-  const status: PlantStatus = !outage
-    ? "running"
-    : availableMw <= 0
-      ? "offline"
-      : availableMw < nominalMw
-        ? "reduced"
-        : "running";
+  const status: PlantStatus = !known
+    ? "unknown"
+    : !outage
+      ? "running"
+      : availableMw <= 0
+        ? "offline"
+        : availableMw < nominalMw
+          ? "reduced"
+          : "running";
   return {
     unit,
     nominalMw,
