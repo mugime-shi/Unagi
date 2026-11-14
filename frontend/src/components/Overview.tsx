@@ -237,14 +237,6 @@ export function Overview({
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row gap-1 sm:gap-4 sm:items-start sm:justify-between">
-        <h1 className="text-lg font-semibold text-content-primary">
-          Sweden Electricity Overview
-        </h1>
-        <UpdateBadge />
-      </div>
-
       <TodayStory />
 
       {/* Zone prices lead the page: "what does it cost right now" is the most
@@ -252,9 +244,15 @@ export function Overview({
           the forecast so the actionable "what's coming" sits above the fold. */}
       <div>
         <div className="bg-surface-primary rounded-2xl p-4">
-          <h2 className="text-base font-medium text-content-primary mb-3">
-            Right now
-          </h2>
+          {/* Title + badge row like the Prices / Cost tabs, but a card-title h2: the global h1 rule (Fraunces, 26px)
+              is unlayered and beats Tailwind classes, and a display serif inside a card stood out. The badge
+              refreshes the whole page, not just the map. */}
+          <div className="flex flex-col sm:flex-row gap-1 sm:gap-4 sm:items-center sm:justify-between mb-3">
+            <h2 className="text-base font-medium text-content-primary">
+              Sweden Electricity Overview
+            </h2>
+            <UpdateBadge />
+          </div>
           <SwedenMap
             layout={isNarrow ? "compact" : "wide"}
             prices={priceData}
