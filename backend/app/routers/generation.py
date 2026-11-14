@@ -59,7 +59,7 @@ AreaDep = Annotated[
 # ---------------------------------------------------------------------------
 # In-memory cache (survives between Lambda warm invocations)
 # ---------------------------------------------------------------------------
-_CACHE_TTL = 5 * 60  # seconds — the DB is refreshed every 15 min by the warmer, so a DB read is cheap
+_CACHE_TTL = 5 * 60  # seconds — the hourly_generation scheduler task refreshes the DB (hourly), so a DB read is cheap
 _generation_cache: dict[tuple[str, str], tuple[dict, float]] = {}
 
 
@@ -83,7 +83,7 @@ def get_today_generation(db: DbDep, area: AreaDep = "SE3"):
     and an hourly time series.
 
     Source: ENTSO-E A75 processType=A16 (Realised). Data lags ~15-30 min.
-    The EventBridge warmer refreshes today's data every 15 min, so this endpoint only reads the DB.
+    The hourly_generation scheduler task refreshes today + yesterday for SE1-SE4, so this endpoint only reads the DB.
     A live ENTSO-E fetch happens only as a last resort when neither today nor yesterday is in the DB.
     """
     if area not in VALID_AREAS:
@@ -107,7 +107,7 @@ def get_today_generation(db: DbDep, area: AreaDep = "SE3"):
             today = yesterday
 
     if not rows:
-        # Fresh DB / local dev: nothing for the warmer to have stored yet.
+        # Fresh DB / local dev: nothing for the hourly scheduler task to have stored yet.
         try:
             rows = fetch_and_store_generation(db, today, area)
         except EntsoEError as exc:
