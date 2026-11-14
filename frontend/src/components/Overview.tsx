@@ -237,7 +237,7 @@ export function Overview({
 
   return (
     <div className="space-y-4">
-      <TodayStory />
+      <TodayStory onZoneClick={onZoneClick} />
 
       {/* Zone prices lead the page: "what does it cost right now" is the most
           common question. Generation mix (the background/context) moves below
@@ -251,7 +251,7 @@ export function Overview({
             <h2 className="text-base font-medium text-content-primary">
               Sweden Electricity Overview
             </h2>
-            <UpdateBadge />
+            <UpdateBadge timeOnly />
           </div>
           <SwedenMap
             layout={isNarrow ? "compact" : "wide"}
