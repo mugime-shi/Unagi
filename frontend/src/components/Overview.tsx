@@ -12,7 +12,7 @@ import { useIsMobile } from "../hooks/useIsMobile";
 import { UpdateBadge } from "./UpdateBadge";
 import { TodayStory } from "./TodayStory";
 import { MapAttribution, SwedenMap } from "./SwedenMap";
-import { MapTimeline } from "./MapTimeline";
+import { MapTimeline, ZoneReadout } from "./MapTimeline";
 import { useZoneForecastFeed } from "../hooks/useZoneForecastFeed";
 import { hourFloor, timelineView } from "../utils/mapTimeline";
 import { TrendArrow } from "./TrendArrow";
@@ -291,7 +291,6 @@ export function Overview({
                   selectedMs={timelineMs}
                   onSelect={setTimelineMs}
                   view={timeline}
-                  showZoneValues={isNarrow}
                 />
               )
             }
@@ -310,6 +309,7 @@ export function Overview({
                 : null
             }
           />
+          {isNarrow && timeline && <ZoneReadout view={timeline} />}
           {isNarrow && (
             <div className="mt-4">
               {priceLoading && !priceData ? (

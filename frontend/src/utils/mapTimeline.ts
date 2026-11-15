@@ -13,6 +13,7 @@ export const MAP_TIMELINE_TEXT = {
   forecastHeading: (n: number) =>
     n > 0 ? `Forecast · d+${n}` : "Forecast · today",
   noData: "No data",
+  forecastShort: "forecast",
   noDataZone: "no data",
   intervalTitle: "80% forecast interval",
   legendScale: "hourly price",
@@ -74,6 +75,16 @@ export function formatTimelineTime(ms: number): string {
     .map((p) => p.value)
     .join(" ");
   return `${day} · ${HOUR_FMT.format(d)}`;
+}
+
+/** Short label for the one-line band, e.g. "Tue 14:00". */
+export function formatTimelineShort(ms: number): string {
+  const d = new Date(ms);
+  const wd = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Stockholm",
+    weekday: "short",
+  }).format(d);
+  return `${wd} ${HOUR_FMT.format(d)}`;
 }
 
 /** First instant of the current hour. Stockholm offsets are whole hours, so UTC hour == local hour. */

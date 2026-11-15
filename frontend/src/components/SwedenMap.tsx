@@ -179,6 +179,19 @@ const MOBILE_VB = zoneMap.mobileViewBox as unknown as [
 ];
 // Cropped to Sweden (+ margin for the cards) so the country fills a taller figure: 940x1000 vs the full 1170x1000
 const WIDE_VB: [number, number, number, number] = [70, 0, 940, zoneMap.height];
+// Extra sea under the map while the overlay band is shown, so the band stays clear of Skåne's southern tip
+const WIDE_VB_BAND: [number, number, number, number] = [
+  WIDE_VB[0],
+  WIDE_VB[1],
+  WIDE_VB[2],
+  WIDE_VB[3] + 30,
+];
+const MOBILE_VB_BAND: [number, number, number, number] = [
+  MOBILE_VB[0],
+  MOBILE_VB[1],
+  MOBILE_VB[2],
+  MOBILE_VB[3] + 60,
+];
 
 // ── Overlay layout (percent of the map box; y = vertical centre of the card) ──
 const ZONE_CITY: Record<Area, string> = {
@@ -828,7 +841,13 @@ export function SwedenMap({
   );
 
   const wide = layout === "wide";
-  const base = wide ? WIDE_VB : MOBILE_VB;
+  const base = overlay
+    ? wide
+      ? WIDE_VB_BAND
+      : MOBILE_VB_BAND
+    : wide
+      ? WIDE_VB
+      : MOBILE_VB;
   const [, , bw, bh] = base;
   const boxRef = useRef<HTMLDivElement>(null);
   const measured = useElementWidth(boxRef);

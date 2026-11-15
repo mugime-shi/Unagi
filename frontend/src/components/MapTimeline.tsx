@@ -14,6 +14,7 @@ import { GLASS_STYLE } from "../utils/mapGlass";
 import {
   HOUR_MS,
   MAP_TIMELINE_TEXT as T,
+  formatTimelineShort,
   formatTimelineTime,
   hourFloor,
   lastActualIndex,
@@ -51,9 +52,7 @@ interface MapTimelineProps {
   /** Selected hour start (epoch ms, UTC); null = Now. */
   selectedMs: number | null;
   onSelect: (ms: number | null) => void;
-  /** View at the selected hour, for the per-zone readout shown on narrow layouts. */
   view: MapTimelineView | null;
-  showZoneValues: boolean;
 }
 
 export function MapTimeline({
@@ -61,7 +60,6 @@ export function MapTimeline({
   selectedMs,
   onSelect,
   view,
-  showZoneValues,
 }: MapTimelineProps) {
   const reduced = useReducedMotion();
   const [playing, setPlaying] = useState(false);
@@ -97,26 +95,18 @@ export function MapTimeline({
     return () => clearInterval(id);
   }, [playing, reduced]);
 
-  // Day boundaries (Stockholm midnight) and the actual/forecast split, as
-  // fractions of the track, so the scale reads as "days from now".
+  // Stockholm midnights and the actual/forecast split, as fractions of the track
   const marks = useMemo(() => {
     if (!range) return null;
-    const dayFmt = new Intl.DateTimeFormat("en-GB", {
-      timeZone: "Europe/Stockholm",
-      weekday: "short",
-    });
     const hourFmt = new Intl.DateTimeFormat("en-GB", {
       timeZone: "Europe/Stockholm",
       hour: "2-digit",
       hour12: false,
     });
-    const days: { frac: number; label: string }[] = [];
+    const days: number[] = [];
     for (let t = range.start + HOUR_MS; t <= range.end; t += HOUR_MS) {
       if (hourFmt.format(new Date(t)) === "00")
-        days.push({
-          frac: (t - range.start) / (range.end - range.start),
-          label: dayFmt.format(new Date(t)),
-        });
+        days.push((t - range.start) / (range.end - range.start));
     }
     const a = lastActualIndex(feeds, range.start, range.end);
     return { days, actualFrac: a < 0 ? 0 : a / lastIdx };
@@ -139,7 +129,8 @@ export function MapTimeline({
     setPlaying(true);
   };
 
-  const when = formatTimelineTime(selectedMs ?? start);
+  const at = selectedMs ?? start;
+  const when = formatTimelineTime(at);
   const heading = !view
     ? T.actualBadge
     : view.noData
@@ -147,55 +138,72 @@ export function MapTimeline({
       : view.forecast
         ? view.heading
         : T.actualBadge;
-  const pct = Math.round(marks.actualFrac * 100);
+  const note = view?.noData
+    ? T.noData
+    : view?.forecast
+      ? T.forecastShort
+      : null;
+  const pct = marks.actualFrac * 100;
 
   return (
-    // Overlay band at the map's foot: data-map-ui keeps drags on the slider from panning the map
+    // One-line band at the map's foot; data-map-ui keeps drags on the slider from panning the map
     <div
       data-map-ui
-      className="w-full rounded-xl px-2.5 py-1.5 pointer-events-auto"
+      className="flex w-full items-center gap-1 rounded-xl px-1.5 pointer-events-auto"
       style={GLASS_STYLE}
     >
-      <div className="flex items-center gap-1">
-        {/* Visually small, 32px tap target */}
-        <button
-          type="button"
-          onClick={togglePlay}
-          aria-label={playing ? T.pause : T.play}
-          title={playing ? T.pause : T.play}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-content-secondary hover:text-content-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-            {playing ? (
-              <path d="M2 1h3v10H2zM7 1h3v10H7z" fill="currentColor" />
-            ) : (
-              <path d="M2 1l9 5-9 5z" fill="currentColor" />
-            )}
-          </svg>
-        </button>
-        {selectedMs != null && idx > 0 && (
-          <button
-            type="button"
-            onClick={() => {
-              setPlaying(false);
-              onSelect(null);
-            }}
-            className="shrink-0 text-xs text-sky-600 dark:text-sky-400 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 rounded"
-          >
-            {T.now}
-          </button>
-        )}
-        <p className="ml-auto min-w-0 text-right text-xs text-content-primary tabular-nums whitespace-nowrap">
-          <span className="font-medium">{when}</span>
-          <span
-            className={`ml-2 ${view?.forecast ? "text-amber-600 dark:text-amber-400" : "text-content-muted"}`}
-          >
-            {heading}
-          </span>
-        </p>
-      </div>
+      {/* Visually small, 32px tap target */}
+      <button
+        type="button"
+        onClick={togglePlay}
+        aria-label={playing ? T.pause : T.play}
+        title={playing ? T.pause : T.play}
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-content-secondary hover:text-content-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+      >
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+          {playing ? (
+            <path d="M2 1h3v10H2zM7 1h3v10H7z" fill="currentColor" />
+          ) : (
+            <path d="M2 1l9 5-9 5z" fill="currentColor" />
+          )}
+        </svg>
+      </button>
 
-      <div className="px-1">
+      <div className="relative min-w-0 flex-1">
+        {/* Track: solid = settled prices, dashed = forecast, ticks = Stockholm midnights.
+            Inset by the thumb radius so fractions line up with the thumb centre. */}
+        <div
+          className="pointer-events-none absolute inset-y-0 left-1.5 right-1.5"
+          aria-hidden="true"
+        >
+          <div
+            className="absolute left-0 top-1/2 h-0.5 -translate-y-1/2 rounded-full"
+            style={{
+              width: `${pct}%`,
+              background:
+                "color-mix(in srgb, var(--text-primary) 65%, transparent)",
+            }}
+          />
+          <div
+            className="absolute right-0 top-1/2 h-0.5 -translate-y-1/2"
+            style={{
+              left: `${pct}%`,
+              background:
+                "repeating-linear-gradient(to right, color-mix(in srgb, var(--text-primary) 40%, transparent) 0 4px, transparent 4px 7px)",
+            }}
+          />
+          {marks.days.map((f) => (
+            <span
+              key={f}
+              className="absolute top-1/2 h-2 w-px -translate-y-1/2"
+              style={{
+                left: `${f * 100}%`,
+                background:
+                  "color-mix(in srgb, var(--text-primary) 35%, transparent)",
+              }}
+            />
+          ))}
+        </div>
         <input
           type="range"
           min={0}
@@ -208,55 +216,57 @@ export function MapTimeline({
           }}
           aria-label={T.sliderLabel}
           aria-valuetext={`${when}, ${heading}`}
-          className="block w-full cursor-pointer accent-sky-500"
+          className="map-range relative"
         />
-        {/* Track scale: solid = settled prices, fading = forecast; day ticks in Stockholm time */}
-        <div
-          className="relative mx-2 h-0.5 rounded-full"
-          aria-hidden="true"
-          style={{
-            background: `linear-gradient(to right, var(--text-secondary) 0%, var(--text-secondary) ${pct}%, color-mix(in srgb, var(--text-secondary) 45%, transparent) ${pct}%, color-mix(in srgb, var(--text-secondary) 8%, transparent) 100%)`,
-          }}
-        />
-        <div
-          className="relative mx-2 mt-0.5 h-3 text-[10px] leading-3 text-content-muted"
-          aria-hidden="true"
-        >
-          {marks.days.map((d) => (
-            <span
-              key={d.frac}
-              className="absolute -translate-x-1/2 whitespace-nowrap"
-              style={{ left: `${d.frac * 100}%` }}
-            >
-              {d.label}
-            </span>
-          ))}
-        </div>
       </div>
 
-      {showZoneValues && view && (
-        <div className="mt-1 grid grid-cols-4 gap-1 text-center text-[11px] tabular-nums">
-          {ZONES.map((z) => {
-            const v = view.zones[z];
-            return (
-              <div key={z} className="leading-tight">
-                <span className="text-[10px] text-content-muted">{z} </span>
-                <span className="font-semibold text-content-primary">
-                  {v ? formatPrice(v.price) : "—"}
-                </span>
-                {v?.low != null && v.high != null && (
-                  <p
-                    className="text-[10px] text-content-muted"
-                    title={T.intervalTitle}
-                  >
-                    {formatPrice(v.low)}–{formatPrice(v.high)}
-                  </p>
-                )}
-              </div>
-            );
-          })}
-        </div>
+      <p className="shrink-0 whitespace-nowrap pl-1 text-xs tabular-nums text-content-primary">
+        <span className="font-medium">{formatTimelineShort(at)}</span>
+        {note && (
+          <span className="ml-1 italic text-amber-600 dark:text-amber-400">
+            {note}
+          </span>
+        )}
+      </p>
+      {selectedMs != null && idx > 0 && (
+        <button
+          type="button"
+          onClick={() => {
+            setPlaying(false);
+            onSelect(null);
+          }}
+          className="shrink-0 rounded px-1 text-xs text-sky-600 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:text-sky-400"
+        >
+          {T.now}
+        </button>
       )}
+    </div>
+  );
+}
+
+/** Per-zone values at the shown hour, for layouts where the map carries no price card (narrow). */
+export function ZoneReadout({ view }: { view: MapTimelineView }) {
+  return (
+    <div className="mt-2 grid grid-cols-4 gap-1 text-center text-[11px] tabular-nums">
+      {ZONES.map((z) => {
+        const v = view.zones[z];
+        return (
+          <div key={z} className="leading-tight">
+            <span className="text-[10px] text-content-muted">{z} </span>
+            <span className="font-semibold text-content-primary">
+              {v ? formatPrice(v.price) : "—"}
+            </span>
+            {v?.low != null && v.high != null && (
+              <p
+                className="text-[10px] text-content-muted"
+                title={T.intervalTitle}
+              >
+                {formatPrice(v.low)}–{formatPrice(v.high)}
+              </p>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

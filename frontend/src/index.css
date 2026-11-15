@@ -45,8 +45,15 @@
 
 html,
 body {
-  background-color: var(--surface-page); /* prevents white flash on iOS overscroll */
-  font-family: var(--font-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  background-color: var(
+    --surface-page
+  ); /* prevents white flash on iOS overscroll */
+  font-family:
+    var(--font-sans),
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
 }
 
 /* ── Display type (Fraunces) — h1 & tagline only ──
@@ -56,13 +63,16 @@ body {
 h1,
 .font-display {
   font-family: var(--font-display), Georgia, Cambria, serif;
-  font-variation-settings: "opsz" 36, "SOFT" 60, "WONK" 1;
+  font-variation-settings:
+    "opsz" 36,
+    "SOFT" 60,
+    "WONK" 1;
   letter-spacing: -0.01em;
 }
 
 /* Page titles (h1) get an extra bump since they anchor the layout */
 h1 {
-  font-size: 1.25rem;   /* 20px mobile */
+  font-size: 1.25rem; /* 20px mobile */
   line-height: 1.3;
 }
 
@@ -78,7 +88,11 @@ h1 {
  */
 h2,
 h3 {
-  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  font-family:
+    var(--font-sans),
+    system-ui,
+    -apple-system,
+    sans-serif;
   font-weight: 600;
   letter-spacing: -0.005em;
 }
@@ -109,18 +123,98 @@ h3 {
  * To opt out at a specific site, use an arbitrary value like `text-[14px]`
  * — arbitrary values bypass these rules.
  */
-.text-\[10px\] { font-size: 11px; line-height: 15px; }
-.text-\[11px\] { font-size: 12px; line-height: 16px; }
-.text-xs       { font-size: 0.8125rem; line-height: 1.5; }  /* 13 / 19.5 */
-.text-sm       { font-size: 0.9375rem; line-height: 1.5; }  /* 15 / 22.5 */
-.text-base     { font-size: 1rem;      line-height: 1.5; }  /* 16 / 24 */
-.text-lg       { font-size: 1.125rem;  line-height: 1.4; }  /* 18 / 25 */
+.text-\[10px\] {
+  font-size: 11px;
+  line-height: 15px;
+}
+.text-\[11px\] {
+  font-size: 12px;
+  line-height: 16px;
+}
+.text-xs {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+} /* 13 / 19.5 */
+.text-sm {
+  font-size: 0.9375rem;
+  line-height: 1.5;
+} /* 15 / 22.5 */
+.text-base {
+  font-size: 1rem;
+  line-height: 1.5;
+} /* 16 / 24 */
+.text-lg {
+  font-size: 1.125rem;
+  line-height: 1.4;
+} /* 18 / 25 */
 
 @media (min-width: 640px) {
-  .text-\[10px\] { font-size: 12px; line-height: 16px; }
-  .text-\[11px\] { font-size: 13px; line-height: 18px; }
-  .text-xs       { font-size: 0.875rem;  line-height: 1.5; }   /* 14 / 21 */
-  .text-sm       { font-size: 1rem;      line-height: 1.5; }   /* 16 / 24 */
-  .text-base     { font-size: 1.125rem;  line-height: 1.55; }  /* 18 / 28 */
-  .text-lg       { font-size: 1.375rem;  line-height: 1.4; }   /* 22 / 31 */
+  .text-\[10px\] {
+    font-size: 12px;
+    line-height: 16px;
+  }
+  .text-\[11px\] {
+    font-size: 13px;
+    line-height: 18px;
+  }
+  .text-xs {
+    font-size: 0.875rem;
+    line-height: 1.5;
+  } /* 14 / 21 */
+  .text-sm {
+    font-size: 1rem;
+    line-height: 1.5;
+  } /* 16 / 24 */
+  .text-base {
+    font-size: 1.125rem;
+    line-height: 1.55;
+  } /* 18 / 28 */
+  .text-lg {
+    font-size: 1.375rem;
+    line-height: 1.4;
+  } /* 22 / 31 */
+}
+
+/* Map timeline slider: the track is drawn by the component (actual vs forecast), so the input itself is transparent */
+.map-range {
+  appearance: none;
+  -webkit-appearance: none;
+  display: block;
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.map-range:focus-visible {
+  outline: 2px solid #0ea5e9;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.map-range::-webkit-slider-runnable-track {
+  height: 20px;
+  background: transparent;
+}
+.map-range::-moz-range-track {
+  height: 20px;
+  background: transparent;
+}
+.map-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: #0ea5e9;
+  border: 2px solid var(--surface-primary);
+}
+.map-range::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #0ea5e9;
+  border: 2px solid var(--surface-primary);
 }
