@@ -14,6 +14,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db.database import SessionLocal, get_db
+from app.services.response_cache_service import get_cached as get_db_cached
+from app.services.response_cache_service import prune_story, put_cached, story_key
 from app.services.story_service import get_story
 from app.utils.timezone import STOCKHOLM
 
@@ -37,11 +39,18 @@ def _get_cached(key: str) -> dict | None:
     return None
 
 
-def _compute_and_cache(db: Session, day: date, today: date) -> dict:
-    result = get_story(db, day, today)
+def _set_memory(day: date, result: dict) -> None:
     if len(_story_cache) >= _CACHE_MAX:
         _story_cache.clear()
     _story_cache[day.isoformat()] = (result, time.time())
+
+
+def _compute_and_cache(db: Session, day: date, today: date) -> dict:
+    started = time.monotonic()
+    result = get_story(db, day, today)
+    log.info("story computed in %.1fs", time.monotonic() - started)
+    put_cached(db, story_key(day), result)
+    _set_memory(day, result)
     return result
 
 
@@ -58,6 +67,7 @@ def refresh_today_story(min_age: float = 20 * 60) -> bool:
     db = SessionLocal()
     try:
         _compute_and_cache(db, today, today)
+        prune_story(db)
     finally:
         db.close()
     return True
@@ -80,5 +90,10 @@ def get_today_story(
     cached = _get_cached(key)
     if cached is not None:
         return cached
+
+    shared = get_db_cached(db, story_key(day), _CACHE_TTL)
+    if shared is not None:
+        _set_memory(day, shared)
+        return shared
 
     return _compute_and_cache(db, day, today)
