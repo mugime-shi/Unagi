@@ -172,15 +172,14 @@ export function Overview({
     return () => clearInterval(id);
   }, []);
 
-  // A value at the selected hour, or null (= draw the live map) at Now or without feed data.
-  // A selection the clock has caught up with is Now again.
-  const timeline = useMemo(
-    () =>
-      feed.data && timelineMs != null && timelineMs > hourFloor(now)
-        ? timelineView(feed.data, timelineMs, now)
-        : null,
-    [feed.data, timelineMs, now],
-  );
+  // Zone colours always mean "the price at this hour" (the current hour at Now). Without feed data this stays
+  // null and the map falls back to colouring by today's average. A selection the clock has caught up with is Now.
+  const timeline = useMemo(() => {
+    if (!feed.data) return null;
+    const hour = hourFloor(now);
+    const ms = timelineMs != null && timelineMs > hour ? timelineMs : hour;
+    return timelineView(feed.data, ms, now);
+  }, [feed.data, timelineMs, now]);
 
   // Lag info
   const lagText = useMemo(() => {
@@ -285,6 +284,17 @@ export function Overview({
             onHoverZone={setHoverZone}
             highlightSites={storySites}
             timeline={timeline}
+            overlay={
+              feed.data && (
+                <MapTimeline
+                  feeds={feed.data}
+                  selectedMs={timelineMs}
+                  onSelect={setTimelineMs}
+                  view={timeline}
+                  showZoneValues={isNarrow}
+                />
+              )
+            }
             trends={
               priceData
                 ? (Object.fromEntries(
@@ -300,15 +310,6 @@ export function Overview({
                 : null
             }
           />
-          {feed.data && (
-            <MapTimeline
-              feeds={feed.data}
-              selectedMs={timelineMs}
-              onSelect={setTimelineMs}
-              view={timeline}
-              showZoneValues={isNarrow}
-            />
-          )}
           {isNarrow && (
             <div className="mt-4">
               {priceLoading && !priceData ? (

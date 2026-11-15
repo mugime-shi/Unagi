@@ -10,7 +10,10 @@ export const MAP_TIMELINE_TEXT = {
   sliderLabel: "Time for the price map",
   actualHeading: "Day-ahead price",
   actualBadge: "Actual",
-  forecastHeading: (n: number) => `Forecast · d+${n}`,
+  forecastHeading: (n: number) =>
+    n > 0 ? `Forecast · d+${n}` : "Forecast · today",
+  noData: "No data",
+  noDataZone: "no data",
   intervalTitle: "80% forecast interval",
   legendScale: "hourly price",
   plantsNote: "plant status is only known for now",
@@ -27,10 +30,15 @@ export interface MapTimelineZone {
   high: number | null;
   /** 0..1 fill strength: far-out forecasts are drawn fainter. */
   dim: number;
+  forecast: boolean;
 }
 
 /** What SwedenMap needs to draw a non-"now" moment. */
 export interface MapTimelineView {
+  /** The current hour: the live map (plants, nuclear, spread) stays as it is; only the colours come from this view. */
+  isNow: boolean;
+  /** No zone has a value for this hour. */
+  noData: boolean;
   forecast: boolean;
   /** e.g. "Forecast · d+3" or "Day-ahead price". */
   heading: string;
@@ -122,8 +130,8 @@ export function timelineView(
 ): MapTimelineView {
   const points = ZONES.map((z) => feeds[z].get(ms) ?? null);
   const forecast = points.some((p) => p?.kind === "forecast");
-  // Forecast days are at least d+1 even if the feed was cut before today ended.
-  const n = Math.max(1, daysAhead(ms, nowMs));
+  // n = 0 only for a forecast standing in for the current hour (no settled price yet)
+  const n = Math.max(0, daysAhead(ms, nowMs));
   const dim = forecast ? Math.max(DIM_FLOOR, 1 - DIM_PER_DAY * n) : 1;
   const zones = {} as Record<Area, MapTimelineZone | null>;
   ZONES.forEach((z, i) => {
@@ -134,15 +142,36 @@ export function timelineView(
           low: p.kind === "forecast" ? p.low : null,
           high: p.kind === "forecast" ? p.high : null,
           dim: p.kind === "forecast" ? dim : 1,
+          forecast: p.kind === "forecast",
         }
       : null;
   });
   return {
+    isNow: ms <= hourFloor(nowMs),
+    noData: points.every((p) => p == null),
     forecast,
     heading: forecast
       ? MAP_TIMELINE_TEXT.forecastHeading(n)
       : MAP_TIMELINE_TEXT.actualHeading,
     timeText: formatTimelineTime(ms),
     zones,
+  };
+}
+
+/** The legend's ore scale tops out here; larger values stop at the bar's end. */
+export const LEGEND_MAX_ORE = 300;
+
+/** Position of a zone's median and 80% interval along the legend bar, as 0..1 fractions. */
+export function legendSpan(z: MapTimelineZone): {
+  mid: number;
+  lo: number | null;
+  hi: number | null;
+} {
+  const f = (sek: number) =>
+    Math.max(0, Math.min(1, (sek * 100) / LEGEND_MAX_ORE));
+  return {
+    mid: f(z.price),
+    lo: z.low != null ? f(z.low) : null,
+    hi: z.high != null ? f(z.high) : null,
   };
 }

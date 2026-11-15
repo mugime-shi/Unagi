@@ -10,6 +10,7 @@ import {
 import type { Area } from "../types/index";
 import type { ZoneTimeline } from "../hooks/useZoneForecastFeed";
 import { formatPrice } from "../utils/formatters";
+import { GLASS_STYLE } from "../utils/mapGlass";
 import {
   HOUR_MS,
   MAP_TIMELINE_TEXT as T,
@@ -139,47 +140,62 @@ export function MapTimeline({
   };
 
   const when = formatTimelineTime(selectedMs ?? start);
-  const heading = view ? view.heading : T.actualBadge;
+  const heading = !view
+    ? T.actualBadge
+    : view.noData
+      ? T.noData
+      : view.forecast
+        ? view.heading
+        : T.actualBadge;
   const pct = Math.round(marks.actualFrac * 100);
 
-  const btn =
-    "shrink-0 rounded-lg border border-[color-mix(in_srgb,var(--text-primary)_15%,transparent)] px-3 py-1.5 text-xs font-medium text-content-primary hover:bg-surface-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 transition-colors disabled:opacity-40";
-
   return (
-    <div className="mt-3 space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
+    // Overlay band at the map's foot: data-map-ui keeps drags on the slider from panning the map
+    <div
+      data-map-ui
+      className="w-full rounded-xl px-2.5 py-1.5 pointer-events-auto"
+      style={GLASS_STYLE}
+    >
+      <div className="flex items-center gap-1">
+        {/* Visually small, 32px tap target */}
         <button
           type="button"
           onClick={togglePlay}
-          className={`${btn} min-w-[4.5rem]`}
+          aria-label={playing ? T.pause : T.play}
+          title={playing ? T.pause : T.play}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-content-secondary hover:text-content-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
         >
-          {playing ? T.pause : T.play}
+          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+            {playing ? (
+              <path d="M2 1h3v10H2zM7 1h3v10H7z" fill="currentColor" />
+            ) : (
+              <path d="M2 1l9 5-9 5z" fill="currentColor" />
+            )}
+          </svg>
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            setPlaying(false);
-            onSelect(null);
-          }}
-          disabled={selectedMs == null}
-          className={btn}
-        >
-          {T.now}
-        </button>
-        <p
-          className="ml-auto text-right text-sm text-content-primary tabular-nums"
-          aria-live="off"
-        >
+        {selectedMs != null && idx > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              setPlaying(false);
+              onSelect(null);
+            }}
+            className="shrink-0 text-xs text-sky-600 dark:text-sky-400 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 rounded"
+          >
+            {T.now}
+          </button>
+        )}
+        <p className="ml-auto min-w-0 text-right text-xs text-content-primary tabular-nums whitespace-nowrap">
           <span className="font-medium">{when}</span>
           <span
-            className={`ml-2 text-xs ${view?.forecast ? "text-amber-600 dark:text-amber-400" : "text-content-muted"}`}
+            className={`ml-2 ${view?.forecast ? "text-amber-600 dark:text-amber-400" : "text-content-muted"}`}
           >
             {heading}
           </span>
         </p>
       </div>
 
-      <div>
+      <div className="px-1">
         <input
           type="range"
           min={0}
@@ -196,14 +212,14 @@ export function MapTimeline({
         />
         {/* Track scale: solid = settled prices, fading = forecast; day ticks in Stockholm time */}
         <div
-          className="relative mx-2 mt-0.5 h-1 rounded-full"
+          className="relative mx-2 h-0.5 rounded-full"
           aria-hidden="true"
           style={{
             background: `linear-gradient(to right, var(--text-secondary) 0%, var(--text-secondary) ${pct}%, color-mix(in srgb, var(--text-secondary) 45%, transparent) ${pct}%, color-mix(in srgb, var(--text-secondary) 8%, transparent) 100%)`,
           }}
         />
         <div
-          className="relative mx-2 mt-1 h-3 text-[10px] text-content-muted"
+          className="relative mx-2 mt-0.5 h-3 text-[10px] leading-3 text-content-muted"
           aria-hidden="true"
         >
           {marks.days.map((d) => (
@@ -219,18 +235,15 @@ export function MapTimeline({
       </div>
 
       {showZoneValues && view && (
-        <div className="grid grid-cols-4 gap-1 text-center text-[11px] tabular-nums">
+        <div className="mt-1 grid grid-cols-4 gap-1 text-center text-[11px] tabular-nums">
           {ZONES.map((z) => {
             const v = view.zones[z];
             return (
-              <div
-                key={z}
-                className="rounded-md bg-surface-secondary px-1 py-1"
-              >
-                <p className="text-[10px] text-content-muted">{z}</p>
-                <p className="font-semibold text-content-primary">
+              <div key={z} className="leading-tight">
+                <span className="text-[10px] text-content-muted">{z} </span>
+                <span className="font-semibold text-content-primary">
                   {v ? formatPrice(v.price) : "—"}
-                </p>
+                </span>
                 {v?.low != null && v.high != null && (
                   <p
                     className="text-[10px] text-content-muted"
