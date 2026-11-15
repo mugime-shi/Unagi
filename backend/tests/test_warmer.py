@@ -24,6 +24,11 @@ def isolate(monkeypatch):
     fake_db = MagicMock()
     monkeypatch.setattr(story_router, "SessionLocal", lambda: fake_db)
     monkeypatch.setattr(story_router, "get_story", MagicMock(return_value={"headline": "h"}))
+    # The shared DB cache is covered by test_response_cache.py
+    monkeypatch.setattr(story_router, "put_cached", MagicMock())
+    monkeypatch.setattr(story_router, "prune_story", MagicMock())
+    # Warmer tests must not touch a DB for the national refresh either
+    monkeypatch.setattr(main_mod, "refresh_national_24h", MagicMock(return_value=True))
     yield mangum
     story_router._story_cache.clear()
 
@@ -33,7 +38,7 @@ def _today_key():
 
 
 def test_warmer_returns_dict_and_skips_mangum(isolate):
-    assert main_mod.handler(EVENT, None) == {"warmed": True, "story_refreshed": True}
+    assert main_mod.handler(EVENT, None) == {"warmed": True, "story_refreshed": True, "national_refreshed": True}
     isolate.assert_not_called()
 
 
@@ -51,13 +56,24 @@ def test_stale_cache_is_refreshed():
 
 def test_fresh_cache_is_not_recomputed():
     story_router._story_cache[_today_key()] = ({"headline": "old"}, time.time() - 60)
-    assert main_mod.handler(EVENT, None) == {"warmed": True, "story_refreshed": False}
+    assert main_mod.handler(EVENT, None) == {"warmed": True, "story_refreshed": False, "national_refreshed": True}
     story_router.get_story.assert_not_called()
 
 
 def test_refresh_failure_is_swallowed(monkeypatch):
     monkeypatch.setattr(story_router, "get_story", MagicMock(side_effect=RuntimeError("db down")))
-    assert main_mod.handler(EVENT, None) == {"warmed": True, "story_refreshed": False}
+    assert main_mod.handler(EVENT, None) == {"warmed": True, "story_refreshed": False, "national_refreshed": True}
+
+
+def test_national_failure_does_not_stop_story_refresh(monkeypatch):
+    monkeypatch.setattr(main_mod, "refresh_national_24h", MagicMock(side_effect=RuntimeError("boom")))
+    assert main_mod.handler(EVENT, None) == {"warmed": True, "story_refreshed": True, "national_refreshed": False}
+
+
+def test_story_failure_does_not_stop_national_refresh(monkeypatch):
+    monkeypatch.setattr(main_mod, "refresh_today_story", MagicMock(side_effect=RuntimeError("boom")))
+    assert main_mod.handler(EVENT, None) == {"warmed": True, "story_refreshed": False, "national_refreshed": True}
+    main_mod.refresh_national_24h.assert_called_once()
 
 
 def test_http_event_goes_to_mangum(isolate):

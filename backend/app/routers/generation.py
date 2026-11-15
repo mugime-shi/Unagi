@@ -7,6 +7,7 @@ Endpoints:
   GET /api/v1/generation/outages — nuclear reactor status + non-nuclear outages (min_mw, default 300) for a day (ENTSO-E A77/A80)
 """
 
+import logging
 import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated
@@ -16,7 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
-from app.db.database import get_db
+from app.db.database import SessionLocal, get_db
 from app.models.hydro_reservoir import HydroReservoir
 from app.services.entsoe_client import EntsoEError
 from app.services.generation_service import (
@@ -25,6 +26,7 @@ from app.services.generation_service import (
     get_generation_for_date,
 )
 from app.services.outage_service import outages_for_day
+from app.services.response_cache_service import NATIONAL_24H_KEY, get_cached, put_cached
 from app.utils.timezone import STOCKHOLM, stockholm_today
 
 # Shared SQL fragment: ENTSO-E psr_type -> Unagi semantic group.
@@ -60,6 +62,8 @@ AreaDep = Annotated[
 # In-memory cache (survives between Lambda warm invocations)
 # ---------------------------------------------------------------------------
 _CACHE_TTL = 5 * 60  # seconds — the hourly_generation scheduler task refreshes the DB (hourly), so a DB read is cheap
+log = logging.getLogger(__name__)
+
 _generation_cache: dict[tuple[str, str], tuple[dict, float]] = {}
 
 
@@ -140,12 +144,63 @@ def get_today_generation(db: DbDep, area: AreaDep = "SE3"):
     return response
 
 
+_NATIONAL_MEM_TTL = 5 * 60  # seconds, per-Lambda memory
+_NATIONAL_DB_TTL = 20 * 60  # seconds, shared DB row (generation_mix changes hourly)
+_national_cache: tuple[dict, float] | None = None
+
+
+def _set_national_memory(result: dict) -> None:
+    global _national_cache
+    _national_cache = (result, time.time())
+
+
+def _compute_and_store_national(db: Session) -> dict:
+    started = time.monotonic()
+    result = _compute_national_24h(db)
+    log.info("national-24h computed in %.1fs", time.monotonic() - started)
+    put_cached(db, NATIONAL_24H_KEY, result)
+    _set_national_memory(result)
+    return result
+
+
+def refresh_national_24h(min_age: float = 15 * 60) -> bool:
+    """Warmer entry point: recompute the shared national-24h row unless it is younger than min_age.
+
+    Opens its own session (no request scope). Never raises.
+    """
+    db = None
+    try:
+        db = SessionLocal()
+        if get_cached(db, NATIONAL_24H_KEY, min_age) is not None:
+            return False
+        _compute_and_store_national(db)
+        return True
+    except Exception:
+        log.exception("national-24h refresh failed")
+        return False
+    finally:
+        if db is not None:
+            db.close()
+
+
 @router.get("/national-24h")
 def get_national_24h(db: DbDep):
     """
     National aggregate generation mix for the last 24 hours, hourly resolution.
     Sums across all SE zones. Returns up to 24 hourly entries sorted chronologically.
     """
+    if _national_cache is not None and time.time() - _national_cache[1] <= _NATIONAL_MEM_TTL:
+        return _national_cache[0]
+
+    shared = get_cached(db, NATIONAL_24H_KEY, _NATIONAL_DB_TTL)
+    if shared is not None:
+        _set_national_memory(shared)
+        return shared
+
+    return _compute_and_store_national(db)
+
+
+def _compute_national_24h(db: Session) -> dict:
     from collections import defaultdict
     from zoneinfo import ZoneInfo
 
