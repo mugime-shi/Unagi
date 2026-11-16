@@ -14,11 +14,7 @@ import {
 import { GLASS_STYLE } from "../utils/mapGlass";
 import { FuelBadgeIcon } from "./FuelBadge";
 import { TrendArrow } from "./TrendArrow";
-import {
-  MAP_TIMELINE_TEXT,
-  legendSpan,
-  type MapTimelineView,
-} from "../utils/mapTimeline";
+import { MAP_TIMELINE_TEXT, type MapTimelineView } from "../utils/mapTimeline";
 import { FUEL_CAT_LABEL, fuelCat, fuelName, type FuelCat } from "../utils/fuel";
 import { formatPrice, PRICE_UNIT } from "../utils/formatters";
 import {
@@ -1814,70 +1810,14 @@ function Legend({
   /** Wide layout: gradient on top, then status and fuel lists side by side, one item per row. */
   stacked?: boolean;
 }) {
-  // Rows share the bar's width: a label gutter on the left of all of them
-  const gutter = timeline ? "pl-[1.5rem]" : "";
   const bar = (
     <>
-      <div className={gutter}>
-        <div
-          className="h-1.5 rounded-full"
-          style={{ background: gradient }}
-          aria-hidden="true"
-        />
-      </div>
-      {timeline && (
-        <div className="space-y-0.5" role="group">
-          {ZONES.map((z) => {
-            const v = timeline.zones[z];
-            const sp = v ? legendSpan(v) : null;
-            const text = !v
-              ? `${z}: ${MAP_TIMELINE_TEXT.noDataZone}`
-              : `${z}: ${formatPrice(v.price)}${
-                  v.low != null && v.high != null
-                    ? ` (${formatPrice(v.low)}–${formatPrice(v.high)})`
-                    : ""
-                } ${PRICE_UNIT}`;
-            return (
-              <div
-                key={z}
-                className="flex items-center gap-1"
-                role="img"
-                aria-label={text}
-                title={text}
-              >
-                <span className="w-[1.25rem] text-[9px] leading-none text-content-muted">
-                  {z}
-                </span>
-                <div className="relative h-2 flex-1">
-                  <div className="absolute inset-x-0 top-1/2 h-px bg-[color-mix(in_srgb,var(--text-primary)_18%,transparent)]" />
-                  {sp && sp.lo != null && sp.hi != null && (
-                    <div
-                      className="absolute top-[1px] bottom-[1px] rounded-full bg-[color-mix(in_srgb,var(--text-primary)_35%,transparent)] transition-[left,width] duration-150 motion-reduce:transition-none"
-                      style={{
-                        left: `${sp.lo * 100}%`,
-                        width: `${(sp.hi - sp.lo) * 100}%`,
-                      }}
-                    />
-                  )}
-                  {sp && (
-                    <div
-                      className="absolute top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full transition-[left] duration-150 motion-reduce:transition-none"
-                      style={{
-                        left: `${sp.mid * 100}%`,
-                        backgroundColor: "var(--text-primary)",
-                        boxShadow: "0 0 0 1px var(--surface-primary)",
-                      }}
-                    />
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
       <div
-        className={`flex justify-between text-[10px] text-content-muted tabular-nums ${gutter}`}
-      >
+        className="h-1.5 rounded-full"
+        style={{ background: gradient }}
+        aria-hidden="true"
+      />
+      <div className="flex justify-between text-[10px] text-content-muted tabular-nums">
         <span>0 öre</span>
         <span>{timeline ? MAP_TIMELINE_TEXT.legendScale : "today avg"}</span>
         <span>300+</span>

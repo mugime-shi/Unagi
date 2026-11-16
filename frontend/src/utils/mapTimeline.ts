@@ -168,21 +168,3 @@ export function timelineView(
     zones,
   };
 }
-
-/** The legend's ore scale tops out here; larger values stop at the bar's end. */
-export const LEGEND_MAX_ORE = 300;
-
-/** Position of a zone's median and 80% interval along the legend bar, as 0..1 fractions. */
-export function legendSpan(z: MapTimelineZone): {
-  mid: number;
-  lo: number | null;
-  hi: number | null;
-} {
-  const f = (sek: number) =>
-    Math.max(0, Math.min(1, (sek * 100) / LEGEND_MAX_ORE));
-  return {
-    mid: f(z.price),
-    lo: z.low != null ? f(z.low) : null,
-    hi: z.high != null ? f(z.high) : null,
-  };
-}
