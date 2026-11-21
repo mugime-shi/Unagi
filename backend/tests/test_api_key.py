@@ -7,6 +7,9 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 SECRET = "test-secret-key-1234"
+# Matches no route: a request the middleware lets through ends as the router's 404,
+# so these tests never touch the DB or ENTSO-E.
+PROBE = "/api/v1/__auth_probe__"
 
 
 def _client():
@@ -25,9 +28,9 @@ class TestApiKeyDisabled:
     def test_any_endpoint_passes_without_key(self):
         with patch("app.middleware.api_key.settings") as mock:
             mock.api_key = ""
-            resp = _client().get("/api/v1/prices/today")
-            # May return 200 or 500 (no DB), but NOT 403
-            assert resp.status_code != 403
+            resp = _client().get(PROBE)
+            # 404 = passed the middleware and reached routing
+            assert resp.status_code == 404
 
 
 class TestApiKeyEnabled:
@@ -36,7 +39,7 @@ class TestApiKeyEnabled:
     def test_missing_key_returns_403(self):
         with patch("app.middleware.api_key.settings") as mock:
             mock.api_key = SECRET
-            resp = _client().get("/api/v1/prices/today")
+            resp = _client().get(PROBE)
             assert resp.status_code == 403
             assert resp.json()["detail"] == "Forbidden"
 
@@ -44,7 +47,7 @@ class TestApiKeyEnabled:
         with patch("app.middleware.api_key.settings") as mock:
             mock.api_key = SECRET
             resp = _client().get(
-                "/api/v1/prices/today",
+                PROBE,
                 headers={"X-Unagi-Key": "wrong-key"},
             )
             assert resp.status_code == 403
@@ -53,11 +56,11 @@ class TestApiKeyEnabled:
         with patch("app.middleware.api_key.settings") as mock:
             mock.api_key = SECRET
             resp = _client().get(
-                "/api/v1/prices/today",
+                PROBE,
                 headers={"X-Unagi-Key": SECRET},
             )
-            # Should not be 403 (may be 500 due to no DB, but auth passed)
-            assert resp.status_code != 403
+            # 404 = passed the middleware and reached routing
+            assert resp.status_code == 404
 
     def test_health_exempt_without_key(self):
         with patch("app.middleware.api_key.settings") as mock:
@@ -68,5 +71,5 @@ class TestApiKeyEnabled:
     def test_options_exempt_without_key(self):
         with patch("app.middleware.api_key.settings") as mock:
             mock.api_key = SECRET
-            resp = _client().options("/api/v1/prices/today")
+            resp = _client().options(PROBE)
             assert resp.status_code != 403
