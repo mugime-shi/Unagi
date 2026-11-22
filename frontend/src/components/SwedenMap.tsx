@@ -820,16 +820,6 @@ export function SwedenMap({
       () => new URLSearchParams(window.location.search).get("plants"),
       () => null,
     ) === "dots";
-  // EXPERIMENT (`?stripes=1`): forecast zones painted as diagonal stripes of their interval's low/high colours,
-  // to compare with plain fill + dashed outline. Delete this, `stripeOf` and the <pattern>s once decided.
-  const stripes = useSyncExternalStore(
-    (cb) => {
-      window.addEventListener("popstate", cb);
-      return () => window.removeEventListener("popstate", cb);
-    },
-    () => new URLSearchParams(window.location.search).get("stripes") === "1",
-    () => false,
-  );
   const modKey = useSyncExternalStore(
     () => () => {},
     () => (/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl"),
@@ -889,12 +879,6 @@ export function SwedenMap({
     return v == null ? null : Math.round(v * 100);
   };
   const dimOf = (zone: Area) => tl?.zones[zone]?.dim ?? 1;
-  const stripeOf = (zone: Area) => {
-    const v = tl?.zones[zone];
-    return stripes && v?.forecast && v.low != null && v.high != null
-      ? { low: v.low, high: v.high }
-      : null;
-  };
 
   // Group reactors by site, keeping API order
   // Every reactor is always drawn; the feed only supplies status (placeholder "unknown" until it loads)
@@ -1294,33 +1278,6 @@ export function SwedenMap({
                   <feMergeNode in="SourceGraphic" />
                 </feMerge>
               </filter>
-              {ZONES.map((z) => {
-                const st = stripeOf(z);
-                if (!st) return null;
-                const w = 5 * k; // stripe width ~5 CSS px
-                return (
-                  <pattern
-                    key={z}
-                    id={`stripe-${z}`}
-                    patternUnits="userSpaceOnUse"
-                    width={2 * w}
-                    height={2 * w}
-                    patternTransform="rotate(45)"
-                  >
-                    <rect
-                      width={w}
-                      height={2 * w}
-                      fill={zoneFill(Math.round(st.low * 100))}
-                    />
-                    <rect
-                      x={w}
-                      width={w}
-                      height={2 * w}
-                      fill={zoneFill(Math.round(st.high * 100))}
-                    />
-                  </pattern>
-                );
-              })}
             </defs>
             <g strokeLinejoin="round" fillRule="evenodd">
               {ZONES.map((z) => {
@@ -1330,13 +1287,7 @@ export function SwedenMap({
                   <path
                     key={z}
                     d={PATHS[z]}
-                    fill={
-                      stripeOf(z)
-                        ? `url(#stripe-${z})`
-                        : o == null
-                          ? "var(--surface-secondary)"
-                          : zoneFill(o)
-                    }
+                    fill={o == null ? "var(--surface-secondary)" : zoneFill(o)}
                     fillOpacity={
                       o == null
                         ? 0.6
