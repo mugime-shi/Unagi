@@ -12,6 +12,9 @@ import { useIsMobile } from "../hooks/useIsMobile";
 import { UpdateBadge } from "./UpdateBadge";
 import { TodayStory } from "./TodayStory";
 import { MapAttribution, SwedenMap } from "./SwedenMap";
+import { MapTimeline, ZoneReadout } from "./MapTimeline";
+import { useZoneForecastFeed } from "../hooks/useZoneForecastFeed";
+import { hourFloor, timelineView } from "../utils/mapTimeline";
 import { TrendArrow } from "./TrendArrow";
 import { useOutages } from "../hooks/useOutages";
 import { WeeklySummary } from "./WeeklySummary";
@@ -126,6 +129,9 @@ export function Overview({
   const [hoverZone, setHoverZone] = useState<Area | null>(null);
   // Nuclear sites the lede is pointing at while hovered (see SwedenMap `highlightSites`)
   const [storySites, setStorySites] = useState<string[] | null>(null);
+  // Time-travel for the map: selected hour (epoch ms, UTC); null = Now (the map as it always was)
+  const feed = useZoneForecastFeed();
+  const [timelineMs, setTimelineMs] = useState<number | null>(null);
   const nowHour = currentCETHour(); // for zone-tile price trend arrows
   const zones: Area[] = ["SE1", "SE2", "SE3", "SE4"];
   const zoneColors: Record<Area, string> = {
@@ -165,6 +171,15 @@ export function Overview({
     const id = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(id);
   }, []);
+
+  // Zone colours always mean "the price at this hour" (the current hour at Now). Without feed data this stays
+  // null and the map falls back to colouring by today's average. A selection the clock has caught up with is Now.
+  const timeline = useMemo(() => {
+    if (!feed.data) return null;
+    const hour = hourFloor(now);
+    const ms = timelineMs != null && timelineMs > hour ? timelineMs : hour;
+    return timelineView(feed.data, ms, now);
+  }, [feed.data, timelineMs, now]);
 
   // Lag info
   const lagText = useMemo(() => {
@@ -268,6 +283,17 @@ export function Overview({
             hoverZone={hoverZone}
             onHoverZone={setHoverZone}
             highlightSites={storySites}
+            timeline={timeline}
+            overlay={
+              feed.data && (
+                <MapTimeline
+                  feeds={feed.data}
+                  selectedMs={timelineMs}
+                  onSelect={setTimelineMs}
+                  view={timeline}
+                />
+              )
+            }
             trends={
               priceData
                 ? (Object.fromEntries(
@@ -283,6 +309,7 @@ export function Overview({
                 : null
             }
           />
+          {isNarrow && timeline && <ZoneReadout view={timeline} />}
           {isNarrow && (
             <div className="mt-4">
               {priceLoading && !priceData ? (

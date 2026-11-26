@@ -14,6 +14,7 @@ import {
 import { GLASS_STYLE } from "../utils/mapGlass";
 import { FuelBadgeIcon } from "./FuelBadge";
 import { TrendArrow } from "./TrendArrow";
+import { MAP_TIMELINE_TEXT, type MapTimelineView } from "../utils/mapTimeline";
 import { FUEL_CAT_LABEL, fuelCat, fuelName, type FuelCat } from "../utils/fuel";
 import { formatPrice, PRICE_UNIT } from "../utils/formatters";
 import {
@@ -174,6 +175,19 @@ const MOBILE_VB = zoneMap.mobileViewBox as unknown as [
 ];
 // Cropped to Sweden (+ margin for the cards) so the country fills a taller figure: 940x1000 vs the full 1170x1000
 const WIDE_VB: [number, number, number, number] = [70, 0, 940, zoneMap.height];
+// Extra sea under the map while the overlay band is shown, so the band stays clear of Skåne's southern tip
+const WIDE_VB_BAND: [number, number, number, number] = [
+  WIDE_VB[0],
+  WIDE_VB[1],
+  WIDE_VB[2],
+  WIDE_VB[3] + 30,
+];
+const MOBILE_VB_BAND: [number, number, number, number] = [
+  MOBILE_VB[0],
+  MOBILE_VB[1],
+  MOBILE_VB[2],
+  MOBILE_VB[3] + 60,
+];
 
 // ── Overlay layout (percent of the map box; y = vertical centre of the card) ──
 const ZONE_CITY: Record<Area, string> = {
@@ -215,6 +229,14 @@ interface SwedenMapProps {
    * summary card's nuclear block lights up. `[]` lights the block alone; null/undefined lights nothing.
    */
   highlightSites?: readonly string[] | null;
+  /**
+   * Zone colours from the map timeline: the price at one hour (the current hour at Now). For any other hour the
+   * plant layer also goes neutral, because plant status is only known for the present.
+   * null/undefined = no feed: zones fall back to today's average.
+   */
+  timeline?: MapTimelineView | null;
+  /** Band laid over the map's foot (the timeline slider); the legend sits above it. */
+  overlay?: ReactNode;
 }
 
 function siteOf(unit: { name: string }): string {
@@ -508,6 +530,7 @@ function SummaryCard({
   outages,
   outagesError,
   highlightNuclear,
+  timeline,
 }: {
   prices: Record<Area, ZonePriceSummary> | null;
   trends?: Record<Area, "up" | "down" | null> | null;
@@ -519,6 +542,7 @@ function SummaryCard({
   outages: OutagesResponse | null;
   outagesError?: boolean;
   highlightNuclear?: boolean;
+  timeline?: MapTimelineView | null;
 }) {
   const total = outages?.nuclear.reduce((sum, u) => sum + u.nominal_mw, 0) ?? 0;
   const offline = outages?.nuclear_offline_mw ?? 0;
@@ -551,7 +575,7 @@ function SummaryCard({
       <div>
         <p className="flex items-baseline gap-2 whitespace-nowrap text-[10px] uppercase tracking-wide text-content-muted">
           <span>
-            Spot price now{" "}
+            {timeline ? timeline.heading : "Spot price now"}{" "}
             <span className="normal-case tracking-normal text-content-faint">
               · {PRICE_UNIT}
             </span>
@@ -564,8 +588,16 @@ function SummaryCard({
         </p>
         <div className="mt-1 -mx-1.5">
           {ZONES.map((z) => {
-            const cur = prices?.[z]?.current_sek_kwh ?? null;
+            const tz = timeline?.zones[z] ?? null;
+            const cur = timeline
+              ? (tz?.price ?? null)
+              : (prices?.[z]?.current_sek_kwh ?? null);
             const avg = prices?.[z]?.today_avg_sek_kwh ?? null;
+            // Forecast hours show their 80% interval where "today avg" sits at Now
+            const range =
+              tz?.low != null && tz.high != null
+                ? `${formatPrice(tz.low)}–${formatPrice(tz.high)}`
+                : null;
             return (
               <button
                 key={z}
@@ -600,13 +632,18 @@ function SummaryCard({
                   {ZONE_CITY[z]}
                 </span>
                 <span className="w-3 text-center shrink-0">
-                  <TrendArrow trend={trends?.[z] ?? null} />
+                  <TrendArrow trend={timeline ? null : (trends?.[z] ?? null)} />
                 </span>
                 <span className="text-sm font-semibold text-content-primary tabular-nums w-9 text-right">
                   {cur == null ? "—" : formatPrice(cur)}
                 </span>
-                <span className="text-[10px] text-content-muted tabular-nums w-14 text-right">
-                  avg {avg == null ? "—" : formatPrice(avg)}
+                <span
+                  className="text-[10px] text-content-muted tabular-nums w-14 text-right"
+                  title={range ? MAP_TIMELINE_TEXT.intervalTitle : undefined}
+                >
+                  {timeline
+                    ? (range ?? "")
+                    : `avg ${avg == null ? "—" : formatPrice(avg)}`}
                 </span>
                 <span
                   aria-hidden="true"
@@ -632,7 +669,7 @@ function SummaryCard({
           </p>
         </div>
       )}
-      {!outages && outagesError && (
+      {!timeline && !outages && outagesError && (
         <div className={divider}>
           <p className="text-[10px] uppercase tracking-wide text-content-muted">
             Nuclear
@@ -642,7 +679,7 @@ function SummaryCard({
           </p>
         </div>
       )}
-      {outages && (
+      {!timeline && outages && (
         <div className={divider}>
           {/* Same tint as a hovered zone row, so "this is what the lede means" reads like the price rows' hover */}
           <div
@@ -737,7 +774,12 @@ export function SwedenMap({
   onHoverZone,
   outagesError,
   highlightSites,
+  timeline,
+  overlay,
 }: SwedenMapProps) {
+  const tl = timeline ?? null;
+  // A non-current hour: everything that is only true "now" (plants, nuclear, spread) is withheld
+  const moment = tl && !tl.isNow ? tl : null;
   const { resolvedTheme } = useTheme();
   // The server renders before the theme is known: stay on the dark palette until mounted
   // so the first client render matches the server HTML (no hydration mismatch).
@@ -785,7 +827,13 @@ export function SwedenMap({
   );
 
   const wide = layout === "wide";
-  const base = wide ? WIDE_VB : MOBILE_VB;
+  const base = overlay
+    ? wide
+      ? WIDE_VB_BAND
+      : MOBILE_VB_BAND
+    : wide
+      ? WIDE_VB
+      : MOBILE_VB;
   const [, , bw, bh] = base;
   const boxRef = useRef<HTMLDivElement>(null);
   const measured = useElementWidth(boxRef);
@@ -825,10 +873,12 @@ export function SwedenMap({
     );
   };
 
+  // With a timeline moment the colour is that hour's price; the colour scale itself never changes
   const avgOre = (zone: Area): number | null => {
-    const v = prices?.[zone]?.today_avg_sek_kwh;
+    const v = tl ? tl.zones[zone]?.price : prices?.[zone]?.today_avg_sek_kwh;
     return v == null ? null : Math.round(v * 100);
   };
+  const dimOf = (zone: Area) => tl?.zones[zone]?.dim ?? 1;
 
   // Group reactors by site, keeping API order
   // Every reactor is always drawn; the feed only supplies status (placeholder "unknown" until it loads)
@@ -856,9 +906,14 @@ export function SwedenMap({
     (u) => u.status === "reduced",
   ).length;
 
-  const se1 = avgOre("SE1");
-  const se4 = avgOre("SE4");
-  const spread = se1 != null && se4 != null ? se4 - se1 : null;
+  // The spread card says "today avg", so it never follows the timeline colours
+  const todayOre = (zone: Area): number | null => {
+    const v = prices?.[zone]?.today_avg_sek_kwh;
+    return v == null ? null : Math.round(v * 100);
+  };
+  const se1 = todayOre("SE1");
+  const se4 = todayOre("SE4");
+  const spread = !moment && se1 != null && se4 != null ? se4 - se1 : null;
   const showSpread = spread != null && spread >= 50;
 
   // ── Plant layer: every plant in the map data, status from the outage feed (matched by EIC) ──
@@ -1102,13 +1157,15 @@ export function SwedenMap({
         popAt.y + popAt.h / 2 < boxHeight));
 
   const ariaLabel = [
-    "Map of Sweden's four electricity price zones, colored by today's average price.",
+    tl
+      ? `Map of Sweden's four electricity price zones, colored by the price for ${tl.timeText} (${tl.heading}).`
+      : "Map of Sweden's four electricity price zones, colored by today's average price.",
     ...ZONES.map((z) => {
       const o = avgOre(z);
       return `${z}: ${o == null ? "no data" : `${o} öre/kWh`}.`;
     }),
     showSpread ? `South pays ${spread} öre more than north.` : "",
-    outages
+    outages && !moment
       ? `Nuclear reactors: ${offlineCount} offline, ${reducedCount} reduced of ${outages.nuclear.length}.`
       : "",
   ]
@@ -1238,10 +1295,10 @@ export function SwedenMap({
                             0.9,
                             scaleAlpha(o, ZONE_FILL[themeKey].alpha) +
                               (hot ? ZONE_FILL[themeKey].hoverBoost : 0),
-                          )
+                          ) * dimOf(z)
                     }
                     {...line}
-                    className="transition-[fill-opacity]"
+                    className="transition-[fill-opacity] motion-reduce:transition-none"
                     onMouseEnter={
                       onHoverZone ? () => onHoverZone(z) : undefined
                     }
@@ -1249,7 +1306,7 @@ export function SwedenMap({
                       onHoverZone ? () => onHoverZone(null) : undefined
                     }
                   >
-                    <title>{`${z}${o == null ? "" : `: ${o} öre/kWh today (avg)`}`}</title>
+                    <title>{`${z}${o == null ? (tl ? `: ${MAP_TIMELINE_TEXT.noDataZone}` : "") : tl ? `: ${o} öre/kWh · ${tl.heading}` : `: ${o} öre/kWh today (avg)`}`}</title>
                   </path>
                 );
               })}
@@ -1282,6 +1339,8 @@ export function SwedenMap({
                     key={z}
                     d={PATHS[z]}
                     stroke={o == null ? stage.landStroke : zoneStroke(o)}
+                    strokeOpacity={dimOf(z)}
+                    strokeDasharray={tl?.zones[z]?.forecast ? "6 4" : undefined}
                     strokeWidth={hot ? 2.4 : 1.4}
                     {...line}
                   />
@@ -1313,34 +1372,46 @@ export function SwedenMap({
                   outages={outages}
                   outagesError={outagesError}
                   highlightNuclear={highlightSites != null}
-                />
-              </div>
-
-              <div
-                data-map-ui
-                className="rounded-xl px-3 py-2 space-y-1.5"
-                style={glassPos({
-                  ...GLASS_STYLE,
-                  right: "1.5%",
-                  width: "25%",
-                  minWidth: 176,
-                  maxWidth: 210,
-                  bottom: "2%",
-                })}
-              >
-                <Legend
-                  gradient={gradient}
-                  cats={legendCats}
-                  stacked
-                  unknown={!outages}
-                />
-                <UnmappedOutages
-                  items={unmappedOther}
-                  error={outagesError}
-                  onPick={(o, el) => ctl.toggle(otherId(o), el)}
+                  timeline={moment}
                 />
               </div>
             </>
+          )}
+
+          {/* ── Foot stack: legend (wide layout only) above the overlay band ── */}
+          {(wide || overlay) && (
+            <div
+              className={`absolute inset-x-0 bottom-0 flex flex-col items-end gap-2 pb-[2%] pointer-events-none ${wide ? "px-[1.5%]" : "px-[3%]"}`}
+              style={{ zIndex: 10 }}
+            >
+              {wide && (
+                <div
+                  data-map-ui
+                  className="rounded-xl px-3 py-2 space-y-1.5 pointer-events-auto"
+                  style={{
+                    ...GLASS_STYLE,
+                    width: "25%",
+                    minWidth: 176,
+                    maxWidth: 210,
+                  }}
+                >
+                  <Legend
+                    gradient={gradient}
+                    cats={legendCats}
+                    stacked
+                    unknown={!outages}
+                    timeline={tl}
+                    moment={!!moment}
+                  />
+                  <UnmappedOutages
+                    items={unmappedOther}
+                    error={outagesError}
+                    onPick={(o, el) => ctl.toggle(otherId(o), el)}
+                  />
+                </div>
+              )}
+              {overlay}
+            </div>
           )}
 
           {/* ── Zoom controls ── */}
@@ -1361,7 +1432,7 @@ export function SwedenMap({
           </div>
 
           {/* ── Compact: spread + nuclear total badges ── */}
-          {!wide && (showSpread || outages) && (
+          {!wide && !moment && (showSpread || outages) && (
             <div
               data-map-ui
               className="flex flex-col items-start gap-1"
@@ -1396,9 +1467,11 @@ export function SwedenMap({
             const count = c.members.length;
             const id = clusterId(c);
             const split = canSplit(c);
+            // Plant status is only known for now: any other moment draws neutral markers, no status anywhere
+            const neutral = !!moment;
             const status = worstStatus(c.members.map((x) => x.status));
             const glyph = !dotsMode || iconZoom;
-            const showStatus = !dotsMode || iconZoom;
+            const showStatus = (!dotsMode || iconZoom) && !neutral;
             const dotPx = wide ? 6 : 5;
             // Glyph px: base x gentle zoom growth x capacity of the seed (a cluster is drawn as its seed)
             const glyphPx = dotsMode
@@ -1411,14 +1484,18 @@ export function SwedenMap({
             const statusPx = Math.max(5, Math.round(glyphPx * 0.38));
             const hit = radiusPx - 2;
             const lit =
+              !neutral &&
               !!highlightSites?.length &&
               c.members.some((x) =>
                 highlightSites.some((site) => x.key === `nuclear:${site}`),
               );
             const off = c.members.filter((x) => x.status === "offline").length;
             const red = c.members.filter((x) => x.status === "reduced").length;
-            const label =
-              count > 1
+            const label = neutral
+              ? count > 1
+                ? `${count} plants near ${m.names.split(", ")[0]}${split ? ", zoom in" : ""}`
+                : m.names
+              : count > 1
                 ? `${count} plants near ${m.names.split(", ")[0]}: ${
                     [off && `${off} offline`, red && `${red} reduced`]
                       .filter(Boolean)
@@ -1435,7 +1512,9 @@ export function SwedenMap({
                     zoomToCluster(c);
                   },
                 }
-              : popTrigger(id);
+              : neutral
+                ? {}
+                : popTrigger(id);
             return (
               <button
                 key={id}
@@ -1444,8 +1523,16 @@ export function SwedenMap({
                 data-map-marker
                 {...trigger}
                 aria-label={label}
+                tabIndex={neutral && !split ? -1 : undefined}
                 className="absolute flex items-center justify-center outline-none rounded-full focus-visible:ring-2 focus-visible:ring-sky-500"
                 style={{
+                  ...(neutral
+                    ? {
+                        opacity: 0.38,
+                        filter: "grayscale(1)",
+                        cursor: split ? undefined : "default",
+                      }
+                    : {}),
                   ...markerPos(m.xy),
                   width: hit,
                   height: hit,
@@ -1547,7 +1634,7 @@ export function SwedenMap({
           </svg>
 
           {/* ── Detail popover (one at a time, flips near edges, always inside the box) ── */}
-          {pop && popAt && popVisible && popItems.length > 0 && (
+          {!moment && pop && popAt && popVisible && popItems.length > 0 && (
             <div
               id="map-popover"
               data-map-popover
@@ -1604,7 +1691,13 @@ export function SwedenMap({
 
         {!wide && (
           <div className="mt-2 space-y-1">
-            <Legend gradient={gradient} cats={legendCats} unknown={!outages} />
+            <Legend
+              gradient={gradient}
+              cats={legendCats}
+              unknown={!outages}
+              timeline={tl}
+              moment={!!moment}
+            />
             <UnmappedOutages
               items={unmappedOther}
               error={outagesError}
@@ -1654,9 +1747,15 @@ function Legend({
   cats,
   stacked,
   unknown,
+  timeline,
+  moment,
 }: {
   gradient: string;
   cats: FuelCat[];
+  /** Zones are coloured by hourly price: the scale says so and each zone gets a median + 80% interval row. */
+  timeline?: MapTimelineView | null;
+  /** A non-current hour: plant status is not drawn, so its legend entries go. */
+  moment?: boolean;
   /** Status feed missing: the dots are grey, so the legend explains grey instead of the three states. */
   unknown?: boolean;
   /** Wide layout: gradient on top, then status and fuel lists side by side, one item per row. */
@@ -1671,13 +1770,17 @@ function Legend({
       />
       <div className="flex justify-between text-[10px] text-content-muted tabular-nums">
         <span>0 öre</span>
-        <span>today avg</span>
+        <span>{timeline ? MAP_TIMELINE_TEXT.legendScale : "today avg"}</span>
         <span>300+</span>
       </div>
     </>
   );
   const statusItems = (
-    unknown ? ([["unknown", "status unknown"]] as const) : LEGEND_STATUS
+    moment
+      ? []
+      : unknown
+        ? ([["unknown", "status unknown"]] as const)
+        : LEGEND_STATUS
   ).map(([s, label]) => (
     <span key={s} className="inline-flex items-center gap-1">
       <span
@@ -1698,6 +1801,7 @@ function Legend({
       className={`text-[10px] leading-snug text-content-muted ${stacked ? "" : "text-center"}`}
     >
       icon size = capacity · number = plants grouped
+      {moment ? ` · ${MAP_TIMELINE_TEXT.plantsNote}` : ""}
     </p>
   );
   if (stacked)

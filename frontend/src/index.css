@@ -124,3 +124,47 @@ h3 {
   .text-base     { font-size: 1.125rem;  line-height: 1.55; }  /* 18 / 28 */
   .text-lg       { font-size: 1.375rem;  line-height: 1.4; }   /* 22 / 31 */
 }
+
+/* Map timeline slider: the track is drawn by the component (actual vs forecast), so the input itself is transparent */
+.map-range {
+  appearance: none;
+  -webkit-appearance: none;
+  display: block;
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.map-range:focus-visible {
+  outline: 2px solid #0ea5e9;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.map-range::-webkit-slider-runnable-track {
+  height: 20px;
+  background: transparent;
+}
+.map-range::-moz-range-track {
+  height: 20px;
+  background: transparent;
+}
+.map-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: #0ea5e9;
+  border: 2px solid var(--surface-primary);
+}
+.map-range::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #0ea5e9;
+  border: 2px solid var(--surface-primary);
+}
