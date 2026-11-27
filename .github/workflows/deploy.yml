@@ -12,7 +12,7 @@ name: Deploy
 on:
   push:
     branches: [main]
-  # PRs only run frontend-lint; the deploy job below is push-only.
+  # PRs run frontend-lint and backend-test; the deploy job below is push-only.
   pull_request:
 
 env:
@@ -42,6 +42,42 @@ jobs:
 
       - name: Type check
         run: npx tsc --noEmit
+
+  # Tests get no production secrets: a throwaway Postgres stands in for the DB
+  # (and runs the RUN_PG_TESTS equivalence tests), and ENTSO-E is blanked in conftest.
+  backend-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine # Supabase runs PostgreSQL 16
+        env:
+          POSTGRES_USER: unagi
+          POSTGRES_PASSWORD: unagi
+          POSTGRES_DB: unagi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U unagi"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://unagi:unagi@localhost:5432/unagi
+      TEST_DATABASE_URL: postgresql+psycopg2://unagi:unagi@localhost:5432/unagi
+      RUN_PG_TESTS: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+
+      - name: Run tests
+        run: pytest backend/tests/ -v
 
   # Vercel deploys the frontend on its own, so a push that only touches frontend/ or docs has nothing to ship to
   # Lambda. Anything else (including this workflow and unknown history) falls through to a full deploy.
@@ -75,13 +111,13 @@ jobs:
   deploy:
     # Never deploy from a PR; lint failures block the deploy like test failures do.
     if: github.event_name == 'push' && needs.changes.outputs.backend == 'true'
-    needs: [frontend-lint, changes]
+    needs: [frontend-lint, backend-test, changes]
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      # ── 1. Python test ────────────────────────────────────────────────
+      # ── 1. Python (for alembic) ───────────────────────────────────────
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -93,18 +129,12 @@ jobs:
         run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt
 
       # ── 2. DB migration (Supabase) ────────────────────────────────────
-      # Runs BEFORE tests: pipeline tests hit the real DB and need current schema.
+      # Only step that talks to production Supabase; it runs after backend-test passed.
       # alembic is idempotent — safe to run on every deploy.
       - name: Run database migrations
         run: cd backend && alembic upgrade head
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-
-      - name: Run tests
-        run: pytest backend/tests/ -v
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          ENTSOE_API_KEY: ${{ secrets.ENTSOE_API_KEY }}
 
       # ── 3. AWS auth ───────────────────────────────────────────────────
       - name: Configure AWS credentials
