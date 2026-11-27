@@ -16,6 +16,7 @@ from typing import Literal, Optional
 import httpx
 
 from app.config import settings
+from app.logging_utils import redact_secrets
 from app.utils.timezone import stockholm_day_range_utc
 
 ENTSOE_BASE = "https://web-api.tp.entsoe.eu/api"
@@ -188,7 +189,7 @@ def fetch_day_ahead_prices(
         with httpx.Client(timeout=30.0) as client:
             response = client.get(ENTSOE_BASE, params=params)
     except httpx.RequestError as exc:
-        raise EntsoEError(f"Network error contacting ENTSO-E: {exc}") from exc
+        raise EntsoEError(f"Network error contacting ENTSO-E: {redact_secrets(str(exc))}") from exc
 
     if response.status_code != 200:
         raise EntsoEError(f"ENTSO-E returned HTTP {response.status_code}: {response.text[:200]}")
@@ -385,7 +386,7 @@ def fetch_load_forecast(
         with httpx.Client(timeout=30.0) as client:
             response = client.get(ENTSOE_BASE, params=params)
     except httpx.RequestError as exc:
-        raise EntsoEError(f"Network error contacting ENTSO-E: {exc}") from exc
+        raise EntsoEError(f"Network error contacting ENTSO-E: {redact_secrets(str(exc))}") from exc
 
     if response.status_code != 200:
         raise EntsoEError(f"ENTSO-E A65 returned HTTP {response.status_code}: {response.text[:200]}")
@@ -440,7 +441,7 @@ def fetch_de_day_ahead_prices(
         with httpx.Client(timeout=30.0) as client:
             response = client.get(ENTSOE_BASE, params=params)
     except httpx.RequestError as exc:
-        raise EntsoEError(f"Network error contacting ENTSO-E: {exc}") from exc
+        raise EntsoEError(f"Network error contacting ENTSO-E: {redact_secrets(str(exc))}") from exc
 
     if response.status_code != 200:
         raise EntsoEError(f"ENTSO-E A44 DE-LU returned HTTP {response.status_code}: {response.text[:200]}")
@@ -499,7 +500,7 @@ def fetch_generation_mix(
         with httpx.Client(timeout=30.0) as client:
             response = client.get(ENTSOE_BASE, params=params)
     except httpx.RequestError as exc:
-        raise EntsoEError(f"Network error contacting ENTSO-E: {exc}") from exc
+        raise EntsoEError(f"Network error contacting ENTSO-E: {redact_secrets(str(exc))}") from exc
 
     if response.status_code != 200:
         raise EntsoEError(f"ENTSO-E A75 returned HTTP {response.status_code}: {response.text[:200]}")
@@ -559,7 +560,7 @@ def fetch_hydro_reservoir(
         with httpx.Client(timeout=30.0) as client:
             response = client.get(ENTSOE_BASE, params=params)
     except httpx.HTTPError as exc:
-        raise EntsoEError(f"Network error contacting ENTSO-E: {exc}") from exc
+        raise EntsoEError(f"Network error contacting ENTSO-E: {redact_secrets(str(exc))}") from exc
 
     if response.status_code != 200:
         raise EntsoEError(f"ENTSO-E A72 returned HTTP {response.status_code}: {response.text[:200]}")
@@ -799,7 +800,7 @@ def fetch_unavailability(
             with httpx.Client(timeout=_OUTAGE_TIMEOUT) as client:
                 response = client.get(ENTSOE_BASE, params=params)
         except httpx.RequestError as exc:
-            raise EntsoEError(f"Network error contacting ENTSO-E: {exc}") from exc
+            raise EntsoEError(f"Network error contacting ENTSO-E: {redact_secrets(str(exc))}") from exc
         if response.status_code != 200:
             raise EntsoEError(f"ENTSO-E {doc_type} returned HTTP {response.status_code}: {response.text[:200]}")
         page, n_docs = _parse_unavailability_response(response.content, area)

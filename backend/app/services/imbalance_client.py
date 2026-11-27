@@ -31,6 +31,7 @@ from typing import Optional
 import httpx
 
 from app.config import settings
+from app.logging_utils import redact_secrets
 from app.utils.timezone import stockholm_midnight_utc
 
 ENTSOE_BASE = "https://web-api.tp.entsoe.eu/api"
@@ -163,7 +164,7 @@ def fetch_imbalance_prices(
         with httpx.Client(timeout=30.0) as client:
             response = client.get(ENTSOE_BASE, params=params)
     except httpx.RequestError as exc:
-        raise BalancingError(f"Network error contacting ENTSO-E: {exc}") from exc
+        raise BalancingError(f"Network error contacting ENTSO-E: {redact_secrets(str(exc))}") from exc
 
     if response.status_code != 200:
         raise BalancingError(f"ENTSO-E returned HTTP {response.status_code}: {response.content[:200]}")
