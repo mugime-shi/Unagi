@@ -105,9 +105,7 @@ def _apply_belt_wind(slots: list[dict], belt: dict[datetime, tuple[float | None,
     return replaced
 
 
-def _fetch_belt_wind(
-    area: str, forecast_days: int
-) -> dict[datetime, tuple[float | None, float | None]] | None:
+def _fetch_belt_wind(area: str, forecast_days: int) -> dict[datetime, tuple[float | None, float | None]] | None:
     """
     Fetch wind for every belt point of an area and average per timestamp.
     Returns None (caller keeps single-point wind) if any point fails —
@@ -191,13 +189,15 @@ def fetch_forecast(forecast_days: int = 2, area: str = "SE3") -> list[dict]:
     slots = []
     for i, ts_str in enumerate(times):
         ts = datetime.fromisoformat(ts_str).replace(tzinfo=timezone.utc)
-        slots.append({
-            "target_utc": ts,
-            "temperature_c": temps[i] if i < len(temps) else None,
-            "wind_speed_10m": wind10[i] if i < len(wind10) else None,
-            "wind_speed_100m": wind100[i] if i < len(wind100) else None,
-            "global_radiation_wm2": rads[i] if i < len(rads) else None,
-        })
+        slots.append(
+            {
+                "target_utc": ts,
+                "temperature_c": temps[i] if i < len(temps) else None,
+                "wind_speed_10m": wind10[i] if i < len(wind10) else None,
+                "wind_speed_100m": wind100[i] if i < len(wind100) else None,
+                "global_radiation_wm2": rads[i] if i < len(rads) else None,
+            }
+        )
 
     if area in multi_point_wind_areas():
         belt = _fetch_belt_wind(area, forecast_days)
@@ -298,11 +298,13 @@ def fetch_recent_weather(area: str, past_days: int = 7) -> list[dict]:
         ts = datetime.fromisoformat(ts_str).replace(tzinfo=timezone.utc)
         if ts >= now_utc:
             continue  # keep actuals only; forecasts go to weather_forecast
-        slots.append({
-            "timestamp_utc": ts,
-            "temperature_c": temps[i] if i < len(temps) else None,
-            "global_radiation_wm2": rads[i] if i < len(rads) else None,
-        })
+        slots.append(
+            {
+                "timestamp_utc": ts,
+                "temperature_c": temps[i] if i < len(temps) else None,
+                "global_radiation_wm2": rads[i] if i < len(rads) else None,
+            }
+        )
 
     log.info("Open-Meteo: fetched %d recent weather slots (area %s)", len(slots), area)
     return slots

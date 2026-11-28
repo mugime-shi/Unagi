@@ -9,8 +9,8 @@ On weekends/holidays the latest available rate is returned.
 """
 
 import logging
-from functools import lru_cache
 from datetime import date
+from functools import lru_cache
 
 import httpx
 

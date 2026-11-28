@@ -35,26 +35,26 @@ from app.services.smhi_client import DEFAULT_STATION, get_weather_for_date_range
 DEFAULT_PERFORMANCE_RATIO = 0.80
 
 # Battery dispatch thresholds (relative to daily average spot price)
-HIGH_PRICE_THRESHOLD = 1.20   # sell surplus / discharge battery when price > avg × this
-LOW_PRICE_THRESHOLD  = 0.80   # charge battery / buy from grid when price < avg × this
+HIGH_PRICE_THRESHOLD = 1.20  # sell surplus / discharge battery when price > avg × this
+LOW_PRICE_THRESHOLD = 0.80  # charge battery / buy from grid when price < avg × this
 
 # Tax credit (skattereduktion) — abolished from 2026-01-01
-TAX_CREDIT_RATE_SEK = 0.60    # SEK per eligible kWh sold
+TAX_CREDIT_RATE_SEK = 0.60  # SEK per eligible kWh sold
 TAX_CREDIT_ANNUAL_CAP = 18_000.0  # SEK per year
-TAX_CREDIT_END_YEAR = 2025    # last year with credit
+TAX_CREDIT_END_YEAR = 2025  # last year with credit
 
 # Monthly average global radiation for Göteborg (kWh/m²/day)
 # Key: month number (1–12)
 MONTHLY_RADIATION_KWH_M2_DAY: dict[int, float] = {
-    1:  0.3,
-    2:  0.8,
-    3:  1.8,
-    4:  3.5,
-    5:  5.0,
-    6:  5.5,
-    7:  5.2,
-    8:  4.2,
-    9:  2.5,
+    1: 0.3,
+    2: 0.8,
+    3: 1.8,
+    4: 3.5,
+    5: 5.0,
+    6: 5.5,
+    7: 5.2,
+    8: 4.2,
+    9: 2.5,
     10: 1.2,
     11: 0.4,
     12: 0.2,
@@ -64,6 +64,7 @@ MONTHLY_RADIATION_KWH_M2_DAY: dict[int, float] = {
 # ---------------------------------------------------------------------------
 # Core formula
 # ---------------------------------------------------------------------------
+
 
 def estimate_hourly_generation(
     radiation_wm2: float,
@@ -85,6 +86,7 @@ def estimate_hourly_generation(
 # ---------------------------------------------------------------------------
 # Monthly simulation
 # ---------------------------------------------------------------------------
+
 
 def simulate_month(
     panel_kwp: float,
@@ -133,11 +135,13 @@ def simulate_month(
             rad = float(r.global_radiation_wm2) if r.global_radiation_wm2 is not None else 0.0
             gen = estimate_hourly_generation(rad, panel_kwp, performance_ratio)
             total += gen
-            slots.append({
-                "timestamp_utc": r.timestamp_utc.isoformat(),
-                "radiation_wm2": round(rad, 2),
-                "generation_kwh": round(gen, 4),
-            })
+            slots.append(
+                {
+                    "timestamp_utc": r.timestamp_utc.isoformat(),
+                    "radiation_wm2": round(rad, 2),
+                    "generation_kwh": round(gen, 4),
+                }
+            )
         return {
             "panel_kwp": panel_kwp,
             "performance_ratio": performance_ratio,
@@ -186,6 +190,7 @@ def simulate_month_reference(
 # Solar optimization (sell / store / self-consume)
 # ---------------------------------------------------------------------------
 
+
 def _get_hourly_spot(db: Session, year: int, month: int) -> dict[datetime, float]:
     """
     Return {hour_utc: avg_spot_sek_kwh} for the given month.
@@ -196,9 +201,7 @@ def _get_hourly_spot(db: Session, year: int, month: int) -> dict[datetime, float
     from app.services.price_service import get_prices_for_date_range
 
     days = calendar.monthrange(year, month)[1]
-    rows = get_prices_for_date_range(
-        db, date(year, month, 1), date(year, month, days), area=settings.default_area
-    )
+    rows = get_prices_for_date_range(db, date(year, month, 1), date(year, month, days), area=settings.default_area)
     hourly: dict[datetime, list[float]] = defaultdict(list)
     for r in rows:
         hour = r.timestamp_utc.replace(minute=0, second=0, microsecond=0)
@@ -236,29 +239,27 @@ def _run_hourly_sim(
     daily_spot: dict[date, list[float]] = defaultdict(list)
     for ts, price in hourly_spot.items():
         daily_spot[ts.date()].append(price)
-    daily_avg: dict[date, float] = {
-        d: sum(v) / len(v) for d, v in daily_spot.items()
-    }
+    daily_avg: dict[date, float] = {d: sum(v) / len(v) for d, v in daily_spot.items()}
 
     sold = bought = revenue = 0.0
     battery_soc = 0.0
     total_cons = hourly_cons_kwh * len(hourly_gen)
 
     for ts in sorted(hourly_gen):
-        gen  = hourly_gen[ts]
+        gen = hourly_gen[ts]
         spot = hourly_spot.get(ts, 0.0)
-        avg  = daily_avg.get(ts.date(), spot)
-        net  = gen - hourly_cons_kwh
+        avg = daily_avg.get(ts.date(), spot)
+        net = gen - hourly_cons_kwh
 
         is_high = spot > avg * HIGH_PRICE_THRESHOLD
-        is_low  = spot < avg * LOW_PRICE_THRESHOLD
+        is_low = spot < avg * LOW_PRICE_THRESHOLD
 
-        if net >= 0:                    # surplus generation
+        if net >= 0:  # surplus generation
             surplus = net
             if is_high or battery_kwh == 0:
                 # High price window (or no battery): sell all surplus immediately.
                 # Exporting at peak price maximises revenue.
-                sold    += surplus
+                sold += surplus
                 revenue += surplus * spot
             else:
                 # Low/normal price: store in battery first; sell only what doesn't fit.
@@ -266,16 +267,16 @@ def _run_hourly_sim(
                 charge = min(surplus, battery_kwh - battery_soc)
                 battery_soc += charge
                 leftover = surplus - charge
-                sold    += leftover
+                sold += leftover
                 revenue += leftover * spot
-        else:                           # deficit — generation < consumption
+        else:  # deficit — generation < consumption
             deficit = -net
             if not is_low and battery_soc > 0:
                 # Price is normal/high: discharge battery to cover the deficit.
                 # Avoids buying at full retail when we already have stored energy.
-                discharge    = min(deficit, battery_soc)
+                discharge = min(deficit, battery_soc)
                 battery_soc -= discharge
-                bought      += deficit - discharge
+                bought += deficit - discharge
             else:
                 # Price is low (cheap to buy) or battery empty: purchase from grid.
                 bought += deficit
@@ -283,18 +284,18 @@ def _run_hourly_sim(
     # Savings = energy not purchased from grid × average full retail price.
     # "Not purchased" = direct self-consumption + battery discharge — both avoid
     # paying margin + grid fee + energy tax + VAT on top of spot price.
-    total_spots  = list(hourly_spot.values())
+    total_spots = list(hourly_spot.values())
     avg_spot_all = sum(total_spots) / len(total_spots) if total_spots else 0.0
     avg_full_retail = (avg_spot_all + overhead_sek_kwh) * (1 + vat_rate)
     savings = (total_cons - bought) * avg_full_retail
 
     return {
-        "self_consumed_kwh":    round(total_cons - bought, 2),
-        "sold_to_grid_kwh":     round(sold, 2),
+        "self_consumed_kwh": round(total_cons - bought, 2),
+        "sold_to_grid_kwh": round(sold, 2),
         "bought_from_grid_kwh": round(bought, 2),
-        "revenue_sek":          round(revenue, 2),
-        "savings_sek":          round(savings, 2),
-        "avg_spot_sek_kwh":     round(avg_spot_all, 4),
+        "revenue_sek": round(revenue, 2),
+        "savings_sek": round(savings, 2),
+        "avg_spot_sek_kwh": round(avg_spot_all, 4),
     }
 
 
@@ -317,31 +318,32 @@ def optimize_solar_month(
     Raises ValueError if no spot price data is found for the requested month.
     """
     from app.services.consumption_optimizer import (
-        ELCERT_SEK, ENERGY_TAX_SEK, GRID_FEE_SEK, MARGIN_SEK, VAT_RATE,
+        ELCERT_SEK,
+        ENERGY_TAX_SEK,
+        GRID_FEE_SEK,
+        MARGIN_SEK,
+        VAT_RATE,
     )
+
     overhead = MARGIN_SEK + GRID_FEE_SEK + ENERGY_TAX_SEK + ELCERT_SEK
 
-    days_in_month   = calendar.monthrange(year, month)[1]
-    hours_in_month  = days_in_month * 24
-    hourly_cons_kwh = annual_consumption_kwh / 8760.0   # uniform
+    days_in_month = calendar.monthrange(year, month)[1]
+    hours_in_month = days_in_month * 24
+    hourly_cons_kwh = annual_consumption_kwh / 8760.0  # uniform
 
     # --- Generation data ---
-    gen_result  = simulate_month(panel_kwp, year, month, db, performance_ratio)
+    gen_result = simulate_month(panel_kwp, year, month, db, performance_ratio)
     data_source = gen_result["data_source"]
 
     # --- Spot prices (required) ---
     hourly_spot = _get_hourly_spot(db, year, month)
     if not hourly_spot:
-        raise ValueError(
-            f"No spot price data for {year}-{month:02d}. "
-            "Run fetch_prices for that month first."
-        )
+        raise ValueError(f"No spot price data for {year}-{month:02d}. Run fetch_prices for that month first.")
 
     # --- Build hourly generation dict ---
     if data_source == "smhi" and "hourly_slots" in gen_result:
         hourly_gen: dict[datetime, float] = {
-            datetime.fromisoformat(s["timestamp_utc"]): s["generation_kwh"]
-            for s in gen_result["hourly_slots"]
+            datetime.fromisoformat(s["timestamp_utc"]): s["generation_kwh"] for s in gen_result["hourly_slots"]
         }
     else:
         # Reference mode: distribute total generation uniformly over hours with spot data
@@ -350,25 +352,32 @@ def optimize_solar_month(
 
     # --- Simulate without battery (baseline) ---
     base = _run_hourly_sim(
-        hourly_gen, hourly_cons_kwh, hourly_spot,
-        battery_kwh=0.0, overhead_sek_kwh=overhead, vat_rate=VAT_RATE,
+        hourly_gen,
+        hourly_cons_kwh,
+        hourly_spot,
+        battery_kwh=0.0,
+        overhead_sek_kwh=overhead,
+        vat_rate=VAT_RATE,
     )
 
     # --- Simulate with battery (if any) ---
     if battery_kwh > 0:
         opt = _run_hourly_sim(
-            hourly_gen, hourly_cons_kwh, hourly_spot,
-            battery_kwh=battery_kwh, overhead_sek_kwh=overhead, vat_rate=VAT_RATE,
+            hourly_gen,
+            hourly_cons_kwh,
+            hourly_spot,
+            battery_kwh=battery_kwh,
+            overhead_sek_kwh=overhead,
+            vat_rate=VAT_RATE,
         )
     else:
         opt = base
 
     battery_effect_sek = round(
-        (opt["revenue_sek"] + opt["savings_sek"])
-        - (base["revenue_sek"] + base["savings_sek"]), 2
+        (opt["revenue_sek"] + opt["savings_sek"]) - (base["revenue_sek"] + base["savings_sek"]), 2
     )
 
-    total_benefit      = round(opt["revenue_sek"] + opt["savings_sek"], 2)
+    total_benefit = round(opt["revenue_sek"] + opt["savings_sek"], 2)
     total_benefit_base = round(base["revenue_sek"] + base["savings_sek"], 2)
 
     # --- Tax credit (skattereduktion) ---
@@ -376,10 +385,10 @@ def optimize_solar_month(
     # Swedish tax law caps the credit at min(sold, bought).
     # Households that export more than they import cannot claim credit on the excess —
     # this prevents pure generators from benefiting from a consumer-oriented subsidy.
-    eligible_kwh   = min(opt["sold_to_grid_kwh"], opt["bought_from_grid_kwh"])
+    eligible_kwh = min(opt["sold_to_grid_kwh"], opt["bought_from_grid_kwh"])
     monthly_credit = round(eligible_kwh * TAX_CREDIT_RATE_SEK, 2) if credit_applies else 0.0
 
-    eligible_kwh_base  = min(base["sold_to_grid_kwh"], base["bought_from_grid_kwh"])
+    eligible_kwh_base = min(base["sold_to_grid_kwh"], base["bought_from_grid_kwh"])
     monthly_credit_base = round(eligible_kwh_base * TAX_CREDIT_RATE_SEK, 2) if credit_applies else 0.0
 
     return {
@@ -391,24 +400,24 @@ def optimize_solar_month(
         # Generation
         "solar_generation_kwh": gen_result["total_generation_kwh"],
         # Dispatch (with battery / optimized)
-        "self_consumed_kwh":    opt["self_consumed_kwh"],
-        "sold_to_grid_kwh":     opt["sold_to_grid_kwh"],
+        "self_consumed_kwh": opt["self_consumed_kwh"],
+        "sold_to_grid_kwh": opt["sold_to_grid_kwh"],
         "bought_from_grid_kwh": opt["bought_from_grid_kwh"],
         # Financials (with battery / optimized)
-        "avg_spot_sek_kwh":                 opt["avg_spot_sek_kwh"],
-        "revenue_sek":                       opt["revenue_sek"],
+        "avg_spot_sek_kwh": opt["avg_spot_sek_kwh"],
+        "revenue_sek": opt["revenue_sek"],
         "savings_from_self_consumption_sek": opt["savings_sek"],
-        "battery_effect_sek":                battery_effect_sek,
+        "battery_effect_sek": battery_effect_sek,
         "total_benefit_without_tax_credit_sek": total_benefit,
-        "total_benefit_with_tax_credit_sek":    round(total_benefit + monthly_credit, 2),
+        "total_benefit_with_tax_credit_sek": round(total_benefit + monthly_credit, 2),
         # Baseline (no battery) — for with/without battery comparison in UI
         "baseline": {
-            "self_consumed_kwh":    base["self_consumed_kwh"],
-            "sold_to_grid_kwh":     base["sold_to_grid_kwh"],
+            "self_consumed_kwh": base["self_consumed_kwh"],
+            "sold_to_grid_kwh": base["sold_to_grid_kwh"],
             "bought_from_grid_kwh": base["bought_from_grid_kwh"],
-            "revenue_sek":          base["revenue_sek"],
-            "savings_sek":          base["savings_sek"],
-            "total_benefit_sek":    total_benefit_base,
+            "revenue_sek": base["revenue_sek"],
+            "savings_sek": base["savings_sek"],
+            "total_benefit_sek": total_benefit_base,
             "total_benefit_with_tax_credit_sek": round(total_benefit_base + monthly_credit_base, 2),
         },
         # Tax credit detail
@@ -421,8 +430,8 @@ def optimize_solar_month(
             "annual_cap_sek": TAX_CREDIT_ANNUAL_CAP,
             "note": (
                 "Skattereduktion applies until end of 2025"
-                if credit_applies else
-                "Skattereduktion abolished from 2026-01-01"
+                if credit_applies
+                else "Skattereduktion abolished from 2026-01-01"
             ),
         },
     }

@@ -50,9 +50,7 @@ def test_hourly_generation_uses_stockholm_date(now, expected):
             "fetch_generation_date",
             side_effect=lambda d, a: fetched.append(d) or {"status": "ok"},
         ),
-        patch.object(
-            fetch_prices, "fetch_load_forecast_date", return_value={"status": "ok"}
-        ),
+        patch.object(fetch_prices, "fetch_load_forecast_date", return_value={"status": "ok"}),
         patch.object(fetch_prices, "fetch_hydro_date", return_value={"status": "ok"}),
     ):
         fetch_prices.lambda_handler({"hourly_generation": True, "area": "SE3"}, None)

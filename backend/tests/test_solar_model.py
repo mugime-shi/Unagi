@@ -9,19 +9,16 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.services.solar_model import (
-    DEFAULT_PERFORMANCE_RATIO,
-    MONTHLY_RADIATION_KWH_M2_DAY,
-    TAX_CREDIT_END_YEAR,
     estimate_hourly_generation,
     optimize_solar_month,
     simulate_month,
     simulate_month_reference,
 )
 
-
 # ---------------------------------------------------------------------------
 # estimate_hourly_generation — pure function
 # ---------------------------------------------------------------------------
+
 
 def test_estimate_at_1000_wm2_equals_kwp():
     """At 1000 W/m² with PR=1.0, generation == panel_kwp kWh."""
@@ -53,6 +50,7 @@ def test_estimate_scales_linearly_with_kwp():
 # simulate_month_reference — uses lookup table, no DB
 # ---------------------------------------------------------------------------
 
+
 def test_reference_july_6kwp_in_range():
     """TASKS.md completion condition: 6 kWp July generation in [500, 800] kWh."""
     result = simulate_month_reference(panel_kwp=6.0, year=2026, month=7)
@@ -63,7 +61,7 @@ def test_reference_july_6kwp_in_range():
 def test_reference_december_less_than_july():
     """Winter generation must be much less than summer."""
     july = simulate_month_reference(6.0, 2026, 7)
-    dec  = simulate_month_reference(6.0, 2026, 12)
+    dec = simulate_month_reference(6.0, 2026, 12)
     assert dec["total_generation_kwh"] < july["total_generation_kwh"] * 0.1
 
 
@@ -82,6 +80,7 @@ def test_reference_scales_with_kwp():
 def test_reference_daily_avg_consistent():
     result = simulate_month_reference(6.0, 2026, 7)
     import calendar
+
     days = calendar.monthrange(2026, 7)[1]
     assert result["daily_avg_kwh"] == pytest.approx(result["total_generation_kwh"] / days, rel=0.01)
 
@@ -95,6 +94,7 @@ def test_reference_all_months_positive():
 # ---------------------------------------------------------------------------
 # simulate_month — with mock DB
 # ---------------------------------------------------------------------------
+
 
 def _make_weather_row(ts: datetime, radiation: float):
     row = MagicMock()
@@ -116,10 +116,7 @@ def test_simulate_month_uses_smhi_data_when_available():
 
     assert result["data_source"] == "smhi"
     assert result["hours_with_data"] == 2
-    expected = (
-        estimate_hourly_generation(500.0, 6.0) +
-        estimate_hourly_generation(700.0, 6.0)
-    )
+    expected = estimate_hourly_generation(500.0, 6.0) + estimate_hourly_generation(700.0, 6.0)
     assert result["total_generation_kwh"] == pytest.approx(expected, rel=0.001)
 
 
@@ -147,9 +144,7 @@ def test_simulate_month_smhi_slots_structure():
     assert "timestamp_utc" in slot
     assert "radiation_wm2" in slot
     assert "generation_kwh" in slot
-    assert slot["generation_kwh"] == pytest.approx(
-        estimate_hourly_generation(800.0, 6.0), rel=0.001
-    )
+    assert slot["generation_kwh"] == pytest.approx(estimate_hourly_generation(800.0, 6.0), rel=0.001)
 
 
 def test_simulate_month_zero_radiation_hours_contribute_nothing():
@@ -169,12 +164,10 @@ def test_simulate_month_zero_radiation_hours_contribute_nothing():
 # optimize_solar_month — mock both SMHI and spot prices
 # ---------------------------------------------------------------------------
 
+
 def _make_day_night_spot(year, month, day, price=0.50):
     """Spot prices for one day: uniform price across all 24 hours."""
-    return {
-        datetime(year, month, day, h, tzinfo=timezone.utc): price
-        for h in range(24)
-    }
+    return {datetime(year, month, day, h, tzinfo=timezone.utc): price for h in range(24)}
 
 
 def _make_day_night_smhi(year, month, day, daytime_rad=400.0):
@@ -206,10 +199,17 @@ def test_optimize_returns_expected_keys():
         with patch("app.services.solar_model._get_hourly_spot", return_value=spot):
             result = optimize_solar_month(6.0, 0.0, 5000, 2026, 7, mock_db)
 
-    for key in ("solar_generation_kwh", "self_consumed_kwh", "sold_to_grid_kwh",
-                "bought_from_grid_kwh", "revenue_sek", "savings_from_self_consumption_sek",
-                "total_benefit_without_tax_credit_sek", "total_benefit_with_tax_credit_sek",
-                "tax_credit"):
+    for key in (
+        "solar_generation_kwh",
+        "self_consumed_kwh",
+        "sold_to_grid_kwh",
+        "bought_from_grid_kwh",
+        "revenue_sek",
+        "savings_from_self_consumption_sek",
+        "total_benefit_without_tax_credit_sek",
+        "total_benefit_with_tax_credit_sek",
+        "tax_credit",
+    ):
         assert key in result, f"Missing key: {key}"
 
 
@@ -255,7 +255,7 @@ def test_optimize_conservation_law():
         with patch("app.services.solar_model._get_hourly_spot", return_value=spot):
             result = optimize_solar_month(6.0, 0.0, 5000, 2026, 7, mock_db)
 
-    gen  = result["solar_generation_kwh"]
+    gen = result["solar_generation_kwh"]
     used = result["self_consumed_kwh"] + result["sold_to_grid_kwh"]
     assert used == pytest.approx(gen, rel=0.01)
 
@@ -271,7 +271,7 @@ def test_optimize_battery_reduces_grid_purchases():
 
     with patch("app.services.solar_model.get_weather_for_date_range", return_value=smhi):
         with patch("app.services.solar_model._get_hourly_spot", return_value=spot):
-            no_bat = optimize_solar_month(6.0, 0.0,  5000, 2026, 7, mock_db)
+            no_bat = optimize_solar_month(6.0, 0.0, 5000, 2026, 7, mock_db)
             with_bat = optimize_solar_month(6.0, 10.0, 5000, 2026, 7, mock_db)
 
     assert with_bat["bought_from_grid_kwh"] <= no_bat["bought_from_grid_kwh"]

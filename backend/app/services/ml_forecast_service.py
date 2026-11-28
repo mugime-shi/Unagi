@@ -288,7 +288,10 @@ def _fit_quantile_set(
         q_hat_bias = float(np.quantile(scores_bias, quantile_level))
         logger.info(
             "Hourly bias (%s): mean=%.4f max=|%.4f|, q_hat_bias=%.4f",
-            log_label, float(np.mean(bias)), float(np.max(np.abs(bias))), q_hat_bias,
+            log_label,
+            float(np.mean(bias)),
+            float(np.max(np.abs(bias))),
+            q_hat_bias,
         )
     else:
         q_hat = 0.0
@@ -355,8 +358,12 @@ def _train_model(db: Session, target_date: date, area: str, *, huber_delta: floa
         split_idx = len(rows)
 
     return _fit_quantile_set(
-        X[:split_idx], y[:split_idx], X[split_idx:], y[split_idx:],
-        huber_delta=huber_delta, log_label="A",
+        X[:split_idx],
+        y[:split_idx],
+        X[split_idx:],
+        y[split_idx:],
+        huber_delta=huber_delta,
+        log_label="A",
     )
 
 
@@ -404,8 +411,12 @@ def _train_volatile_model(db: Session, target_date: date, area: str, *, huber_de
         X_val_b, y_val_b = X_vol[:0], y_vol[:0]
 
     return _fit_quantile_set(
-        X_train_b, y_train_b, X_val_b, y_val_b,
-        huber_delta=huber_delta, log_label="B(volatile)",
+        X_train_b,
+        y_train_b,
+        X_val_b,
+        y_val_b,
+        huber_delta=huber_delta,
+        log_label="B(volatile)",
     )
 
 
@@ -642,12 +653,12 @@ def _blend_forecasts(forecast_a: dict, forecast_b: dict, p: float) -> dict:
         slot["low_sek_kwh"] = (
             round(max(0.0, (1 - p) * a_lo + p * b_lo), 4) if a_lo is not None and b_lo is not None else a_lo
         )
-        slot["high_sek_kwh"] = (
-            round((1 - p) * a_hi + p * b_hi, 4) if a_hi is not None and b_hi is not None else a_hi
-        )
+        slot["high_sek_kwh"] = round((1 - p) * a_hi + p * b_hi, 4) if a_hi is not None and b_hi is not None else a_hi
         blended_slots.append(slot)
 
-    valid = [(s["low_sek_kwh"], s["avg_sek_kwh"], s["high_sek_kwh"]) for s in blended_slots if s["avg_sek_kwh"] is not None]
+    valid = [
+        (s["low_sek_kwh"], s["avg_sek_kwh"], s["high_sek_kwh"]) for s in blended_slots if s["avg_sek_kwh"] is not None
+    ]
     summary = {
         "predicted_avg_sek_kwh": round(sum(v[1] for v in valid) / len(valid), 4) if valid else None,
         "predicted_low_sek_kwh": round(min(v[0] for v in valid), 4) if valid else None,
@@ -735,7 +746,11 @@ def build_lgbm_forecast_ensemble(
     if _GATE_LO <= p < _GATE_HI:
         logger.info(
             "Ensemble gated (p=%.3f in [%.2f,%.2f)) — returning Model A for %s/%s",
-            p, _GATE_LO, _GATE_HI, area, target_date,
+            p,
+            _GATE_LO,
+            _GATE_HI,
+            area,
+            target_date,
         )
         forecast_a["ensemble_p"] = round(p, 4)
         forecast_a["ensemble_gated"] = True

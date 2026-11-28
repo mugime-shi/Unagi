@@ -225,9 +225,9 @@ def get_coverage_by_regime(
     Returns: {expected_pct, overall: {coverage_pct, n_samples},
               calm: {...}, volatile: {...}}
     """
-    regime_by_date = get_regime_split(
-        db, area=area, days=days, model=model, baseline=baseline, threshold=threshold
-    )["regime_by_date"]
+    regime_by_date = get_regime_split(db, area=area, days=days, model=model, baseline=baseline, threshold=threshold)[
+        "regime_by_date"
+    ]
 
     cutoff = stockholm_today() - timedelta(days=days)
     rows = (

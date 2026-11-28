@@ -29,6 +29,7 @@ from app.services.imbalance_client import (
 # Helpers to build minimal Balancing_MarketDocument XML fixtures
 # ---------------------------------------------------------------------------
 
+
 def _make_xml(start_utc: str, resolution: str, points: list[dict]) -> str:
     """
     Build a minimal Balancing_MarketDocument XML string.
@@ -38,9 +39,9 @@ def _make_xml(start_utc: str, resolution: str, points: list[dict]) -> str:
     """
     pts_xml = "\n".join(
         f"""      <Point>
-        <position>{p['position']}</position>
-        <imbalance_Price.amount>{p['amount']}</imbalance_Price.amount>
-        <imbalance_Price.category>{p['category']}</imbalance_Price.category>
+        <position>{p["position"]}</position>
+        <imbalance_Price.amount>{p["amount"]}</imbalance_Price.amount>
+        <imbalance_Price.category>{p["category"]}</imbalance_Price.category>
       </Point>"""
         for p in points
     )
@@ -72,15 +73,16 @@ SAMPLE_START = "2026-03-14T23:00Z"
 SAMPLE_POINTS = [
     {"position": 1, "amount": "50.00", "category": CATEGORY_SHORT},  # A05
     {"position": 2, "amount": "45.00", "category": CATEGORY_SHORT},
-    {"position": 1, "amount": "48.00", "category": CATEGORY_LONG},   # A04
+    {"position": 1, "amount": "48.00", "category": CATEGORY_LONG},  # A04
 ]
-SAMPLE_XML  = _make_xml(SAMPLE_START, "PT15M", SAMPLE_POINTS)
-SAMPLE_ZIP  = _make_zip(SAMPLE_XML)
+SAMPLE_XML = _make_xml(SAMPLE_START, "PT15M", SAMPLE_POINTS)
+SAMPLE_ZIP = _make_zip(SAMPLE_XML)
 
 
 # ---------------------------------------------------------------------------
 # _parse_zip_response unit tests
 # ---------------------------------------------------------------------------
+
 
 def test_parse_returns_correct_point_count():
     points = _parse_zip_response(SAMPLE_ZIP, eur_to_sek=11.0)
@@ -105,17 +107,14 @@ def test_parse_first_slot_timestamp():
 def test_parse_categories_both_present():
     points = _parse_zip_response(SAMPLE_ZIP, eur_to_sek=11.0)
     cats = {p.category for p in points}
-    assert CATEGORY_LONG  in cats  # A04
+    assert CATEGORY_LONG in cats  # A04
     assert CATEGORY_SHORT in cats  # A05
 
 
 def test_parse_eur_to_sek_conversion():
     points = _parse_zip_response(SAMPLE_ZIP, eur_to_sek=11.0)
     # 50 EUR/MWh → 50 * 11 / 1000 = 0.55 SEK/kWh
-    short_p1 = next(
-        p for p in points
-        if p.category == CATEGORY_SHORT and p.price_eur_mwh == 50.0
-    )
+    short_p1 = next(p for p in points if p.category == CATEGORY_SHORT and p.price_eur_mwh == 50.0)
     assert abs(short_p1.price_sek_kwh - 0.55) < 1e-4
 
 
@@ -170,6 +169,7 @@ def test_parse_resolution_stored_on_point():
 # fetch_imbalance_prices integration tests (HTTP mocked)
 # ---------------------------------------------------------------------------
 
+
 def _make_mock_response(content: bytes, status_code: int = 200) -> MagicMock:
     mock_resp = MagicMock()
     mock_resp.status_code = status_code
@@ -194,7 +194,7 @@ def test_fetch_returns_balancing_points(mock_client_cls):
     assert all(isinstance(p, BalancingPoint) for p in points)
     cats = {p.category for p in points}
     assert CATEGORY_SHORT in cats
-    assert CATEGORY_LONG  in cats
+    assert CATEGORY_LONG in cats
 
 
 @patch("app.services.imbalance_client.httpx.Client")
@@ -218,6 +218,7 @@ def test_fetch_raises_without_api_key(monkeypatch):
 @patch("app.services.imbalance_client.httpx.Client")
 def test_fetch_raises_on_network_error(mock_client_cls):
     import httpx as _httpx
+
     mock_client = MagicMock()
     mock_client.__enter__ = MagicMock(return_value=mock_client)
     mock_client.__exit__ = MagicMock(return_value=False)
@@ -235,7 +236,8 @@ def test_fetch_raises_when_no_data_in_date_window(mock_client_cls):
     """
     # Put the start 3 days ahead → outside the window for date(2026, 3, 15)
     future_xml = _make_xml(
-        "2026-03-17T23:00Z", "PT15M",
+        "2026-03-17T23:00Z",
+        "PT15M",
         [{"position": 1, "amount": "55.00", "category": CATEGORY_SHORT}],
     )
     future_zip = _make_zip(future_xml)
@@ -257,11 +259,13 @@ def test_fetch_filters_to_correct_cet_day(mock_client_cls):
     2026-03-15 CET = 2026-03-14 23:00Z → 2026-03-15 23:00Z.
     """
     xml_day1 = _make_xml(
-        "2026-03-14T23:00Z", "PT15M",
+        "2026-03-14T23:00Z",
+        "PT15M",
         [{"position": 1, "amount": "50.00", "category": CATEGORY_SHORT}],
     )
     xml_day2 = _make_xml(
-        "2026-03-15T23:00Z", "PT15M",   # start of 2026-03-16 CET — outside window
+        "2026-03-15T23:00Z",
+        "PT15M",  # start of 2026-03-16 CET — outside window
         [{"position": 1, "amount": "60.00", "category": CATEGORY_SHORT}],
     )
     # Both in same ZIP

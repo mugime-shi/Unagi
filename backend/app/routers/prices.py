@@ -8,6 +8,18 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.db.database import get_db
+from app.services.balancing_service import fetch_and_store_balancing, get_balancing_for_date
+from app.services.esett_client import BalancingError
+from app.services.price_service import (
+    build_forecast,
+    find_cheapest_window,
+    get_or_fetch_prices,
+    get_prices_for_date,
+    get_prices_for_date_range,
+)
+from app.utils.timezone import stockholm_day_range_utc, stockholm_today
+
 _STOCKHOLM = ZoneInfo("Europe/Stockholm")
 
 
@@ -20,18 +32,6 @@ def _to_stockholm_date(dt_utc) -> date:
         dt_utc = dt_utc.replace(tzinfo=timezone.utc)
     return dt_utc.astimezone(_STOCKHOLM).date()
 
-
-from app.db.database import get_db
-from app.services.balancing_service import fetch_and_store_balancing, get_balancing_for_date
-from app.services.esett_client import BalancingError
-from app.services.price_service import (
-    build_forecast,
-    find_cheapest_window,
-    get_or_fetch_prices,
-    get_prices_for_date,
-    get_prices_for_date_range,
-)
-from app.utils.timezone import stockholm_day_range_utc, stockholm_today
 
 router = APIRouter(prefix="/prices", tags=["prices"])
 
@@ -677,8 +677,6 @@ def get_weekly_forecast(
     """
     if area not in VALID_AREAS:
         raise HTTPException(status_code=422, detail=f"Invalid area. Must be one of {sorted(VALID_AREAS)}")
-
-    today = date.today()
 
     # Compute 30-day reference average from actual prices
     ref_row = db.execute(

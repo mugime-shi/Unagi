@@ -35,9 +35,7 @@ from sqlalchemy import text
 from app.db.database import SessionLocal
 from app.services.feature_service import FEATURE_COLS, TARGET_COL, build_feature_matrix
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger(__name__)
 
 # Re-validation 2026-04-23: Training window extended to 500d after backfill.

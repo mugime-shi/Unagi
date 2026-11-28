@@ -27,8 +27,8 @@ ELCERT_SEK = 0.010
 VAT_RATE = 0.25
 
 # Optimization defaults
-DEFAULT_SHIFTABLE_PCT = 0.30   # 30 % of daily consumption can be shifted
-DEFAULT_SHIFT_HOURS = 8        # shift to the cheapest 8 hours per day
+DEFAULT_SHIFTABLE_PCT = 0.30  # 30 % of daily consumption can be shifted
+DEFAULT_SHIFT_HOURS = 8  # shift to the cheapest 8 hours per day
 
 
 @dataclass
@@ -86,7 +86,7 @@ def _avg_spot_optimized(
         if n == 0:
             continue
         sorted_p = sorted(prices)
-        cheap_avg = sum(sorted_p[:min(shift_hours, n)]) / min(shift_hours, n)
+        cheap_avg = sum(sorted_p[: min(shift_hours, n)]) / min(shift_hours, n)
         full_avg = sum(prices) / n
 
         # shiftable fraction goes to cheapest hours; rest stays at full-day average
@@ -166,10 +166,7 @@ def simulate(
             **_savings(dynamic_monthly),
         },
         "optimized": {
-            "description": (
-                f"Shift {int(shiftable_pct * 100)}% of daily consumption "
-                f"to cheapest {shift_hours}h"
-            ),
+            "description": (f"Shift {int(shiftable_pct * 100)}% of daily consumption to cheapest {shift_hours}h"),
             "avg_spot_sek_kwh": round(opt_spot, 4),
             "total_per_kwh_sek": round(optimized_per_kwh, 4),
             "monthly_cost_sek": round(optimized_monthly, 2),

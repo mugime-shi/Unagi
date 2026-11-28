@@ -19,7 +19,7 @@ import numpy as np
 from sqlalchemy import text
 
 from app.db.database import SessionLocal
-from app.services.feature_service import FEATURE_COLS, TARGET_COL, build_feature_matrix
+from app.services.feature_service import FEATURE_COLS, build_feature_matrix
 from app.services.ml_forecast_service import SHAP_GROUPS
 
 logging.basicConfig(
@@ -106,8 +106,7 @@ def main():
             rate = nc / total_count * 100 if total_count else 0
             if nc == 0:
                 continue  # hide fully-populated features for signal
-            print(f"  {i:>3}  {f:<32} {_FEAT_TO_GROUP.get(f, 'Other'):<20} "
-                  f"{rate:>7.2f}  {nc:>12}")
+            print(f"  {i:>3}  {f:<32} {_FEAT_TO_GROUP.get(f, 'Other'):<20} {rate:>7.2f}  {nc:>12}")
         print("-" * 84)
         fully = sum(1 for f in FEATURE_COLS if null_count.get(f, 0) == 0)
         partial = sum(1 for f in FEATURE_COLS if 0 < null_count.get(f, 0) < total_count)
@@ -137,7 +136,7 @@ def main():
         worst_nulls = sorted(daily_null_avg.items(), key=lambda kv: kv[1], reverse=True)[:10]
         print()
         print("=" * 84)
-        print(f"  TOP 10 DAYS BY NULL FEATURES (avg NULL per hour)")
+        print("  TOP 10 DAYS BY NULL FEATURES (avg NULL per hour)")
         print("=" * 84)
         print(f"  {'Date':<12} {'NULL/hr':>8} {'MAE':>8}")
         print("-" * 84)
@@ -154,16 +153,16 @@ def main():
             mae_arr = np.array([p[1] for p in paired])
             corr = float(np.corrcoef(nulls_arr, mae_arr)[0, 1])
             print()
-            print(f"  Correlation (null_count_per_hour vs daily_mae): {corr:+.3f}  "
-                  f"(n={len(paired)} days)")
+            print(f"  Correlation (null_count_per_hour vs daily_mae): {corr:+.3f}  (n={len(paired)} days)")
             if corr > 0.3:
                 print("  → Strong positive: data gaps DRIVE the MAE blow-ups")
             elif corr < -0.2:
-                print("  → Negative: MAE blow-ups happen on days with MORE data. "
-                      "Not a coverage problem.")
+                print("  → Negative: MAE blow-ups happen on days with MORE data. Not a coverage problem.")
             else:
-                print("  → Weak correlation: coverage and MAE are largely independent. "
-                      "MAE spikes are likely regime shifts, not data gaps.")
+                print(
+                    "  → Weak correlation: coverage and MAE are largely independent. "
+                    "MAE spikes are likely regime shifts, not data gaps."
+                )
             print()
 
         # Worst MAE days, with their NULL status

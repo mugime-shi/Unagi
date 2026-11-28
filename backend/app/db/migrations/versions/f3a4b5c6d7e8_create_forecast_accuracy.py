@@ -4,6 +4,7 @@ Revision ID: f3a4b5c6d7e8
 Revises: e2f3a4b5c6d7
 Create Date: 2026-03-17
 """
+
 from typing import Union
 
 import sqlalchemy as sa
@@ -33,7 +34,10 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
-            "target_date", "area", "model_name", "hour",
+            "target_date",
+            "area",
+            "model_name",
+            "hour",
             name="uq_forecast_accuracy",
         ),
     )

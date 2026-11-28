@@ -27,9 +27,7 @@ from app.services.ml_forecast_service import (
     predict_with_model,
 )
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger(__name__)
 
 

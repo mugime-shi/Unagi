@@ -30,9 +30,7 @@ from app.services.ml_forecast_service import (
     predict_with_model,
 )
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger(__name__)
 
 
@@ -221,23 +219,29 @@ def main():
     print(f"  BACKTEST_ENSEMBLE — area={args.area}  days={args.days}")
     print(f"  Days with both A & E: {len(have_e)}  ({sum(r['n_hours'] for r in have_e)} hourly preds)")
     print("-" * 78)
-    print(f"  Overall   MAE   A = {overall_a:.4f}   E = {overall_e:.4f}   Δ = {(overall_e/overall_a-1)*100:+.1f}%")
-    print(f"  Volatile  MAE   A = {vol_a:.4f}   E = {vol_e:.4f}   Δ = {(vol_e/vol_a-1)*100:+.1f}%   "
-          f"(n={len(vol_results)} days, E-wins {wins_e_vol}/{len(vol_results)})")
-    print(f"  Calm      MAE   A = {calm_a:.4f}   E = {calm_e:.4f}   Δ = {(calm_e/calm_a-1)*100:+.1f}%   "
-          f"(n={len(calm_results)} days)")
+    print(
+        f"  Overall   MAE   A = {overall_a:.4f}   E = {overall_e:.4f}   Δ = {(overall_e / overall_a - 1) * 100:+.1f}%"
+    )
+    print(
+        f"  Volatile  MAE   A = {vol_a:.4f}   E = {vol_e:.4f}   Δ = {(vol_e / vol_a - 1) * 100:+.1f}%   "
+        f"(n={len(vol_results)} days, E-wins {wins_e_vol}/{len(vol_results)})"
+    )
+    print(
+        f"  Calm      MAE   A = {calm_a:.4f}   E = {calm_e:.4f}   Δ = {(calm_e / calm_a - 1) * 100:+.1f}%   "
+        f"(n={len(calm_results)} days)"
+    )
     print("-" * 78)
-    print(f"  Pass criteria:  Overall ≤ 0.21  AND/OR  Volatile ≤ 0.24")
+    print("  Pass criteria:  Overall ≤ 0.21  AND/OR  Volatile ≤ 0.24")
     overall_ok = overall_e <= 0.21
     vol_ok = vol_e <= 0.24
     if overall_ok and vol_ok:
-        print(f"  → PASS — both targets met")
+        print("  → PASS — both targets met")
     elif overall_ok:
-        print(f"  → PARTIAL PASS — overall met, volatile not")
+        print("  → PARTIAL PASS — overall met, volatile not")
     elif vol_ok:
-        print(f"  → PARTIAL PASS — volatile met, overall not")
+        print("  → PARTIAL PASS — volatile met, overall not")
     else:
-        print(f"  → FAIL — neither target met")
+        print("  → FAIL — neither target met")
     print(f"  Ensemble wins on {wins_e}/{len(have_e)} days overall")
     print("=" * 78)
     return 0

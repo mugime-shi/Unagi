@@ -27,7 +27,7 @@ class GenerationMix(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     area: Mapped[str] = mapped_column(String(4), nullable=False, default="SE3")
     timestamp_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    psr_type: Mapped[str] = mapped_column(String(4), nullable=False)   # "B12", "B14", etc.
+    psr_type: Mapped[str] = mapped_column(String(4), nullable=False)  # "B12", "B14", etc.
     value_mw: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     resolution: Mapped[str] = mapped_column(String(10), default="PT15M")
     created_at: Mapped[datetime] = mapped_column(
@@ -38,7 +38,9 @@ class GenerationMix(Base):
 
     __table_args__ = (
         UniqueConstraint(
-            "area", "timestamp_utc", "psr_type",
+            "area",
+            "timestamp_utc",
+            "psr_type",
             name="uq_generation_mix",
         ),
         Index("idx_generation_mix_area_time", "area", "timestamp_utc"),

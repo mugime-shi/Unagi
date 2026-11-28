@@ -402,8 +402,7 @@ def test_history_cest_bucketing_via_endpoint(client, db):
     base = next(
         d
         for d in (today - timedelta(days=n) for n in range(40, 340))
-        if _to_stockholm_date(datetime(d.year, d.month, d.day, 22, 0, tzinfo=timezone.utc))
-        == d + timedelta(days=1)
+        if _to_stockholm_date(datetime(d.year, d.month, d.day, 22, 0, tzinfo=timezone.utc)) == d + timedelta(days=1)
     )
     next_day = base + timedelta(days=1)
 
@@ -573,7 +572,6 @@ def test_dst_fall_back_day_has_25_hourly_slots(client, db):
 
 def _make_point_area(hour: int, area: str, price_sek: float) -> PricePoint:
     """Helper: PricePoint for a specific area and price, on 2026-03-11."""
-    ts = datetime(2026, 3, 10, 23 + hour % 24, 0, tzinfo=timezone.utc)  # CET date = 2026-03-11
     return PricePoint(
         timestamp_utc=datetime(2026, 3, 10, 23, 0, tzinfo=timezone.utc) + __import__("datetime").timedelta(hours=hour),
         price_eur_mwh=price_sek * 1000 / 11,

@@ -17,12 +17,11 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
-
-import re
-import xml.etree.ElementTree as ET
 
 import httpx
 
@@ -54,13 +53,13 @@ AREAS = {
 # The flows we believe matter most for SE3 price formation
 # (in_Domain = receiving, out_Domain = sending)
 LINKS = [
-    ("SE2", "SE3"),   # main internal north→south flow (hydro surplus → industrial)
-    ("NO1", "SE3"),   # Norway hydro import
-    ("FI", "SE3"),    # Finland import
-    ("SE3", "SE4"),   # export south (drain direction)
-    ("SE3", "DE-LU"), # export south to Germany via SE4 corridor
-    ("DE-LU", "SE3"), # import from Germany (reverse)
-    ("SE1", "SE2"),   # upstream: lets us see whether north trouble propagates
+    ("SE2", "SE3"),  # main internal north→south flow (hydro surplus → industrial)
+    ("NO1", "SE3"),  # Norway hydro import
+    ("FI", "SE3"),  # Finland import
+    ("SE3", "SE4"),  # export south (drain direction)
+    ("SE3", "DE-LU"),  # export south to Germany via SE4 corridor
+    ("DE-LU", "SE3"),  # import from Germany (reverse)
+    ("SE1", "SE2"),  # upstream: lets us see whether north trouble propagates
 ]
 
 
@@ -137,9 +136,7 @@ def fetch_ntc(from_area: str, to_area: str, target_date: date) -> list[NtcPoint]
 
     if response.status_code != 200:
         snippet = response.text[:200].replace("\n", " ")
-        raise RuntimeError(
-            f"HTTP {response.status_code} for {from_area}->{to_area} {target_date}: {snippet}"
-        )
+        raise RuntimeError(f"HTTP {response.status_code} for {from_area}->{to_area} {target_date}: {snippet}")
 
     # Acknowledgement / no-data documents are still HTTP 200 but small
     if "<Acknowledgement_MarketDocument" in response.text[:500]:
@@ -170,7 +167,7 @@ def daily_stats(points: list[NtcPoint], target_date: date) -> dict | None:
 PROBE_DAYS = {
     "worst": [
         date(2026, 3, 31),  # #1 worst, production MAE 0.6233
-        date(2026, 2, 6),   # mysterious high-MAE / low-vol
+        date(2026, 2, 6),  # mysterious high-MAE / low-vol
         date(2026, 2, 10),
         date(2026, 2, 19),
         date(2026, 3, 20),

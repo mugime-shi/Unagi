@@ -45,11 +45,23 @@ def main() -> None:
                 ),
                 {"t": tbl},
             ).all()
-            ts_cols = [c.column_name for c in cols if c.data_type in (
-                "timestamp with time zone", "timestamp without time zone", "date")]
+            ts_cols = [
+                c.column_name
+                for c in cols
+                if c.data_type in ("timestamp with time zone", "timestamp without time zone", "date")
+            ]
             print(f"  {tbl:<22} ts/date cols: {ts_cols}")
             # pick the most likely 'latest' column
-            for pref in ("start_time", "timestamp", "target_date", "ts", "delivery_start", "time", "date", "created_at"):
+            for pref in (
+                "start_time",
+                "timestamp",
+                "target_date",
+                "ts",
+                "delivery_start",
+                "time",
+                "date",
+                "created_at",
+            ):
                 if pref in ts_cols:
                     FRESH[tbl] = pref
                     break

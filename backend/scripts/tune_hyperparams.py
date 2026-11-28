@@ -48,10 +48,7 @@ def _load_full_matrix(area: str, days: int = 365):
 
 def _rows_to_arrays(rows):
     """Convert list of dicts to numpy arrays."""
-    X = np.array([
-        [r.get(col) for col in FEATURE_COLS]
-        for r in rows
-    ], dtype=object)
+    X = np.array([[r.get(col) for col in FEATURE_COLS] for r in rows], dtype=object)
     X = np.where(X == None, np.nan, X).astype(np.float64)  # noqa: E711
     y = np.array([r[TARGET_COL] for r in rows], dtype=np.float64)
     return X, y

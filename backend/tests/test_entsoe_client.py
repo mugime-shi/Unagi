@@ -65,6 +65,7 @@ SAMPLE_XML_15M = """\
 # _parse_xml unit tests
 # ---------------------------------------------------------------------------
 
+
 def test_parse_xml_60m_returns_sorted_points():
     points = _parse_xml(SAMPLE_XML_60M, eur_to_sek=11.0)
     assert len(points) == 3
@@ -100,6 +101,7 @@ def test_parse_xml_different_rates():
 # ---------------------------------------------------------------------------
 # fetch_day_ahead_prices integration tests (HTTP mocked)
 # ---------------------------------------------------------------------------
+
 
 def _make_mock_response(xml_text: str, status_code: int = 200) -> MagicMock:
     mock_resp = MagicMock()
@@ -165,9 +167,7 @@ def test_fetch_no_data_in_date_window_raises(mock_client_cls):
     Simulates ENTSO-E returning tomorrow's data when we request today's.
     """
     # Shift the fixture's timestamps by 2 days → outside the 2026-03-07 window
-    xml_wrong_date = SAMPLE_XML_60M.replace(
-        "2026-03-07T23:00Z", "2026-03-09T23:00Z"
-    ).replace(
+    xml_wrong_date = SAMPLE_XML_60M.replace("2026-03-07T23:00Z", "2026-03-09T23:00Z").replace(
         "<end>2026-03-08T23:00Z</end>", "<end>2026-03-10T23:00Z</end>"
     )
 
@@ -184,6 +184,7 @@ def test_fetch_no_data_in_date_window_raises(mock_client_cls):
 # ---------------------------------------------------------------------------
 # _parse_xml edge cases
 # ---------------------------------------------------------------------------
+
 
 def test_parse_resolution_unknown_raises():
     """Unsupported resolution string (e.g. PT30M) must raise EntsoEError."""

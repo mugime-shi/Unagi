@@ -33,7 +33,10 @@ class BalancingPrice(Base):
 
     __table_args__ = (
         UniqueConstraint(
-            "area", "timestamp_utc", "category", "resolution",
+            "area",
+            "timestamp_utc",
+            "category",
+            "resolution",
             name="uq_balancing_price",
         ),
         Index("idx_balancing_prices_area_time", "area", "timestamp_utc"),

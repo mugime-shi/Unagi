@@ -90,9 +90,7 @@ def _parse_flow_xml(xml_text: str) -> list[FlowPoint]:
     root = ET.fromstring(_strip_namespaces(xml_text))
     pts: list[FlowPoint] = []
     for period in root.findall(".//Period"):
-        start = datetime.fromisoformat(
-            period.find("timeInterval/start").text.replace("Z", "+00:00")
-        )
+        start = datetime.fromisoformat(period.find("timeInterval/start").text.replace("Z", "+00:00"))
         res = _parse_resolution(period.find("resolution").text)
         for p in period.findall("Point"):
             pos = int(p.find("position").text)
@@ -102,9 +100,7 @@ def _parse_flow_xml(xml_text: str) -> list[FlowPoint]:
     return pts
 
 
-def fetch_flow(
-    client: httpx.Client, from_area: str, to_area: str, target_date: date
-) -> list[FlowPoint]:
+def fetch_flow(client: httpx.Client, from_area: str, to_area: str, target_date: date) -> list[FlowPoint]:
     params = {
         "securityToken": API_KEY,
         "documentType": "A11",

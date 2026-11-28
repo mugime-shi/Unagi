@@ -4,7 +4,8 @@ Generation mix router — ENTSO-E A75 actual generation per production type.
 Endpoints:
   GET /api/v1/generation/today   — today's generation mix with renewable % badge
   GET /api/v1/generation/date    — generation mix for an arbitrary date (DB only)
-  GET /api/v1/generation/outages — nuclear reactor status + non-nuclear outages (min_mw, default 300) for a day (ENTSO-E A77/A80)
+  GET /api/v1/generation/outages — nuclear reactor status + non-nuclear outages
+                                   (min_mw, default 300) for a day (ENTSO-E A77/A80)
 """
 
 import logging

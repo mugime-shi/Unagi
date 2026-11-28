@@ -20,15 +20,15 @@ from app.services.smhi_client import (
     store_weather_slots,
 )
 
-
 # ---------------------------------------------------------------------------
 # _parse_values — pure function, no mocking needed
 # ---------------------------------------------------------------------------
 
+
 def test_parse_values_basic():
     raw = [
         {"date": 1_000_000_000_000, "value": "123.4", "quality": "G"},
-        {"date": 1_000_003_600_000, "value": "98.7",  "quality": "G"},
+        {"date": 1_000_003_600_000, "value": "98.7", "quality": "G"},
     ]
     result = _parse_values(raw)
     assert len(result) == 2
@@ -40,7 +40,7 @@ def test_parse_values_skips_invalid():
     raw = [
         {"date": 1_000_000_000_000, "value": "NaN"},  # SMHI uses "NaN" for missing
         {"date": 1_000_003_600_000, "value": "50.0"},
-        {"value": "10.0"},                             # missing date key
+        {"value": "10.0"},  # missing date key
     ]
     result = _parse_values(raw)
     # "NaN" → float("NaN") is valid in Python, but "NaN" not actually numeric → ValueError skips
@@ -55,6 +55,7 @@ def test_parse_values_empty():
 # ---------------------------------------------------------------------------
 # fetch_weather_slots — mock HTTP
 # ---------------------------------------------------------------------------
+
 
 def _make_smhi_value(epoch_ms: int, value: str) -> dict:
     return {"date": epoch_ms, "value": value, "quality": "G"}
@@ -75,6 +76,7 @@ TEMPERATURE_RAW = [
 def test_fetch_weather_slots_merges_radiation_and_temperature():
     def mock_fetch(station, parameter, period="latest-months"):
         from app.services.smhi_client import PARAM_RADIATION, PARAM_TEMPERATURE
+
         if parameter == PARAM_RADIATION:
             return RADIATION_RAW
         if parameter == PARAM_TEMPERATURE:
@@ -92,7 +94,7 @@ def test_fetch_weather_slots_merges_radiation_and_temperature():
 
 
 def test_fetch_weather_slots_temperature_failure_returns_none():
-    from app.services.smhi_client import PARAM_RADIATION, PARAM_TEMPERATURE, SMHIError
+    from app.services.smhi_client import PARAM_RADIATION
 
     def mock_fetch(station, parameter, period="latest-months"):
         if parameter == PARAM_RADIATION:
@@ -107,7 +109,6 @@ def test_fetch_weather_slots_temperature_failure_returns_none():
 
 
 def test_fetch_weather_slots_raises_on_radiation_failure():
-    from app.services.smhi_client import SMHIError
 
     with patch(
         "app.services.smhi_client._fetch_parameter",
@@ -140,6 +141,7 @@ def test_fetch_weather_slots_sorted_by_timestamp():
 # ---------------------------------------------------------------------------
 # store_weather_slots — mock DB session (pg_insert is PostgreSQL-specific)
 # ---------------------------------------------------------------------------
+
 
 def test_store_weather_slots_returns_count():
     slots = [
@@ -176,6 +178,7 @@ def test_store_weather_slots_empty_noop():
 # get_weather_for_date_range — mock DB query
 # ---------------------------------------------------------------------------
 
+
 def test_get_weather_for_date_range_calls_filter():
     mock_db = MagicMock()
     start = datetime(2026, 3, 1, tzinfo=timezone.utc)
@@ -192,6 +195,7 @@ def test_get_weather_for_date_range_calls_filter():
 # ---------------------------------------------------------------------------
 # _fetch_parameter — HTTP level (mock httpx.get directly)
 # ---------------------------------------------------------------------------
+
 
 def test_fetch_parameter_returns_value_list():
     """Successful HTTP response → parsed value list returned."""
@@ -219,7 +223,8 @@ def test_fetch_parameter_http_status_error_raises():
     Verifies that the HTTP-level error is caught and re-raised with context.
     """
     import httpx as _httpx
-    from app.services.smhi_client import SMHIError, _fetch_parameter
+
+    from app.services.smhi_client import _fetch_parameter
 
     mock_resp = MagicMock()
     mock_resp.raise_for_status.side_effect = _httpx.HTTPStatusError(
@@ -239,7 +244,8 @@ def test_fetch_parameter_network_error_raises():
     Verifies that network-level failures are wrapped, not propagated raw.
     """
     import httpx as _httpx
-    from app.services.smhi_client import SMHIError, _fetch_parameter
+
+    from app.services.smhi_client import _fetch_parameter
 
     with patch(
         "app.services.smhi_client.httpx.get",

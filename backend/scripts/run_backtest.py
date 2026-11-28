@@ -55,11 +55,10 @@ def run_backtest(days: int = 30, area: str = "SE3") -> dict:
             # --- LightGBM ---
             try:
                 from app.services.ml_forecast_service import build_lgbm_forecast
+
                 lgbm_result = build_lgbm_forecast(db, target, area=area)
                 if lgbm_result and lgbm_result.get("slots"):
-                    has_predictions = any(
-                        s.get("avg_sek_kwh") is not None for s in lgbm_result["slots"]
-                    )
+                    has_predictions = any(s.get("avg_sek_kwh") is not None for s in lgbm_result["slots"])
                     if has_predictions:
                         record_predictions(db, target, area, "lgbm", lgbm_result["slots"])
             except Exception as e:
@@ -73,13 +72,9 @@ def run_backtest(days: int = 30, area: str = "SE3") -> dict:
                 hist_rows = get_prices_for_date_range(db, hist_start, hist_end, area=area)
                 baseline_result = build_forecast(hist_rows, target)
                 if baseline_result and baseline_result.get("slots"):
-                    has_predictions = any(
-                        s.get("avg_sek_kwh") is not None for s in baseline_result["slots"]
-                    )
+                    has_predictions = any(s.get("avg_sek_kwh") is not None for s in baseline_result["slots"])
                     if has_predictions:
-                        record_predictions(
-                            db, target, area, "same_weekday_avg", baseline_result["slots"]
-                        )
+                        record_predictions(db, target, area, "same_weekday_avg", baseline_result["slots"])
             except Exception as e:
                 db.rollback()
                 log.warning("Baseline failed for %s: %s", target, e)
@@ -97,7 +92,8 @@ def run_backtest(days: int = 30, area: str = "SE3") -> dict:
 
         log.info(
             "Backtest complete: %d dates processed, %d skipped (no data)",
-            dates_processed, dates_skipped,
+            dates_processed,
+            dates_skipped,
         )
 
         # Aggregate accuracy
@@ -142,9 +138,7 @@ def main():
         best = min(models, key=lambda m: results[m]["mae_sek_kwh"])
         worst = max(models, key=lambda m: results[m]["mae_sek_kwh"])
         improvement = (
-            (results[worst]["mae_sek_kwh"] - results[best]["mae_sek_kwh"])
-            / results[worst]["mae_sek_kwh"]
-            * 100
+            (results[worst]["mae_sek_kwh"] - results[best]["mae_sek_kwh"]) / results[worst]["mae_sek_kwh"] * 100
         )
         print(f"  Winner: {best} (MAE {improvement:.1f}% lower)")
 

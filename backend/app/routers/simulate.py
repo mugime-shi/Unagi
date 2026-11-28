@@ -19,21 +19,27 @@ router = APIRouter(prefix="/simulate", tags=["simulate"])
 
 DbDep = Annotated[Session, Depends(get_db)]
 
-LOOKBACK_DAYS = 30   # use last 30 days of real spot data for averages
+LOOKBACK_DAYS = 30  # use last 30 days of real spot data for averages
 
 
 class ConsumptionRequest(BaseModel):
     monthly_kwh: float = Field(..., gt=0, le=10_000, description="Monthly consumption (kWh)")
     fixed_price_sek_kwh: float = Field(
-        ..., gt=0, le=10.0,
+        ...,
+        gt=0,
+        le=10.0,
         description="All-in fixed contract price per kWh including VAT (SEK)",
     )
     shiftable_pct: float = Field(
-        0.30, ge=0.0, le=1.0,
+        0.30,
+        ge=0.0,
+        le=1.0,
         description="Fraction of daily consumption that can be time-shifted (0–1)",
     )
     shift_hours: int = Field(
-        8, ge=1, le=12,
+        8,
+        ge=1,
+        le=12,
         description="Number of cheapest hours per day to shift consumption into",
     )
     # Optional overrides for price components
@@ -67,6 +73,7 @@ def simulate_consumption(body: ConsumptionRequest, db: DbDep):
 
     # Build flat list + per-day groups
     from collections import defaultdict
+
     daily: dict[date, list[float]] = defaultdict(list)
     for r in rows:
         day_key = r.timestamp_utc.date()
@@ -78,13 +85,11 @@ def simulate_consumption(body: ConsumptionRequest, db: DbDep):
     # Current-month average for Göteborg Energi monthly-avg contract
     month_start = end_date.replace(day=1)
     month_rows = get_prices_for_date_range(db, month_start, end_date, area=settings.default_area)
-    monthly_avg_spot = (
-        sum(float(r.price_sek_kwh) for r in month_rows) / len(month_rows)
-        if month_rows else None
-    )
+    monthly_avg_spot = sum(float(r.price_sek_kwh) for r in month_rows) / len(month_rows) if month_rows else None
 
     # Price component overrides
-    from app.services.consumption_optimizer import MARGIN_SEK, GRID_FEE_SEK, ENERGY_TAX_SEK
+    from app.services.consumption_optimizer import ENERGY_TAX_SEK, GRID_FEE_SEK, MARGIN_SEK
+
     components = PriceComponents(
         margin_sek_kwh=body.margin_sek_kwh if body.margin_sek_kwh is not None else MARGIN_SEK,
         grid_fee_sek_kwh=body.grid_fee_sek_kwh if body.grid_fee_sek_kwh is not None else GRID_FEE_SEK,

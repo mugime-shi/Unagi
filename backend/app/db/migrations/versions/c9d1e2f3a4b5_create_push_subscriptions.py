@@ -25,8 +25,7 @@ def upgrade() -> None:
         sa.Column("p256dh", sa.Text(), nullable=False),
         sa.Column("auth", sa.Text(), nullable=False),
         sa.Column("area", sa.String(4), nullable=False, server_default="SE3"),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True,
-                  server_default=sa.text("now()")),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True, server_default=sa.text("now()")),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("endpoint", name="uq_push_subscription_endpoint"),
     )

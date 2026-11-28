@@ -3,7 +3,6 @@ Tests for /api/v1/simulate/consumption and consumption_optimizer helpers.
 """
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -81,16 +80,14 @@ def _insert_30_days_prices(db, sek: float = 0.50):
         day = today - timedelta(days=offset)
         # CET window: day-1 23:00 UTC → day 22:00 UTC
         base = datetime(day.year, day.month, day.day, tzinfo=timezone.utc) - timedelta(hours=1)
-        points = [
-            _make_price_point(base + timedelta(hours=h), sek)
-            for h in range(24)
-        ]
+        points = [_make_price_point(base + timedelta(hours=h), sek) for h in range(24)]
         upsert_prices(db, points)
 
 
 # ---------------------------------------------------------------------------
 # Unit tests: consumption_optimizer helpers
 # ---------------------------------------------------------------------------
+
 
 def test_avg_spot_dynamic_flat():
     prices = [0.50] * 24
@@ -129,7 +126,7 @@ def test_price_components_total():
 
 
 def test_simulate_basic():
-    prices = [0.50] * 240   # 10 days × 24h
+    prices = [0.50] * 240  # 10 days × 24h
     daily_groups = [[0.50] * 24 for _ in range(10)]
     result = simulate(
         monthly_kwh=500,
@@ -144,7 +141,7 @@ def test_simulate_basic():
 
 def test_simulate_savings_positive_when_dynamic_cheaper():
     # If dynamic is cheaper than fixed, savings should be positive
-    prices = [0.30] * 240   # cheap spot → dynamic cheaper than 1.80 fixed
+    prices = [0.30] * 240  # cheap spot → dynamic cheaper than 1.80 fixed
     daily_groups = [[0.30] * 24 for _ in range(10)]
     result = simulate(500, 1.80, prices, daily_groups)
     assert result["dynamic"]["savings_vs_fixed_sek"] > 0
@@ -153,6 +150,7 @@ def test_simulate_savings_positive_when_dynamic_cheaper():
 
 def test_simulate_optimized_always_leq_dynamic():
     import random
+
     random.seed(42)
     prices = [random.uniform(0.20, 1.20) for _ in range(240)]
     daily_groups = [prices[i * 24 : (i + 1) * 24] for i in range(10)]
@@ -164,21 +162,28 @@ def test_simulate_optimized_always_leq_dynamic():
 # API endpoint tests
 # ---------------------------------------------------------------------------
 
+
 def test_simulate_consumption_returns_200(client, db):
     _insert_30_days_prices(db)
-    resp = client.post("/api/v1/simulate/consumption", json={
-        "monthly_kwh": 500,
-        "fixed_price_sek_kwh": 1.80,
-    })
+    resp = client.post(
+        "/api/v1/simulate/consumption",
+        json={
+            "monthly_kwh": 500,
+            "fixed_price_sek_kwh": 1.80,
+        },
+    )
     assert resp.status_code == 200
 
 
 def test_simulate_consumption_response_shape(client, db):
     _insert_30_days_prices(db)
-    data = client.post("/api/v1/simulate/consumption", json={
-        "monthly_kwh": 500,
-        "fixed_price_sek_kwh": 1.80,
-    }).json()
+    data = client.post(
+        "/api/v1/simulate/consumption",
+        json={
+            "monthly_kwh": 500,
+            "fixed_price_sek_kwh": 1.80,
+        },
+    ).json()
     assert "fixed" in data
     assert "dynamic" in data
     assert "optimized" in data
@@ -188,37 +193,49 @@ def test_simulate_consumption_response_shape(client, db):
 
 
 def test_simulate_consumption_503_when_no_data(client):
-    resp = client.post("/api/v1/simulate/consumption", json={
-        "monthly_kwh": 500,
-        "fixed_price_sek_kwh": 1.80,
-    })
+    resp = client.post(
+        "/api/v1/simulate/consumption",
+        json={
+            "monthly_kwh": 500,
+            "fixed_price_sek_kwh": 1.80,
+        },
+    )
     assert resp.status_code == 503
 
 
 def test_simulate_consumption_optimized_leq_dynamic(client, db):
     _insert_30_days_prices(db, sek=0.40)
-    data = client.post("/api/v1/simulate/consumption", json={
-        "monthly_kwh": 500,
-        "fixed_price_sek_kwh": 1.80,
-    }).json()
+    data = client.post(
+        "/api/v1/simulate/consumption",
+        json={
+            "monthly_kwh": 500,
+            "fixed_price_sek_kwh": 1.80,
+        },
+    ).json()
     # With uniform prices, optimized ≈ dynamic (allow small floating-point rounding)
     assert data["optimized"]["monthly_cost_sek"] <= data["dynamic"]["monthly_cost_sek"] + 0.10
 
 
 def test_simulate_consumption_custom_shiftable(client, db):
     _insert_30_days_prices(db)
-    data = client.post("/api/v1/simulate/consumption", json={
-        "monthly_kwh": 500,
-        "fixed_price_sek_kwh": 1.80,
-        "shiftable_pct": 0.50,
-        "shift_hours": 6,
-    }).json()
+    data = client.post(
+        "/api/v1/simulate/consumption",
+        json={
+            "monthly_kwh": 500,
+            "fixed_price_sek_kwh": 1.80,
+            "shiftable_pct": 0.50,
+            "shift_hours": 6,
+        },
+    ).json()
     assert data["optimized"]["description"] == "Shift 50% of daily consumption to cheapest 6h"
 
 
 def test_simulate_consumption_invalid_kwh(client):
-    resp = client.post("/api/v1/simulate/consumption", json={
-        "monthly_kwh": -10,
-        "fixed_price_sek_kwh": 1.80,
-    })
+    resp = client.post(
+        "/api/v1/simulate/consumption",
+        json={
+            "monthly_kwh": -10,
+            "fixed_price_sek_kwh": 1.80,
+        },
+    )
     assert resp.status_code == 422

@@ -178,8 +178,7 @@ def main():
     print(f"  REGIME LABEL CORRELATION — model={args.model}, area={args.area}")
     print(f"  Window: {w_start} → {w_end}  ({len(common)} days with both MAE & price stats)")
     print("=" * 78)
-    print(f"  {'Stat':<22} {'Pearson r':>10} {'Spearman':>10} "
-          f"{'Agreement':>10} {'F1':>6} {'P':>6} {'R':>6}")
+    print(f"  {'Stat':<22} {'Pearson r':>10} {'Spearman':>10} {'Agreement':>10} {'F1':>6} {'P':>6} {'R':>6}")
     print("-" * 78)
 
     mae_list = [mae[d] for d in common]
@@ -202,9 +201,11 @@ def main():
     r_vals = np.array([stats[d]["range"] for d in common])
     s_vals = np.array([stats[d]["std"] for d in common])
     h_vals = np.array([stats[d]["h2h_mean"] for d in common])
+
     def norm(arr):
         lo, hi = arr.min(), arr.max()
         return (arr - lo) / (hi - lo) if hi > lo else np.zeros_like(arr)
+
     comp_vals = norm(r_vals) + norm(s_vals) + norm(h_vals)
     for d, v in zip(common, comp_vals):
         composite[d] = float(v)
