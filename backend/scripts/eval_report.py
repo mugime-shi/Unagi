@@ -48,9 +48,7 @@ def print_report(db, area: str, days: int, model: str, threshold: float) -> None
     for name in ("calm", "volatile"):
         r = regime[name]
         win = f"{r['win_rate'] * 100:.0f}%" if r["win_rate"] is not None else "-"
-        print(
-            f"  {name:<10} {r['n_days']:>5} {_fmt(r['model_mae']):>11} {_fmt(r['baseline_mae']):>10} {win:>10}"
-        )
+        print(f"  {name:<10} {r['n_days']:>5} {_fmt(r['model_mae']):>11} {_fmt(r['baseline_mae']):>10} {win:>10}")
 
     print("-" * 72)
     print(f"  [Capture rate]  (cheapest {capture['n_hours']}h, {capture['n_days']} days scored)")

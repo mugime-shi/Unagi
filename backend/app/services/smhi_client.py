@@ -30,10 +30,10 @@ from app.models.weather_data import WeatherData
 log = logging.getLogger(__name__)
 
 SMHI_BASE = "https://opendata-download-metobs.smhi.se/api"
-DEFAULT_STATION = 71415   # Göteborg Sol  (global radiation station)
-TEMP_STATION = 71420      # Göteborg A    (temperature station)
-PARAM_RADIATION = 11      # Global radiation W/m² (hourly mean, "Sol" stations only)
-PARAM_TEMPERATURE = 1     # Air temperature °C (hourly mean)
+DEFAULT_STATION = 71415  # Göteborg Sol  (global radiation station)
+TEMP_STATION = 71420  # Göteborg A    (temperature station)
+PARAM_RADIATION = 11  # Global radiation W/m² (hourly mean, "Sol" stations only)
+PARAM_TEMPERATURE = 1  # Air temperature °C (hourly mean)
 
 
 class SMHIError(Exception):
@@ -50,16 +50,14 @@ class WeatherSlot(NamedTuple):
 # HTTP + parsing
 # ---------------------------------------------------------------------------
 
+
 def _fetch_parameter(
     station: int,
     parameter: int,
     period: str = "latest-months",
 ) -> list[dict]:
     """Return the raw `value` list from SMHI for one parameter."""
-    url = (
-        f"{SMHI_BASE}/version/1.0/parameter/{parameter}"
-        f"/station/{station}/period/{period}/data.json"
-    )
+    url = f"{SMHI_BASE}/version/1.0/parameter/{parameter}/station/{station}/period/{period}/data.json"
     try:
         resp = httpx.get(url, timeout=30)
         resp.raise_for_status()
@@ -95,13 +93,11 @@ def fetch_weather_slots(
     Radiation is the primary series; temperature is joined by timestamp.
     If temperature fetch fails, temperature_c is None for all slots.
     """
-    log.info("SMHI: fetching radiation (param %d, station %d, period=%s)",
-             PARAM_RADIATION, rad_station, period)
+    log.info("SMHI: fetching radiation (param %d, station %d, period=%s)", PARAM_RADIATION, rad_station, period)
     radiation = _parse_values(_fetch_parameter(rad_station, PARAM_RADIATION, period))
 
     try:
-        log.info("SMHI: fetching temperature (param %d, station %d)",
-                 PARAM_TEMPERATURE, temp_station)
+        log.info("SMHI: fetching temperature (param %d, station %d)", PARAM_TEMPERATURE, temp_station)
         temperature = _parse_values(_fetch_parameter(temp_station, PARAM_TEMPERATURE, period))
     except SMHIError as exc:
         log.warning("SMHI temperature fetch failed, skipping: %s", exc)
@@ -122,6 +118,7 @@ def fetch_weather_slots(
 # ---------------------------------------------------------------------------
 # DB storage
 # ---------------------------------------------------------------------------
+
 
 def store_weather_slots(
     db: Session,
@@ -176,6 +173,7 @@ def fetch_and_store(
 # ---------------------------------------------------------------------------
 # DB read helpers
 # ---------------------------------------------------------------------------
+
 
 def get_weather_for_date_range(
     db: Session,

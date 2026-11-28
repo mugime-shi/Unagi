@@ -29,7 +29,7 @@ def upgrade() -> None:
         sa.Column("timestamp_utc", sa.DateTime(timezone=True), nullable=False),
         sa.Column("price_eur_mwh", sa.Numeric(10, 2), nullable=False),
         sa.Column("price_sek_kwh", sa.Numeric(10, 4), nullable=True),
-        sa.Column("category", sa.String(4), nullable=False),   # A04=Long, A05=Short
+        sa.Column("category", sa.String(4), nullable=False),  # A04=Long, A05=Short
         sa.Column("resolution", sa.String(10), server_default="PT15M"),
         sa.Column(
             "created_at",
@@ -38,7 +38,10 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
-            "area", "timestamp_utc", "category", "resolution",
+            "area",
+            "timestamp_utc",
+            "category",
+            "resolution",
             name="uq_balancing_price",
         ),
     )

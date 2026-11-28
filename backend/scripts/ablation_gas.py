@@ -222,7 +222,8 @@ def main():
     pct = round(delta / b["overall"]["mae"] * 100, 1) if b["overall"]["mae"] else 0
     sign = "+" if delta > 0 else ""
     print(
-        f"  {'Overall MAE':<25} {a['overall']['mae']:>15.4f} {b['overall']['mae']:>15.4f} {sign}{delta:>9.4f} ({sign}{pct}%)"
+        f"  {'Overall MAE':<25} {a['overall']['mae']:>15.4f}"
+        f" {b['overall']['mae']:>15.4f} {sign}{delta:>9.4f} ({sign}{pct}%)"
     )
 
     # Night
@@ -231,7 +232,8 @@ def main():
         pct_n = round(delta_n / b["night_h00_h06"]["mae"] * 100, 1) if b["night_h00_h06"]["mae"] else 0
         sign_n = "+" if delta_n > 0 else ""
         print(
-            f"  {'Night (H00-H06) MAE':<25} {a['night_h00_h06']['mae']:>15.4f} {b['night_h00_h06']['mae']:>15.4f} {sign_n}{delta_n:>9.4f} ({sign_n}{pct_n}%)"
+            f"  {'Night (H00-H06) MAE':<25} {a['night_h00_h06']['mae']:>15.4f}"
+            f" {b['night_h00_h06']['mae']:>15.4f} {sign_n}{delta_n:>9.4f} ({sign_n}{pct_n}%)"
         )
 
     # Volatile
@@ -240,7 +242,8 @@ def main():
         pct_v = round(delta_v / b["volatile_days"]["mae"] * 100, 1) if b["volatile_days"]["mae"] else 0
         sign_v = "+" if delta_v > 0 else ""
         print(
-            f"  {'Volatile days MAE':<25} {a['volatile_days']['mae']:>15.4f} {b['volatile_days']['mae']:>15.4f} {sign_v}{delta_v:>9.4f} ({sign_v}{pct_v}%)"
+            f"  {'Volatile days MAE':<25} {a['volatile_days']['mae']:>15.4f}"
+            f" {b['volatile_days']['mae']:>15.4f} {sign_v}{delta_v:>9.4f} ({sign_v}{pct_v}%)"
         )
 
     print("  " + "-" * 65)

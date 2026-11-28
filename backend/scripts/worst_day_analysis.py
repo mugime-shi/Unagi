@@ -42,16 +42,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--date", required=True, help="Target date YYYY-MM-DD")
     parser.add_argument("--area", default="SE3")
-    parser.add_argument("--compare-days", type=int, default=7,
-                        help="Show feature trend over N prior days")
+    parser.add_argument("--compare-days", type=int, default=7, help="Show feature trend over N prior days")
     args = parser.parse_args()
 
     target = _parse_date(args.date)
 
     db = SessionLocal()
     try:
-        log.info("Training model through %s (day before target %s)...",
-                 target - timedelta(days=1), target)
+        log.info("Training model through %s (day before target %s)...", target - timedelta(days=1), target)
         models = _train_model(db, target, args.area, huber_delta=1.0)
         if models is None:
             log.error("Training failed (insufficient data)")
@@ -83,8 +81,10 @@ def main():
         print("=" * 98)
         print(f"  WORST DAY ANALYSIS — {target}, area={args.area}")
         print("=" * 98)
-        print(f"  {'h':>3}  {'pred':>8}  {'low':>8}  {'high':>8}  {'actual':>8}  "
-              f"{'err':>9}  {'in_band':>8}  {'null_feats':>10}")
+        print(
+            f"  {'h':>3}  {'pred':>8}  {'low':>8}  {'high':>8}  {'actual':>8}  "
+            f"{'err':>9}  {'in_band':>8}  {'null_feats':>10}"
+        )
         print("-" * 98)
         total_err = 0.0
         in_band = 0
@@ -108,13 +108,12 @@ def main():
                 a_str = f"{a:>8.4f}"
                 err_str = f"{err:>+9.4f}"
                 band_str = "  YES " if band else "  NO  "
-            print(f"  {hr:>3}  {p:>8.4f}  {lo:>8.4f}  {hi:>8.4f}  "
-                  f"{a_str}  {err_str}  {band_str}  {nulls:>10}")
+            print(f"  {hr:>3}  {p:>8.4f}  {lo:>8.4f}  {hi:>8.4f}  {a_str}  {err_str}  {band_str}  {nulls:>10}")
         print("-" * 98)
         n_acts = sum(1 for a in actuals if a is not None)
         if n_acts > 0:
             mae = total_err / n_acts
-            print(f"  MAE: {mae:.4f}   Band coverage: {in_band}/{n_acts} = {in_band/n_acts*100:.1f}%")
+            print(f"  MAE: {mae:.4f}   Band coverage: {in_band}/{n_acts} = {in_band / n_acts * 100:.1f}%")
 
         # SHAP top-5 per hour for 4 representative hours
         log.info("Computing SHAP...")

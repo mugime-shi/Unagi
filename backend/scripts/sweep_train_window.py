@@ -264,7 +264,8 @@ def print_results(summary, windows):
         )
 
         print(
-            f"  {w:>6}d {calm_mae:>10.4f} {len(calm):>6}{best_calm:2s} {vol_mae:>10.4f} {len(volatile):>6}{best_vol:2s} {ratio:>9.1f}x"
+            f"  {w:>6}d {calm_mae:>10.4f} {len(calm):>6}{best_calm:2s}"
+            f" {vol_mae:>10.4f} {len(volatile):>6}{best_vol:2s} {ratio:>9.1f}x"
         )
 
     # --- Daily MAE time series (last 10 days) ---

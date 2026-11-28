@@ -156,9 +156,7 @@ def test_local_weather_areas_unset_is_empty():
 
 
 def test_local_weather_areas_parses_and_filters():
-    with patch.dict(
-        "os.environ", {"LOCAL_WEATHER_AREAS": "SE1, SE2, SE3, SE9, garbage"}, clear=False
-    ):
+    with patch.dict("os.environ", {"LOCAL_WEATHER_AREAS": "SE1, SE2, SE3, SE9, garbage"}, clear=False):
         # SE3 (the always-on default) and unknown areas are dropped
         assert local_weather_areas() == ["SE1", "SE2"]
 

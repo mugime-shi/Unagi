@@ -143,7 +143,8 @@ def evaluate(area: str = "SE3", threshold: float = 0.15, days: int = 90):
             me = bias_sum / total
 
             print(
-                f"\n  d+{horizon} — {total} days, accuracy: {accuracy:.1f}%, worst misclass: {worst_pct:.1f}%, ME: {me:+.4f} SEK/kWh"
+                f"\n  d+{horizon} — {total} days, accuracy: {accuracy:.1f}%,"
+                f" worst misclass: {worst_pct:.1f}%, ME: {me:+.4f} SEK/kWh"
             )
             print(f"  {'':>20} {'Pred Cheap':>12} {'Pred Normal':>12} {'Pred Exp':>12}")
             print(f"  {'':>20} {'-' * 12} {'-' * 12} {'-' * 12}")

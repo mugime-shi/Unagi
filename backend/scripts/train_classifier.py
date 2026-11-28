@@ -31,9 +31,7 @@ from sqlalchemy import text
 from app.db.database import SessionLocal
 from app.services.feature_service import build_feature_matrix
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger(__name__)
 
 
@@ -405,11 +403,11 @@ def main():
         print(f"  Precision mean        = {mean_prec:.3f}")
         print(f"  Recall mean           = {mean_rec:.3f}")
         print()
-        print(f"  Pass criteria: AUC > 0.65 AND F1 > 0.55")
+        print("  Pass criteria: AUC > 0.65 AND F1 > 0.55")
         if mean_auc > 0.65 and mean_f1 > 0.55:
-            print(f"  → PASS — proceed to Phase 2")
+            print("  → PASS — proceed to Phase 2")
         else:
-            print(f"  → FAIL — consider self-aware features or richer labels")
+            print("  → FAIL — consider self-aware features or richer labels")
         print("=" * 72)
 
         threshold_sweep(all_y, all_p)

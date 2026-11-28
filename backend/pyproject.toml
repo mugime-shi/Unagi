@@ -40,3 +40,9 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+# Applied migrations embed seed data as long literals; rewriting them changes nothing and risks the data.
+"app/db/migrations/versions/*" = ["E501"]
+# ENTSO-E XML fixture inside a string literal, where noqa cannot go.
+"tests/test_outages.py" = ["E501"]

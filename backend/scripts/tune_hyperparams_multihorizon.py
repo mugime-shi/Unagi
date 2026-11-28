@@ -186,10 +186,7 @@ def _build_objective(db, train_start, train_end, perspective_dates, area, max_ho
 
         weighted = total / total_w
         # Attach horizon breakdown for reporting
-        per_h = {
-            h: float(np.mean(horizon_maes[h])) if horizon_maes[h] else None
-            for h in range(1, max_horizon + 1)
-        }
+        per_h = {h: float(np.mean(horizon_maes[h])) if horizon_maes[h] else None for h in range(1, max_horizon + 1)}
         trial.set_user_attr("per_horizon_mae", per_h)
         return weighted
 
@@ -231,16 +228,17 @@ def main():
     parser.add_argument("--trials", type=int, default=30)
     parser.add_argument("--area", default="SE3")
     parser.add_argument("--train-days", type=int, default=300)
-    parser.add_argument("--perspectives", type=int, default=5,
-                        help="Number of perspective dates to sample from the eval window")
+    parser.add_argument(
+        "--perspectives", type=int, default=5, help="Number of perspective dates to sample from the eval window"
+    )
     parser.add_argument("--horizon", type=int, default=7)
-    parser.add_argument("--lookback-days", type=int, default=90,
-                        help="How far back to scan for a contiguous eval window")
+    parser.add_argument(
+        "--lookback-days", type=int, default=90, help="How far back to scan for a contiguous eval window"
+    )
     args = parser.parse_args()
 
     if args.horizon > len(HORIZON_WEIGHTS_FULL):
-        log.error("horizon %d exceeds HORIZON_WEIGHTS_FULL length %d",
-                  args.horizon, len(HORIZON_WEIGHTS_FULL))
+        log.error("horizon %d exceeds HORIZON_WEIGHTS_FULL length %d", args.horizon, len(HORIZON_WEIGHTS_FULL))
         return 1
 
     db = SessionLocal()
@@ -248,15 +246,15 @@ def main():
         # Need a contiguous window big enough for at least 1 perspective +
         # horizon + some slack (spread perspectives evenly).
         min_window = args.perspectives + args.horizon
-        log.info("Scanning last %d days for a contiguous window >= %d days...",
-                 args.lookback_days, min_window)
-        eval_start, eval_end = _find_contiguous_eval_window(
-            db, args.area, args.lookback_days, min_window
-        )
+        log.info("Scanning last %d days for a contiguous window >= %d days...", args.lookback_days, min_window)
+        eval_start, eval_end = _find_contiguous_eval_window(db, args.area, args.lookback_days, min_window)
         if eval_start is None:
-            log.error("No contiguous range of %d+ days found in the last %d days. "
-                      "The local DB may have gaps — check with `./unagi backfill`.",
-                      min_window, args.lookback_days)
+            log.error(
+                "No contiguous range of %d+ days found in the last %d days. "
+                "The local DB may have gaps — check with `./unagi backfill`.",
+                min_window,
+                args.lookback_days,
+            )
             return 1
 
         # Perspective dates live within the window. Each perspective P needs
@@ -266,15 +264,11 @@ def main():
         usable_end = eval_end - timedelta(days=args.horizon)
         usable_days = (usable_end - eval_start).days + 1
         if usable_days < 1:
-            log.error("Contiguous window %s..%s is too short for horizon %d",
-                      eval_start, eval_end, args.horizon)
+            log.error("Contiguous window %s..%s is too short for horizon %d", eval_start, eval_end, args.horizon)
             return 1
 
         step = max(1, usable_days // args.perspectives)
-        p_dates = [
-            eval_start + timedelta(days=i)
-            for i in range(0, usable_days, step)
-        ][: args.perspectives]
+        p_dates = [eval_start + timedelta(days=i) for i in range(0, usable_days, step)][: args.perspectives]
 
         train_end = p_dates[0] - timedelta(days=1)
         train_start = train_end - timedelta(days=args.train_days - 1)

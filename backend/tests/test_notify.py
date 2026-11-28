@@ -73,6 +73,7 @@ SAMPLE_SUB = {
 # VAPID public key endpoint
 # ---------------------------------------------------------------------------
 
+
 def test_vapid_key_not_configured(client):
     """Returns 503 when VAPID keys are not set."""
     with patch("app.routers.notify.settings") as mock_settings:
@@ -93,6 +94,7 @@ def test_vapid_key_configured(client):
 # ---------------------------------------------------------------------------
 # Subscribe endpoint
 # ---------------------------------------------------------------------------
+
 
 def test_subscribe_creates_record(client, db):
     resp = client.post("/api/v1/notify/subscribe", json=SAMPLE_SUB)
@@ -128,6 +130,7 @@ def test_subscribe_multiple_different_endpoints(client, db):
 # Unsubscribe endpoint
 # ---------------------------------------------------------------------------
 
+
 def test_unsubscribe_removes_record(client, db):
     client.post("/api/v1/notify/subscribe", json=SAMPLE_SUB)
     resp = client.request(
@@ -153,6 +156,7 @@ def test_unsubscribe_nonexistent_is_idempotent(client):
 # notify_service: _build_notification
 # ---------------------------------------------------------------------------
 
+
 def test_build_notification_no_data(db):
     """Returns None when no tomorrow prices are in DB."""
     result = _build_notification(db, "SE3")
@@ -161,7 +165,7 @@ def test_build_notification_no_data(db):
 
 def test_build_notification_with_prices(db):
     """Returns notification dict with title and body when prices exist."""
-    from datetime import date, timedelta
+    from datetime import timedelta
     from zoneinfo import ZoneInfo
 
     from app.models.spot_price import SpotPrice
@@ -170,13 +174,15 @@ def test_build_notification_with_prices(db):
     # Insert 3 hourly slots for tomorrow
     for hour, price in [(0, 0.50), (1, 0.30), (2, 0.70)]:
         ts = datetime(tomorrow.year, tomorrow.month, tomorrow.day, hour, tzinfo=timezone.utc)
-        db.add(SpotPrice(
-            area="SE3",
-            timestamp_utc=ts,
-            price_eur_mwh=50.0,
-            price_sek_kwh=price,
-            resolution="PT60M",
-        ))
+        db.add(
+            SpotPrice(
+                area="SE3",
+                timestamp_utc=ts,
+                price_eur_mwh=50.0,
+                price_sek_kwh=price,
+                resolution="PT60M",
+            )
+        )
     db.commit()
 
     result = _build_notification(db, "SE3")
@@ -190,6 +196,7 @@ def test_build_notification_with_prices(db):
 # ---------------------------------------------------------------------------
 # notify_service: notify_subscribers
 # ---------------------------------------------------------------------------
+
 
 def test_notify_no_subscribers(db):
     """Returns 0 sent when no subscriptions exist."""
@@ -208,7 +215,7 @@ def test_notify_skips_when_no_data(db):
 
 def test_notify_sends_to_subscribers(db):
     """Sends notification to all matching subscribers (mocked)."""
-    from datetime import date, timedelta
+    from datetime import timedelta
     from zoneinfo import ZoneInfo
 
     from app.models.spot_price import SpotPrice
@@ -218,8 +225,7 @@ def test_notify_sends_to_subscribers(db):
 
     tomorrow = (datetime.now(tz=ZoneInfo("Europe/Stockholm")) + timedelta(days=1)).date()
     ts = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 0, tzinfo=timezone.utc)
-    db.add(SpotPrice(area="SE3", timestamp_utc=ts, price_eur_mwh=50.0,
-                     price_sek_kwh=0.50, resolution="PT60M"))
+    db.add(SpotPrice(area="SE3", timestamp_utc=ts, price_eur_mwh=50.0, price_sek_kwh=0.50, resolution="PT60M"))
     db.commit()
 
     with patch("app.services.notify_service._send_push", return_value=True) as mock_send:

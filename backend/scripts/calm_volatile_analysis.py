@@ -134,17 +134,23 @@ def main():
     print("=" * 76)
     print(f"  Overall MAE:      {out['overall_mae']:.4f}")
     print(f"  Median daily MAE: {out['median_daily_mae']:.4f}  (split threshold)")
-    print(f"  Q25 / Q75 / Q90 daily MAE: {out['q25_daily_mae']:.4f} / "
-          f"{out['q75_daily_mae']:.4f} / {out['q90_daily_mae']:.4f}")
+    print(
+        f"  Q25 / Q75 / Q90 daily MAE: {out['q25_daily_mae']:.4f} / "
+        f"{out['q75_daily_mae']:.4f} / {out['q90_daily_mae']:.4f}"
+    )
     print("-" * 76)
-    print(f"  Calm     days ({out['calm']['n_days']}): "
-          f"MAE = {out['calm']['mae']:.4f}   "
-          f"({out['calm']['n_hours']} hours)")
-    print(f"  Volatile days ({out['volatile']['n_days']}): "
-          f"MAE = {out['volatile']['mae']:.4f}   "
-          f"({out['volatile']['n_hours']} hours)")
-    print(f"  Gap:              {out['volatile']['mae'] - out['calm']['mae']:.4f}  "
-          f"({(out['volatile']['mae'] / out['calm']['mae'] - 1) * 100:+.1f}%)")
+    print(
+        f"  Calm     days ({out['calm']['n_days']}): MAE = {out['calm']['mae']:.4f}   ({out['calm']['n_hours']} hours)"
+    )
+    print(
+        f"  Volatile days ({out['volatile']['n_days']}): "
+        f"MAE = {out['volatile']['mae']:.4f}   "
+        f"({out['volatile']['n_hours']} hours)"
+    )
+    print(
+        f"  Gap:              {out['volatile']['mae'] - out['calm']['mae']:.4f}  "
+        f"({(out['volatile']['mae'] / out['calm']['mae'] - 1) * 100:+.1f}%)"
+    )
     print("-" * 76)
     print("  Best 5 days (lowest daily MAE):")
     for d, v in out["best_5"]:

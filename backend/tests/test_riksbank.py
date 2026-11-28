@@ -4,7 +4,6 @@ from datetime import date
 from unittest.mock import patch
 
 import httpx
-import pytest
 
 from app.services.riksbank_client import (
     _FALLBACK_RATE,
@@ -54,6 +53,7 @@ class TestGetEurSekRate:
     def test_returns_float(self):
         with patch("app.services.riksbank_client.httpx.get", return_value=_mock_response(10.8)):
             from app.services.riksbank_client import _cached_rate_for_date
+
             _cached_rate_for_date.cache_clear()
 
             rate = get_eur_sek_rate()
@@ -63,6 +63,7 @@ class TestGetEurSekRate:
     def test_cached_per_day(self):
         with patch("app.services.riksbank_client.httpx.get", return_value=_mock_response(10.8)) as mock_get:
             from app.services.riksbank_client import _cached_rate_for_date
+
             _cached_rate_for_date.cache_clear()
 
             rate1 = get_eur_sek_rate()

@@ -18,9 +18,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
+
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-from app.services.entsoe_client import EntsoEError, fetch_day_ahead_prices
+from app.services.entsoe_client import EntsoEError, fetch_day_ahead_prices  # noqa: E402
 
 
 def print_prices(target: date) -> None:
@@ -41,7 +42,7 @@ def print_prices(target: date) -> None:
     print("-" * 52)
     print(f"{'Min':>30}: {min(sek_values):.4f} SEK/kWh")
     print(f"{'Max':>30}: {max(sek_values):.4f} SEK/kWh")
-    print(f"{'Average':>30}: {sum(sek_values)/len(sek_values):.4f} SEK/kWh")
+    print(f"{'Average':>30}: {sum(sek_values) / len(sek_values):.4f} SEK/kWh")
     print(f"{'Slots':>30}: {len(prices)}")
 
 

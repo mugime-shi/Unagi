@@ -122,14 +122,12 @@ def main():
     print()
     print("=" * 86)
     print(f"  FEATURE IMPORTANCE — {args.days} days, area={args.area}")
-    print(f"  Best iter: {model.best_iteration}   Val MAE: "
-          f"{float(np.mean(np.abs(y_val - model.predict(X_val)))):.4f}")
+    print(f"  Best iter: {model.best_iteration}   Val MAE: {float(np.mean(np.abs(y_val - model.predict(X_val)))):.4f}")
     print("=" * 86)
     print(f"  {'#':>3}  {'Feature':<30} {'Group':<20} {'Gain %':>8} {'Split %':>8}")
     print("-" * 86)
     for i, r in enumerate(rank, 1):
-        print(f"  {i:>3}  {r['feature']:<30} {r['group']:<20} "
-              f"{r['gain_pct']:>7.2f}  {r['split_pct']:>7.2f}")
+        print(f"  {i:>3}  {r['feature']:<30} {r['group']:<20} {r['gain_pct']:>7.2f}  {r['split_pct']:>7.2f}")
     print("-" * 86)
 
     # Group aggregation
@@ -145,7 +143,7 @@ def main():
     group_sorted = sorted(group_totals.items(), key=lambda kv: kv[1]["gain"], reverse=True)
     print()
     print("=" * 86)
-    print(f"  GROUP-LEVEL IMPORTANCE")
+    print("  GROUP-LEVEL IMPORTANCE")
     print("=" * 86)
     print(f"  {'Group':<20} {'N feats':>8} {'Gain %':>8} {'Split %':>8} {'Gain/feat':>10}")
     print("-" * 86)
@@ -158,11 +156,10 @@ def main():
     bottom = rank[-15:]
     print()
     print("=" * 86)
-    print(f"  BOTTOM 15 (candidates for removal)")
+    print("  BOTTOM 15 (candidates for removal)")
     print("=" * 86)
     for r in bottom:
-        print(f"  {r['feature']:<30} {r['group']:<20} "
-              f"gain={r['gain_pct']:.3f}%  split={r['split_pct']:.3f}%")
+        print(f"  {r['feature']:<30} {r['group']:<20} gain={r['gain_pct']:.3f}%  split={r['split_pct']:.3f}%")
     print("=" * 86)
 
     return 0

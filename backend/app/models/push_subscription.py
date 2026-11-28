@@ -32,6 +32,4 @@ class PushSubscription(Base):
         default=lambda: datetime.now(timezone.utc),
     )
 
-    __table_args__ = (
-        UniqueConstraint("endpoint", name="uq_push_subscription_endpoint"),
-    )
+    __table_args__ = (UniqueConstraint("endpoint", name="uq_push_subscription_endpoint"),)

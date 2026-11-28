@@ -18,8 +18,8 @@ import pytest
 from app.services.bundesnetzagentur_client import (
     THE_FINAL_API_URL,
     THE_FINAL_API_URL_LEGACY,
-    THE_PRELIMINARY_API_URL,
     THE_PREISMONITOR_URL_LEGACY,
+    THE_PRELIMINARY_API_URL,
     GasPriceError,
     _parse_the_csv,
     fetch_gas_prices,

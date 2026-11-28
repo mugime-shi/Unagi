@@ -27,8 +27,7 @@ def main():
     end_date = date.today() - timedelta(days=1)  # yesterday (fully settled)
     start_date = end_date - timedelta(days=args.days - 1)
 
-    print(f"Building features: {start_date} → {end_date} ({args.days} days), area={args.area}",
-          file=sys.stderr)
+    print(f"Building features: {start_date} → {end_date} ({args.days} days), area={args.area}", file=sys.stderr)
 
     db = SessionLocal()
     try:

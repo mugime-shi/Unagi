@@ -14,6 +14,7 @@ from sqlalchemy.pool import NullPool
 
 from app.config import settings
 
+
 # A frozen Lambda environment keeps any pooled connection open, so a burst of
 # cold starts used up Supabase's 15 session-mode clients (2026-11-09). On Lambda,
 # close the connection after each session; Supavisor does the pooling.

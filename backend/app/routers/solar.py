@@ -23,12 +23,15 @@ class SolarRequest(BaseModel):
         ..., gt=0, le=100_000, description="Annual household electricity consumption (kWh)"
     )
     month: str = Field(
-        ..., pattern=r"^\d{4}-(0[1-9]|1[0-2])$",
+        ...,
+        pattern=r"^\d{4}-(0[1-9]|1[0-2])$",
         description="Simulation month (YYYY-MM)",
         examples=["2025-07"],
     )
     performance_ratio: float = Field(
-        DEFAULT_PERFORMANCE_RATIO, ge=0.5, le=1.0,
+        DEFAULT_PERFORMANCE_RATIO,
+        ge=0.5,
+        le=1.0,
         description="PV system efficiency (0.75–0.85 typical)",
     )
 

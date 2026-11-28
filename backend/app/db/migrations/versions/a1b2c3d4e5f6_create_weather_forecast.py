@@ -34,9 +34,7 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
         ),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "issued_date", "target_utc", "source", name="uq_weather_forecast"
-        ),
+        sa.UniqueConstraint("issued_date", "target_utc", "source", name="uq_weather_forecast"),
     )
     op.create_index(
         "idx_weather_forecast_issued",

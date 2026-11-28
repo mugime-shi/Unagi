@@ -25,6 +25,7 @@ DbDep = Annotated[Session, Depends(get_db)]
 # Request schemas
 # ---------------------------------------------------------------------------
 
+
 class SubscribeRequest(BaseModel):
     endpoint: str
     p256dh: str
@@ -39,6 +40,7 @@ class UnsubscribeRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
 
 @router.get("/vapid-public-key")
 def get_vapid_public_key():
@@ -90,6 +92,7 @@ def send_test_notification(db: DbDep, area: str = "SE3"):
     if not settings.debug:
         raise HTTPException(status_code=404, detail="Not found")
     from app.services.notify_service import notify_subscribers
+
     return notify_subscribers(db, area)
 
 
@@ -99,4 +102,5 @@ def send_telegram_test(db: DbDep, area: str = "SE3"):
     if not settings.debug:
         raise HTTPException(status_code=404, detail="Not found")
     from app.services.telegram_service import send_telegram_alert
+
     return send_telegram_alert(db, area)

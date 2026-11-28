@@ -12,7 +12,7 @@ name: Deploy
 on:
   push:
     branches: [main]
-  # PRs run frontend-lint and backend-test; the deploy job below is push-only.
+  # PRs run frontend-lint, backend-lint and backend-test; the deploy job below is push-only.
   pull_request:
 
 env:
@@ -42,6 +42,27 @@ jobs:
 
       - name: Type check
         run: npx tsc --noEmit
+
+  # Pinned so a new ruff release cannot start failing PRs on its own; bump together with local ruff.
+  backend-lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install ruff==0.17.6
+
+      - name: Ruff lint
+        run: ruff check --output-format=github .
+
+      - name: Ruff format
+        run: ruff format --check .
 
   # Tests get no production secrets: a throwaway Postgres stands in for the DB
   # (and runs the RUN_PG_TESTS equivalence tests), and ENTSO-E is blanked in conftest.
@@ -111,7 +132,7 @@ jobs:
   deploy:
     # Never deploy from a PR; lint failures block the deploy like test failures do.
     if: github.event_name == 'push' && needs.changes.outputs.backend == 'true'
-    needs: [frontend-lint, backend-test, changes]
+    needs: [frontend-lint, backend-lint, backend-test, changes]
     runs-on: ubuntu-latest
 
     steps:

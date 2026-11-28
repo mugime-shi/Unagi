@@ -25,7 +25,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("area", sa.String(4), nullable=False, server_default="SE3"),
         sa.Column("timestamp_utc", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("psr_type", sa.String(4), nullable=False),   # "B12", "B14", etc.
+        sa.Column("psr_type", sa.String(4), nullable=False),  # "B12", "B14", etc.
         sa.Column("value_mw", sa.Numeric(10, 2), nullable=False),
         sa.Column("resolution", sa.String(10), server_default="PT15M"),
         sa.Column(
@@ -35,7 +35,9 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
-            "area", "timestamp_utc", "psr_type",
+            "area",
+            "timestamp_utc",
+            "psr_type",
             name="uq_generation_mix",
         ),
     )

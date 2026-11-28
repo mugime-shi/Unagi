@@ -33,9 +33,7 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
         ),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "station_id", "timestamp_utc", "source", name="uq_weather_data"
-        ),
+        sa.UniqueConstraint("station_id", "timestamp_utc", "source", name="uq_weather_data"),
     )
     op.create_index(
         "idx_weather_data_station_time",
